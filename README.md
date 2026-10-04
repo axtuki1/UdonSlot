@@ -29,6 +29,7 @@ Current version: `1.0.0`
 - 新しいスロットを作り始める手順は `Docs/GetStarted.md` にまとめています。
 - 各クラスの役割は `Docs/ClassRoles.md` にまとめています。
 - 枚数優先・個数優先の自動リール制御は `Docs/ReelPriorityControl.md` にまとめています。
+- ルールファイルから滑りテーブルを生成する「ルール制御」（試作）は `Docs/ReelRule.md` にまとめています。
 - 基礎遊技フローの構成とInspector設定は `Docs/BasicSlotFlow.md` にまとめています。
 
 ## Version History
