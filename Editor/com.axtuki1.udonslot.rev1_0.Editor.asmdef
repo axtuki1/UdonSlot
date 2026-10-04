@@ -1,0 +1,29 @@
+{
+    "name": "com.axtuki1.udonslot.rev1_0.Editor",
+    "rootNamespace": "AX.UdonSlot.REV1_0.Editor",
+    "references": [
+        "com.axtuki1.udonslot.rev1_0",
+        "UdonSharp.Runtime",
+        "UdonSharp.Editor",
+        "VRC.SDK3",
+        "VRC.SDKBase",
+        "VRC.Udon",
+        "VRC.SDK3.Editor",
+        "VRC.SDKBase.Editor",
+        "VRC.Udon.Editor",
+        "Unity.TextMeshPro",
+        "UnityEngine.UI",
+        "UnityEditor.UI"
+    ],
+    "includePlatforms": [
+        "Editor"
+    ],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": false,
+    "precompiledReferences": [],
+    "autoReferenced": true,
+    "defineConstraints": [],
+    "versionDefines": [],
+    "noEngineReferences": false
+}

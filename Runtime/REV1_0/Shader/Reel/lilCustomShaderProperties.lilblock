@@ -1,0 +1,6 @@
+        [HDR] _ReelUpperLightColor ("Upper Light Color", Color) = (1,1,1,1)
+        [HDR] _ReelLowerLightColor ("Lower Light Color", Color) = (1,1,1,1)
+        _ReelLightSplit ("Mask Upper / Lower Boundary", Range(0,1)) = 0.5
+        [Toggle] _ReelLightSwap ("Swap Upper / Lower", Float) = 0
+        _ReelSymbolLights ("Symbol Lights (Top, Middle, Bottom)", Vector) = (1,1,1,1)
+        _ReelSymbolWindow ("Symbol Window (Count, UV Offset)", Vector) = (21,0,0,0)

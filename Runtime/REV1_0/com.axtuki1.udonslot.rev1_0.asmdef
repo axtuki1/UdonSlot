@@ -1,0 +1,24 @@
+{
+    "name": "com.axtuki1.udonslot.rev1_0",
+    "rootNamespace": "AX.UdonSlot.REV1_0",
+    "references": [
+        "UdonSharp.Runtime",
+        "VRC.SDK3",
+        "VRC.SDKBase",
+        "VRC.Udon",
+        "VRC.Udon.Serialization.OdinSerializer",
+        "Unity.TextMeshPro",
+        "UnityEngine.UI",
+        "com.github.gorialis.vrchat-udon-qr",
+        "com.github.gorialis.vrchat-udon-hash-lib"
+    ],
+    "includePlatforms": [],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": false,
+    "precompiledReferences": [],
+    "autoReferenced": true,
+    "defineConstraints": [],
+    "versionDefines": [],
+    "noEngineReferences": false
+}
