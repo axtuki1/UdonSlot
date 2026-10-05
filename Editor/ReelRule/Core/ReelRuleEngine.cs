@@ -17,6 +17,10 @@ namespace AX.UdonSlot.REV1_0.Editor.ReelRule
         public int[] Slips;
         /// <summary>非成立役・禁止停止形を避けられなかった押下位置。</summary>
         public bool[] Unavoidable;
+        /// <summary>押下位置ごとの決め手（「スイカ引込」「回避」「最短」「手動」など）。</summary>
+        public string[] Reasons;
+        /// <summary>手動指定で決めた押下位置。</summary>
+        public bool[] Manual;
     }
 
     /// <summary>1つの検索名（フラグ）に対する生成結果。</summary>
@@ -53,6 +57,7 @@ namespace AX.UdonSlot.REV1_0.Editor.ReelRule
             public List<GoalKind> Kinds = new List<GoalKind>();
             public List<int> Targets = new List<int>();
             public List<string> Labels = new List<string>();
+            public List<string> Reasons = new List<string>();
         }
 
         private readonly Machine machine;
@@ -74,6 +79,7 @@ namespace AX.UdonSlot.REV1_0.Editor.ReelRule
         private readonly Dictionary<long, double> chanceMemo = new Dictionary<long, double>();
         private readonly Dictionary<long, SlipTable> tables = new Dictionary<long, SlipTable>();
         private Func<bool> cancelled;
+        private readonly Dictionary<ControlResult, Dictionary<long, SlipTable>> resultIndex = new Dictionary<ControlResult, Dictionary<long, SlipTable>>();
 
         public ReelRuleEngine(Machine machine, RuleSet rules)
         {
@@ -206,9 +212,10 @@ namespace AX.UdonSlot.REV1_0.Editor.ReelRule
                 for (int r = 0; r < 3; r++)
                 {
                     shapeReel[s][r] = new bool[lengths[r]];
+                    int[] allowed = shape.Positions != null && shape.Positions.Length > r ? shape.Positions[r] : null;
                     for (int pos = 0; pos < lengths[r]; pos++)
                     {
-                        bool match = true;
+                        bool match = allowed == null || Array.IndexOf(allowed, pos) >= 0;
                         for (int row = 0; row < 3 && match; row++) match = shape.Cell(row, r).Matches(machine.SymbolAt(r, pos, row));
                         shapeReel[s][r][pos] = match;
                         if (match) shapeReelPossible[s][r] = true;
@@ -221,17 +228,22 @@ namespace AX.UdonSlot.REV1_0.Editor.ReelRule
         {
             foreach (var shape in rules.Shapes)
                 for (int c = 0; c < 9; c++)
-                    foreach (string symbol in shape.Cells[c].Options)
+                {
+                    var symbols = new List<string>(shape.Cells[c].Include);
+                    symbols.AddRange(shape.Cells[c].Exclude);
+                    foreach (string symbol in symbols)
                         if (!machine.HasSymbol(symbol))
                             errors.Add(new RuleError(shape.Line, "停止形「" + shape.Name + "」の図柄がリール配列にありません: " + symbol));
+                }
 
             // 抽選表の全フラグ＋ルールファイルで追加した検索名
             var controls = new List<ControlRule>();
-            foreach (var flag in machine.Flags)
-            {
-                var rule = rules.FindControl(flag.Name);
-                controls.Add(rule ?? new ControlRule { Name = flag.Name });
-            }
+            if (!rules.OnlyListedControls)
+                foreach (var flag in machine.Flags)
+                {
+                    var rule = rules.FindControl(flag.Name);
+                    controls.Add(rule ?? new ControlRule { Name = flag.Name });
+                }
             foreach (var rule in rules.Controls)
                 if (!controls.Contains(rule)) controls.Add(rule);
 
@@ -239,14 +251,21 @@ namespace AX.UdonSlot.REV1_0.Editor.ReelRule
             foreach (var rule in controls)
             {
                 var p = new Plan { Rule = rule, Won = new bool[machine.Roles.Count] };
-                var lottery = machine.FindFlag(rule.SourceFlag);
-                if (lottery == null)
+                var names = new List<string>();
+                bool missingFlag = false;
+                foreach (string flagName in rule.LotteryFlags ?? new List<string> { rule.SourceFlag })
                 {
-                    errors.Add(new RuleError(rule.Line, "抽選表にフラグ「" + rule.SourceFlag + "」がありません（検索名だけのフラグには「抽選 <フラグ名>」を書いてください）"));
-                    continue;
+                    var lottery = machine.FindFlag(flagName);
+                    if (lottery == null)
+                    {
+                        errors.Add(new RuleError(rule.Line, "抽選表にフラグ「" + flagName + "」がありません（制御 " + rule.Name + "）"));
+                        missingFlag = true;
+                        continue;
+                    }
+                    names.AddRange(lottery.Roles);
                 }
+                if (missingFlag) continue;
                 var wonOrder = new List<int>();
-                var names = new List<string>(lottery.Roles);
                 names.AddRange(rule.ExtraRoles);
                 foreach (string name in names)
                 {
@@ -263,13 +282,13 @@ namespace AX.UdonSlot.REV1_0.Editor.ReelRule
                         int index = RoleIndex(goal.Target);
                         if (index < 0) errors.Add(new RuleError(goal.Line, "配当表に役「" + goal.Target + "」がありません"));
                         else if (!p.Won[index]) errors.Add(new RuleError(goal.Line, "「" + goal.Target + "」はフラグ " + rule.Name + " の当選役ではないため引き込めません"));
-                        else AddGoal(p, GoalKind.Pull, index, "引込 " + goal.Target);
+                        else AddGoal(p, GoalKind.Pull, index, "引込 " + goal.Target, goal.Target + "引込");
                     }
                     else
                     {
                         int index = ShapeIndex(goal.Target);
                         if (index < 0) errors.Add(new RuleError(goal.Line, "停止形「" + goal.Target + "」が定義されていません"));
-                        else AddGoal(p, goal.Kind, index, (goal.Kind == GoalKind.Prefer ? "狙う " : "避ける ") + goal.Target);
+                        else AddGoal(p, goal.Kind, index, (goal.Kind == GoalKind.Prefer ? "狙う " : "避ける ") + goal.Target, goal.Target + (goal.Kind == GoalKind.Prefer ? "狙い" : "回避"));
                     }
                 }
 
@@ -293,7 +312,7 @@ namespace AX.UdonSlot.REV1_0.Editor.ReelRule
                         if (bonus == machine.BonusFirst) first.Add(index); else second.Add(index);
                     }
                     first.AddRange(second);
-                    foreach (int index in first) AddGoal(p, GoalKind.Pull, index, "引込 " + machine.Roles[index].Name + "（自動）");
+                    foreach (int index in first) AddGoal(p, GoalKind.Pull, index, "引込 " + machine.Roles[index].Name + "（自動）", machine.Roles[index].Name + "引込");
                 }
 
                 foreach (string name in rule.Allowed)
@@ -319,11 +338,12 @@ namespace AX.UdonSlot.REV1_0.Editor.ReelRule
             return plans;
         }
 
-        private static void AddGoal(Plan p, GoalKind kind, int target, string label)
+        private static void AddGoal(Plan p, GoalKind kind, int target, string label, string reason)
         {
             p.Kinds.Add(kind);
             p.Targets.Add(target);
             p.Labels.Add(label);
+            p.Reasons.Add(reason);
         }
 
         private int RoleIndex(string name)
@@ -353,16 +373,33 @@ namespace AX.UdonSlot.REV1_0.Editor.ReelRule
                 var table = new SlipTable
                 {
                     Pattern = nextPattern, Reel = r, Stage = stage, Prior = (int[])stops.Clone(),
-                    Slips = new int[lengths[r]], Unavoidable = new bool[lengths[r]]
+                    Slips = new int[lengths[r]], Unavoidable = new bool[lengths[r]],
+                    Reasons = new string[lengths[r]], Manual = new bool[lengths[r]]
                 };
                 tables[key] = table;
+                Dictionary<int, int> manual;
+                plan.Rule.Overrides.TryGetValue(key, out manual);
                 var reached = new bool[lengths[r]];
                 for (int press = 0; press < lengths[r]; press++)
                 {
                     bool unavoidable;
-                    int slip = Choose(stops, orders, r, stage, press, out unavoidable);
+                    string reason;
+                    int slip = Choose(stops, orders, r, stage, press, out unavoidable, out reason);
+                    int forced;
+                    if (manual != null && manual.TryGetValue(press, out forced) && forced >= 0 && forced <= maxSlip)
+                    {
+                        slip = forced;
+                        reason = "手動";
+                        table.Manual[press] = true;
+                        stops[r] = Machine.Wrap(press - slip, lengths[r]);
+                        orders[r] = stage + 1;
+                        unavoidable = !IsSafe(stops, orders);
+                        stops[r] = -1;
+                        orders[r] = 0;
+                    }
                     table.Slips[press] = slip;
                     table.Unavoidable[press] = unavoidable;
+                    table.Reasons[press] = reason;
                     reached[Machine.Wrap(press - slip, lengths[r])] = true;
                 }
                 for (int pos = 0; pos < lengths[r]; pos++)
@@ -377,7 +414,7 @@ namespace AX.UdonSlot.REV1_0.Editor.ReelRule
             }
         }
 
-        private int Choose(int[] stops, int[] orders, int reel, int stage, int press, out bool unavoidable)
+        private int Choose(int[] stops, int[] orders, int reel, int stage, int press, out bool unavoidable, out string reason)
         {
             int goalCount = plan.Kinds.Count;
             var safe = new bool[maxSlip + 1];
@@ -393,21 +430,30 @@ namespace AX.UdonSlot.REV1_0.Editor.ReelRule
 
             int best = -1;
             int[] bestScore = null;
-            var score = new int[goalCount];
+            var candidates = new List<int[]>();
             for (int s = 0; s <= maxSlip; s++)
             {
                 if (anySafe && !safe[s]) continue;
                 stops[reel] = Machine.Wrap(press - s, lengths[reel]);
                 orders[reel] = stage + 1;
+                var score = new int[goalCount];
                 for (int g = 0; g < goalCount; g++) score[g] = GoalScore(g, stops, orders, reel);
+                candidates.Add(score);
                 if (best < 0 || Better(score, bestScore))
                 {
                     best = s;
-                    bestScore = (int[])score.Clone();
+                    bestScore = score;
                 }
             }
             stops[reel] = -1;
             orders[reel] = 0;
+
+            // 決め手: 候補の間で最初に差がついた優先行。差がなければ、避けたか最短か。
+            reason = null;
+            for (int g = 0; g < goalCount && reason == null; g++)
+                foreach (var score in candidates)
+                    if (score[g] != bestScore[g]) { reason = plan.Reasons[g]; break; }
+            if (reason == null) reason = unavoidable ? "回避不能" : best > 0 && !safe[0] ? "回避" : "最短";
             return best;
         }
 
@@ -503,11 +549,15 @@ namespace AX.UdonSlot.REV1_0.Editor.ReelRule
         private bool TargetMet(int target, int[] stops, int[] orders)
         {
             int roles = machine.Roles.Count;
-            return target < roles ? RoleFormed(target, stops, orders) : ShapePossible(target - roles, stops);
+            return target < roles ? RoleFormed(target, stops, orders) : ShapePossible(target - roles, stops, orders);
         }
 
-        private bool ShapePossible(int shape, int[] stops)
+        private bool ShapePossible(int shape, int[] stops, int[] orders)
         {
+            int first = rules.Shapes[shape].FirstReel;
+            if (first >= 0)
+                for (int r = 0; r < 3; r++)
+                    if (orders[r] == 1 ? r != first : r == first && orders[r] > 1) return false;
             for (int r = 0; r < 3; r++)
             {
                 if (stops[r] >= 0 ? !shapeReel[shape][r][stops[r]] : !shapeReelPossible[shape][r]) return false;
@@ -556,7 +606,7 @@ namespace AX.UdonSlot.REV1_0.Editor.ReelRule
             for (int i = 0; i < machine.Roles.Count; i++)
                 if (!p.Won[i] && RoleFormed(i, stops, orders)) return true;
             foreach (int s in p.Denied)
-                if (ShapePossible(s, stops)) return true;
+                if (ShapePossible(s, stops, orders)) return true;
             return false;
         }
 
@@ -593,9 +643,7 @@ namespace AX.UdonSlot.REV1_0.Editor.ReelRule
             for (int i = 0; i < roleCount; i++) { stats.RoleNames[i] = machine.Roles[i].Name; stats.RoleWon[i] = p.Won[i]; }
             stats.ShapeNames = new List<string>();
             var shapeIds = new List<int>();
-            for (int g = 0; g < p.Kinds.Count; g++)
-                if (p.Kinds[g] != GoalKind.Pull && !shapeIds.Contains(p.Targets[g])) shapeIds.Add(p.Targets[g]);
-            foreach (int s in p.Denied) if (!shapeIds.Contains(s)) shapeIds.Add(s);
+            for (int s = 0; s < rules.Shapes.Count; s++) shapeIds.Add(s);
             foreach (int s in shapeIds) stats.ShapeNames.Add(rules.Shapes[s].Name);
             stats.ShapeMatched = new long[shapeIds.Count];
             stats.ShapeMatchedByOrder = new long[shapeIds.Count, 6];
@@ -633,7 +681,7 @@ namespace AX.UdonSlot.REV1_0.Editor.ReelRule
                     }
                     for (int k = 0; k < shapeIds.Count; k++)
                     {
-                        if (!ShapePossible(shapeIds[k], stops)) continue;
+                        if (!ShapePossible(shapeIds[k], stops, orders)) continue;
                         stats.ShapeMatched[k]++;
                         stats.ShapeMatchedByOrder[k, o]++;
                         if (p.Denied.Contains(shapeIds[k])) violation = true;
@@ -643,6 +691,72 @@ namespace AX.UdonSlot.REV1_0.Editor.ReelRule
                 }
             }
             return stats;
+        }
+
+        // ---------------------------------------------------------------- 結果の参照（出目マップなど）
+
+        /// <summary>生成済みの滑りテーブルを1枚取り出す。無ければ null。</summary>
+        public SlipTable FindTable(ControlResult result, int pattern, int[] prior)
+        {
+            Dictionary<long, SlipTable> index;
+            if (!resultIndex.TryGetValue(result, out index))
+            {
+                index = new Dictionary<long, SlipTable>();
+                foreach (var t in result.Tables) index[Key(t.Pattern, t.Prior)] = t;
+                resultIndex[result] = index;
+            }
+            SlipTable table;
+            return index.TryGetValue(Key(pattern, prior), out table) ? table : null;
+        }
+
+        /// <summary>
+        /// 押し順 order で、第1停止リールが firstStop（下段インデックス）に止まった後、
+        /// 第2・第3停止を press2・press3 で押したときの最終停止位置。たどれなければ null。
+        /// </summary>
+        public int[] Resolve(ControlResult result, int order, int firstStop, int press2, int press3, out int[] orders)
+        {
+            var stops = new[] { -1, -1, -1 };
+            orders = new int[3];
+            int first = Orders[order][0];
+            stops[first] = firstStop;
+            orders[first] = 1;
+            int[] presses = { 0, press2, press3 };
+            for (int s = 1; s < 3; s++)
+            {
+                int r = Orders[order][s];
+                var table = FindTable(result, PatternFor(order, s), stops);
+                if (table == null) return null;
+                stops[r] = Machine.Wrap(presses[s] - table.Slips[presses[s]], lengths[r]);
+                orders[r] = s + 1;
+            }
+            return stops;
+        }
+
+        /// <summary>第1停止で止まりうる位置（下段インデックス）。</summary>
+        public bool[] FirstStops(ControlResult result, int order)
+        {
+            int r = Orders[order][0];
+            var reached = new bool[lengths[r]];
+            var table = FindTable(result, PatternFor(order, 0), new[] { -1, -1, -1 });
+            if (table == null) return reached;
+            for (int press = 0; press < lengths[r]; press++) reached[Machine.Wrap(press - table.Slips[press], lengths[r])] = true;
+            return reached;
+        }
+
+        /// <summary>停止位置で揃っている役の名前。</summary>
+        public List<string> FormedRoles(int[] stops, int[] orders)
+        {
+            var list = new List<string>();
+            for (int i = 0; i < machine.Roles.Count; i++) if (RoleFormed(i, stops, orders)) list.Add(machine.Roles[i].Name);
+            return list;
+        }
+
+        /// <summary>停止位置で合っている停止形の名前（定義順）。</summary>
+        public List<string> MatchedShapes(int[] stops, int[] orders)
+        {
+            var list = new List<string>();
+            for (int s = 0; s < rules.Shapes.Count; s++) if (ShapePossible(s, stops, orders)) list.Add(rules.Shapes[s].Name);
+            return list;
         }
 
         private string WindowKey(int[] stops)

@@ -5,8 +5,8 @@ using System.IO;
 using AX.UdonSlot.REV1_0;
 using AX.UdonSlot.REV1_0.Editor.ReelRule;
 
-// 生成エンジンの検証。終了コード 0 なら全項目通過。
-public static class Program
+// 生成エンジンと設計データ変換の検証。終了コード 0 なら全項目通過。
+public static partial class Program
 {
     private static int checks;
     private static int failures;
@@ -22,29 +22,26 @@ public static class Program
     public static int Main(string[] args)
     {
         var watch = Stopwatch.StartNew();
-        ParserChecks();
+        ModelChecks();
         var machine = SampleMachine();
-        var results = Generate(machine, File.ReadAllText(Path.Combine(Dir(), "sample.rules.txt")));
-        GenerationChecks(machine, results);
-        RuntimeLookupChecks(machine, results);
-        DefaultRuleChecks(machine);
+        var design = SampleDesign(machine);
+        var engine = new ReelRuleEngine(machine, ReelDesignConverter.ToRuleSet(design, machine));
+        var results = engine.GenerateAll();
+        GenerationChecks(machine, design, engine, results);
+        ConditionChecks(machine);
+        OverrideChecks(machine);
+        RuntimeLookupChecks(results);
         ErrorChecks(machine);
         UnavoidableChecks();
+        RealMachineChecks();
         if (args.Length > 0) File.WriteAllText(args[0], ReelRuleReport.Markdown(results, 15));
         Console.WriteLine(checks + " checks, " + failures + " failures, " + watch.ElapsedMilliseconds + " ms");
         return failures == 0 ? 0 : 1;
     }
 
-    private static string Dir()
+    private static List<ControlResult> Generate(Machine machine, ReelDesign design)
     {
-        string dir = AppContext.BaseDirectory;
-        while (dir != null && !File.Exists(Path.Combine(dir, "sample.rules.txt"))) dir = Path.GetDirectoryName(dir);
-        return dir;
-    }
-
-    private static List<ControlResult> Generate(Machine machine, string text)
-    {
-        return new ReelRuleEngine(machine, ReelRuleParser.Parse(text)).GenerateAll();
+        return new ReelRuleEngine(machine, ReelDesignConverter.ToRuleSet(design, machine)).GenerateAll();
     }
 
     private static ControlResult Find(List<ControlResult> results, string name)
@@ -65,7 +62,13 @@ public static class Program
         return i < 0 ? -1 : (double)r.Stats.ShapeMatched[i] / r.Stats.Paths;
     }
 
-    // ------------------------------------------------------------ 機種データ
+    private static double ShapeRateByOrder(ControlResult r, string shape, int order)
+    {
+        int i = r.Stats.ShapeNames.IndexOf(shape);
+        return (double)r.Stats.ShapeMatchedByOrder[i, order] / r.Stats.PathsByOrder[order];
+    }
+
+    // ------------------------------------------------------------ 機種データと設計
 
     public static Machine SampleMachine()
     {
@@ -108,67 +111,152 @@ public static class Program
         m.Flags.Add(flag);
     }
 
-    // ------------------------------------------------------------ 検証
-
-    private static void ParserChecks()
+    private static DesignShape ShapeOf(string name, bool reach, params string[] cells)
     {
-        var rules = ReelRuleParser.Parse("最大滑り 3\n停止形 A 専用\n  スイカ * !ベル|リプ\n  * * *\n  * * *\nフラグ X # comment\n  抽選 Y\n  成立 BB\n  狙う A\n  引込 なし\n");
-        Check("parse maxslip", rules.MaxSlip == 3);
-        var a = rules.FindShape("A");
-        Check("parse shape", a != null && a.Exclusive);
-        Check("parse any cell", a.Cell(0, 1).IsAny && a.Cell(2, 2).IsAny);
-        Check("parse negate cell", a.Cell(0, 2).Negate && a.Cell(0, 2).Options.Count == 2);
-        Check("negate matches others", a.Cell(0, 2).Matches("7") && !a.Cell(0, 2).Matches("ベル"));
-        var x = rules.FindControl("X");
-        Check("parse control", x != null && x.SourceFlag == "Y" && x.ExtraRoles.Contains("BB") && x.NoImplicitPull && x.Goals.Count == 1);
-        try
+        var shape = new DesignShape { name = name, reach = reach };
+        for (int i = 0; i < 9; i++)
         {
-            ReelRuleParser.Parse("狙う A\nフラグ B\n  謎 C\n停止形 S\n * *\n");
-            Check("parse errors thrown", false);
+            if (cells[i] == "*") continue;
+            foreach (string part in cells[i].Split('|'))
+            {
+                if (part.StartsWith("!")) shape.cells[i].exclude.Add(part.Substring(1));
+                else shape.cells[i].include.Add(part);
+            }
         }
-        catch (RuleException e)
-        {
-            Check("parse error count", e.Errors.Count == 4);
-            Check("parse error line", e.Errors[0].Line == 1 && e.Errors[1].Line == 3);
-        }
+        return shape;
     }
 
-    private static void GenerationChecks(Machine machine, List<ControlResult> results)
+    public static ReelDesign SampleDesign(Machine machine)
     {
-        Check("all lottery flags + composite", results.Count == machine.Flags.Count + 1);
+        var d = new ReelDesign();
+        d.AddControlsFromLottery(machine);
+        d.shapes.Add(ShapeOf("右下がりスイカ", false, "スイカ", "*", "*", "*", "スイカ", "*", "*", "*", "スイカ"));
+        var reach = ShapeOf("リーチ目A", true, "*", "*", "*", "7", "BAR", "*", "*", "*", "*");
+        reach.allowedControls.Add("BB");
+        reach.allowedControls.Add("REPLAY_BB");
+        d.shapes.Add(reach);
+        d.FindControl("スイカ").targets.Add("右下がりスイカ");
+        d.FindControl("BB").targets.Add("リーチ目A");
+        var replayBB = new DesignControl { name = "REPLAY_BB" };
+        replayBB.lotteryFlags.Add("リプレイ");
+        replayBB.extraRoles.Add("BB");
+        d.controls.Add(replayBB);
+        return d;
+    }
+
+    // ------------------------------------------------------------ 検証
+
+    private static void ModelChecks()
+    {
+        var cell = new ShapeCell();
+        Check("empty cell is any", cell.IsAny && cell.Matches("ベル"));
+        cell.Include.Add("7");
+        cell.Include.Add("BAR");
+        Check("include matches any of them", cell.Matches("7") && cell.Matches("BAR") && !cell.Matches("ベル"));
+        cell.Include.Clear();
+        cell.Exclude.Add("BAR");
+        cell.Exclude.Add("チェリー");
+        Check("exclude only matches the rest", cell.Matches("7") && !cell.Matches("BAR") && !cell.Matches("チェリー"));
+        cell.Include.Add("7");
+        cell.Include.Add("BAR");
+        Check("include and exclude combine", cell.Matches("7") && !cell.Matches("BAR") && !cell.Matches("ベル"));
+
+        var d = new DesignCell();
+        d.Cycle("7");
+        Check("cycle to include", d.include.Contains("7") && d.exclude.Count == 0);
+        d.Cycle("7");
+        Check("cycle to exclude", d.exclude.Contains("7") && d.include.Count == 0);
+        d.Cycle("7");
+        Check("cycle to none", d.IsAny);
+
+        var names = new HashSet<string> { "Replay", "Replay (1)" };
+        Check("numbered name skips taken", ReelDesign.NumberedName("Replay", names.Contains) == "Replay (2)");
+
+        var control = new DesignControl { name = "A" };
+        control.targets.Add("S");
+        control.overrides.Add(new DesignOverride { pattern = 32, press = 3, slip = 2 });
+        var copy = control.Copy();
+        copy.targets.Add("T");
+        copy.overrides[0].slip = 4;
+        Check("copy is deep", control.targets.Count == 1 && control.overrides[0].slip == 2);
+    }
+
+    private static void GenerationChecks(Machine machine, ReelDesign design, ReelRuleEngine engine, List<ControlResult> results)
+    {
+        Check("one result per control", results.Count == design.controls.Count);
         foreach (var r in results)
         {
             Check(r.Name + ": no violation", r.Stats.ViolationPaths == 0);
             Check(r.Name + ": no unavoidable", r.Stats.UnavoidableCells == 0);
             Check(r.Name + ": all paths", r.Stats.Paths == 6L * 21 * 21 * 21);
             foreach (var t in r.Tables)
-                foreach (int s in t.Slips) Check(r.Name + ": slip range", s >= 0 && s <= 4);
+                for (int p = 0; p < t.Slips.Length; p++)
+                {
+                    Check(r.Name + ": slip range", t.Slips[p] >= 0 && t.Slips[p] <= 4);
+                    Check(r.Name + ": reason set", !string.IsNullOrEmpty(t.Reasons[p]));
+                }
         }
-        // 引込だけのフラグは、全押下位置の総当たりで求めた最大の入賞率と一致する
+        // 役だけの制御は、総当たりで求めた最大の入賞率と一致する
         Check("bell rate is optimal", Near(Rate(Find(results, "ベル"), "ベル"), Optimum(machine, "ベル", new[] { "ベル" })));
         Check("replay rate is optimal", Near(Rate(Find(results, "リプレイ"), "リプレイ"), Optimum(machine, "リプレイ", new[] { "リプレイ" })));
         Check("cherry rate is optimal", Near(Rate(Find(results, "チェリー"), "チェリー"), Optimum(machine, "チェリー", new[] { "チェリー" })));
+
+        // 役優先: 狙う出目があっても役の入賞率は最大のまま
         var suika = Find(results, "スイカ");
-        Check("prefer shape first is optimal for the shape", Near(ShapeRate(suika, "右下がりスイカ"), Optimum(machine, "右下がりスイカ", new[] { "スイカ" })));
-        Check("upper suika preferred appears", ShapeRate(suika, "右下がりスイカ") > 0);
-        Check("suika still pulled after shape", Rate(suika, "スイカ") >= ShapeRate(suika, "右下がりスイカ"));
-        Check("BB allows exclusive shape", !Find(results, "BB").GoalLines.Contains("禁止 リーチ目A"));
-        Check("other flags deny exclusive shape", Find(results, "ベル").GoalLines.Contains("禁止 リーチ目A"));
+        Check("prize first keeps suika optimal", Near(Rate(suika, "スイカ"), Optimum(machine, "スイカ", new[] { "スイカ" })));
+        var plain = SampleDesign(machine);
+        plain.FindControl("スイカ").targets.Clear();
+        var untargeted = Find(Generate(machine, plain), "スイカ");
+        Check("target raises shape rate", ShapeRate(suika, "右下がりスイカ") > ShapeRate(untargeted, "右下がりスイカ"));
+
+        // リーチ目は出てよい制御以外で出ない
         foreach (var r in results)
-            if (r.Name != "BB")
-                Check(r.Name + ": exclusive shape never appears", ShapeRate(r, "リーチ目A") <= 0);
+            if (r.Name != "BB" && r.Name != "REPLAY_BB")
+                Check(r.Name + ": reach shape never appears", ShapeRate(r, "リーチ目A") == 0);
+        Check("BB shows reach shape", ShapeRate(Find(results, "BB"), "リーチ目A") > 0);
+
         var replayBB = Find(results, "REPLAY_BB");
-        Check("composite uses lottery roles", replayBB.WonRoles.Contains("リプレイ") && replayBB.WonRoles.Contains("BB"));
-        Check("composite pulls replay optimally", Near(Rate(replayBB, "リプレイ"), Optimum(machine, "リプレイ", new[] { "リプレイ", "BB" })));
+        Check("extra roles are won", replayBB.WonRoles.Contains("リプレイ") && replayBB.WonRoles.Contains("BB"));
+        Check("bonus first pulls BB first", replayBB.GoalLines[0] == "引込 BB");
+        Check("bonus first pulls BB optimally", Near(Rate(replayBB, "BB"), Optimum(machine, "BB", new[] { "リプレイ", "BB" })));
+        var small = SampleDesign(machine);
+        small.priority = ControlPriority.SmallFirst;
+        var replayBBSmall = Find(Generate(machine, small), "REPLAY_BB");
+        Check("small first pulls replay first", replayBBSmall.GoalLines[0] == "引込 リプレイ");
+        Check("small first pulls replay optimally", Near(Rate(replayBBSmall, "リプレイ"), Optimum(machine, "リプレイ", new[] { "リプレイ", "BB" })));
 
-        // 狙う の効果: 指定しない場合より右下がりスイカが増える
-        string plain = "停止形 右下がりスイカ\n スイカ * *\n * スイカ *\n * * スイカ\nフラグ スイカ\n  避ける 右下がりスイカ\n";
-        var avoided = Find(Generate(machine, plain), "スイカ");
-        Check("avoid shape keeps pull", Rate(avoided, "スイカ") > 0);
-        Check("prefer raises shape rate", ShapeRate(suika, "右下がりスイカ") > ShapeRate(avoided, "右下がりスイカ"));
+        // 決め手
+        bool bellReason = false;
+        foreach (var t in Find(results, "ベル").Tables) foreach (string reason in t.Reasons) if (reason == "ベル引込") bellReason = true;
+        Check("bell reason is pull", bellReason);
+        bool hazureClean = true;
+        foreach (var t in Find(results, "ハズレ").Tables) foreach (string reason in t.Reasons) if (reason != "最短" && reason != "回避") hazureClean = false;
+        Check("hazure reasons are shortest or avoid", hazureClean);
 
-        // 同じ入力なら同じ結果
-        var again = Generate(machine, File.ReadAllText(Path.Combine(Dir(), "sample.rules.txt")));
+        // 出目マップのたどり方は全経路シミュレーションと一致する
+        var bbResult = Find(results, "BB");
+        long matched = 0, paths = 0;
+        for (int o = 0; o < 6; o++)
+        {
+            var firstTable = engine.FindTable(bbResult, ReelRuleEngine.PatternFor(o, 0), new[] { -1, -1, -1 });
+            int first = ReelRuleEngine.Orders[o][0];
+            for (int p1 = 0; p1 < 21; p1++)
+            {
+                int stop = Machine.Wrap(p1 - firstTable.Slips[p1], 21);
+                for (int p2 = 0; p2 < 21; p2++)
+                    for (int p3 = 0; p3 < 21; p3++)
+                    {
+                        int[] orders;
+                        var stops = engine.Resolve(bbResult, o, stop, p2, p3, out orders);
+                        paths++;
+                        if (stops != null && engine.MatchedShapes(stops, orders).Contains("リーチ目A")) matched++;
+                    }
+            }
+            Check("first stops reachable", engine.FirstStops(bbResult, o)[Machine.Wrap(0 - firstTable.Slips[0], 21)]);
+        }
+        Check("resolve matches simulation", paths == bbResult.Stats.Paths && matched == bbResult.Stats.ShapeMatched[bbResult.Stats.ShapeNames.IndexOf("リーチ目A")]);
+
+        var again = Generate(machine, SampleDesign(machine));
         bool same = again.Count == results.Count;
         for (int i = 0; same && i < results.Count; i++)
         {
@@ -179,13 +267,66 @@ public static class Program
         Check("deterministic", same);
     }
 
-    // ベイクした配列を実機と同じ検索（条件付き→基本テーブル）でたどり、生成結果と一致するか
-    private static void RuntimeLookupChecks(Machine machine, List<ControlResult> results)
+    private static void ConditionChecks(Machine machine)
     {
-        int[] lengths = { 21, 21, 21 };
+        // 押し順: 左第1停止のときだけ有効な出目は、他の押し順では数えない（狙いもしない）
+        var d = SampleDesign(machine);
+        var leftOnly = ShapeOf("左だけスイカ", false, "スイカ", "*", "*", "*", "スイカ", "*", "*", "*", "スイカ");
+        leftOnly.firstReel = 0;
+        d.shapes.Add(leftOnly);
+        d.FindControl("スイカ").targets.Insert(0, "左だけスイカ");
+        var r = Find(Generate(machine, d), "スイカ");
+        Check("first reel shape appears in left orders", ShapeRateByOrder(r, "左だけスイカ", 0) > 0);
+        for (int o = 2; o < 6; o++) Check("first reel shape absent in order " + o, ShapeRateByOrder(r, "左だけスイカ", o) == 0);
+
+        // 停止位置: 指定した位置で止まったときだけ合う
+        d = SampleDesign(machine);
+        var mission = ShapeOf("ミッション", true, "*", "*", "*", "*", "*", "*", "*", "*", "*");
+        mission.specificPositions = true;
+        mission.leftPositions.Add(3);
+        mission.centerPositions.Add(5);
+        mission.centerPositions.Add(6);
+        mission.allowedControls.Add("BB");
+        d.shapes.Add(mission);
+        d.FindControl("BB").targets.Insert(0, "ミッション");
+        var engine = new ReelRuleEngine(machine, ReelDesignConverter.ToRuleSet(d, machine));
+        var results = engine.GenerateAll();
+        var bb = Find(results, "BB");
+        Check("mission shape reachable", ShapeRate(bb, "ミッション") > 0);
+        foreach (var other in results)
+            if (other.Name != "BB") Check(other.Name + ": mission never appears", ShapeRate(other, "ミッション") == 0);
+        bool positionsOk = true;
+        for (int stop = 0; stop < 21; stop++)
+            for (int p2 = 0; p2 < 21; p2++)
+                for (int p3 = 0; p3 < 21; p3++)
+                {
+                    int[] orders;
+                    var stops = engine.Resolve(bb, 0, stop, p2, p3, out orders);
+                    if (stops == null || !engine.MatchedShapes(stops, orders).Contains("ミッション")) continue;
+                    if (stops[0] != 3 || (stops[1] != 5 && stops[1] != 6)) positionsOk = false;
+                }
+        Check("mission only at given positions", positionsOk);
+    }
+
+    private static void OverrideChecks(Machine machine)
+    {
+        var d = SampleDesign(machine);
+        int pattern = ReelRuleEngine.PatternFor(0, 0);
+        d.FindControl("スイカ").overrides.Add(new DesignOverride { pattern = pattern, press = 5, slip = 3 });
+        var engine = new ReelRuleEngine(machine, ReelDesignConverter.ToRuleSet(d, machine));
+        var r = Find(engine.GenerateAll(), "スイカ");
+        var table = engine.FindTable(r, pattern, new[] { -1, -1, -1 });
+        Check("override applied", table.Slips[5] == 3 && table.Manual[5] && table.Reasons[5] == "手動");
+        Check("other cells not manual", !table.Manual[4] && table.Reasons[4] != "手動");
+        Check("override keeps all paths", r.Stats.Paths == 6L * 21 * 21 * 21);
+    }
+
+    // ベイクした配列を実機と同じ検索（条件付き→基本テーブル）でたどり、生成結果と一致するか
+    private static void RuntimeLookupChecks(List<ControlResult> results)
+    {
         foreach (var r in results)
         {
-            var baked = ReelRuleBaker.Bake(r, lengths);
+            var baked = ReelRuleBaker.Bake(r, new[] { 21, 21, 21 });
             var data = new ReelControlData
             {
                 reelStopSlipCount = baked.ReelStopSlipCount,
@@ -225,43 +366,53 @@ public static class Program
         }
     }
 
-    private static void DefaultRuleChecks(Machine machine)
-    {
-        // ルールが空でも全フラグが生成され、当選役は自動で引き込まれる
-        var results = Generate(machine, "");
-        Check("empty rules generate all flags", results.Count == machine.Flags.Count);
-        Check("empty rules: bell pulled", Near(Rate(Find(results, "ベル"), "ベル"), Optimum(machine, "ベル", new[] { "ベル" })));
-        Check("empty rules: hazure clean", Find(results, "ハズレ").Stats.ViolationPaths == 0);
-        Check("implicit pull label", Find(results, "ベル").GoalLines[0].Contains("自動"));
-        var order = Find(Generate(machine, "停止形 S\n スイカ * *\n * * *\n * * *\nフラグ スイカ\n 狙う S\n"), "スイカ");
-        Check("written lines come before implicit pull", order.GoalLines[0] == "狙う S" && order.GoalLines[1].Contains("自動"));
-        // 引込なし なら役を狙わない
-        var none = Find(Generate(machine, "フラグ ベル\n 引込 なし\n"), "ベル");
-        Check("no implicit pull lowers bell", Rate(none, "ベル") < Rate(Find(results, "ベル"), "ベル"));
-    }
-
     private static void ErrorChecks(Machine machine)
     {
-        string[] bad =
-        {
-            "フラグ ベル\n 引込 スイカ\n",          // 当選役でない役
-            "フラグ ベル\n 狙う 無い停止形\n",      // 未定義の停止形
-            "フラグ 謎\n",                          // 抽選表にないフラグ
-            "停止形 A\n 金 * *\n * * *\n * * *\n",   // 配列にない図柄
-            "フラグ ベル\n 成立 無い役\n"           // 配当表にない役
-        };
-        foreach (string text in bad)
+        var cases = new List<KeyValuePair<string, ReelDesign>>();
+        var d = SampleDesign(machine);
+        d.controls.Add(new DesignControl { name = "ベル" });
+        cases.Add(new KeyValuePair<string, ReelDesign>("duplicate control", d));
+        d = SampleDesign(machine);
+        d.FindControl("ベル").targets.Add("無い出目");
+        cases.Add(new KeyValuePair<string, ReelDesign>("unknown target", d));
+        d = SampleDesign(machine);
+        d.FindControl("ベル").targets.Add("リーチ目A");
+        cases.Add(new KeyValuePair<string, ReelDesign>("reach target not allowed", d));
+        d = SampleDesign(machine);
+        d.FindControl("ベル").lotteryFlags.Add("謎");
+        cases.Add(new KeyValuePair<string, ReelDesign>("unknown lottery flag", d));
+        d = SampleDesign(machine);
+        d.shapes.Add(ShapeOf("金", false, "金", "*", "*", "*", "*", "*", "*", "*", "*"));
+        cases.Add(new KeyValuePair<string, ReelDesign>("symbol not on strip", d));
+        d = SampleDesign(machine);
+        d.FindControl("ベル").extraRoles.Add("無い役");
+        cases.Add(new KeyValuePair<string, ReelDesign>("unknown extra role", d));
+        foreach (var c in cases)
         {
             bool thrown = false;
-            try { Generate(machine, text); }
+            try { Generate(machine, c.Value); }
             catch (RuleException e) { thrown = e.Errors.Count > 0; }
-            Check("rule error detected: " + text.Split('\n')[1].Trim(), thrown);
+            Check("error detected: " + c.Key, thrown);
         }
+    }
+
+    private static void UnavoidableChecks()
+    {
+        // 全コマ同じ図柄なら、その役のハズレは避けられない
+        var m = new Machine();
+        for (int r = 0; r < 3; r++) m.Strips[r] = new[] { "A", "A", "A", "A", "A", "A", "A", "A" };
+        m.Lines.Add(new PayLine { Rows = new[] { 1, 1, 1 }, BetMask = 7 });
+        m.Roles.Add(RoleOf("AAA", "A", "A", "A", 1));
+        AddFlag(m, "ハズレ");
+        var d = new ReelDesign();
+        d.AddControlsFromLottery(m);
+        var r0 = Generate(m, d)[0];
+        Check("unavoidable reported", r0.Stats.UnavoidableCells > 0 && r0.Stats.ViolationPaths == r0.Stats.Paths);
     }
 
     private static bool Near(double a, double b) { return Math.Abs(a - b) < 1e-9; }
 
-    // ---- エンジンとは独立した総当たり（停止形は上段の3マスだけを見る簡易版）
+    // ---- エンジンとは独立した総当たり（役、または右下がりスイカの最大入賞率）
     private static Machine om;
     private static string oTarget;
     private static HashSet<string> oWon;
@@ -275,7 +426,7 @@ public static class Program
         return OValue(new[] { -1, -1, -1 }, new int[3]);
     }
 
-    private static bool OFormed(Role role, int[] st, int[] ord)
+    private static bool OFormed(Role role, int[] st)
     {
         foreach (var line in om.Lines)
         {
@@ -288,18 +439,15 @@ public static class Program
         return false;
     }
 
-    private static bool OMet(int[] st, int[] ord)
+    private static bool OMet(int[] st)
     {
-        var role = om.FindRole(oTarget);
-        if (role != null) return OFormed(role, st, ord);
-        for (int k = 0; k < 3; k++) if (om.SymbolAt(k, st[k], k) != "スイカ") return false; // 右下がりスイカ
-        return true;
+        return OFormed(om.FindRole(oTarget), st);
     }
 
-    private static bool OBad(int[] st, int[] ord)
+    private static bool OBad(int[] st)
     {
-        foreach (var role in om.Roles) if (!oWon.Contains(role.Name) && OFormed(role, st, ord)) return true;
-        // 専用停止形 リーチ目A（中段 7 BAR *）は BB 以外で禁止
+        foreach (var role in om.Roles) if (!oWon.Contains(role.Name) && OFormed(role, st)) return true;
+        // リーチ目A（中段 7 BAR *）は BB 当選中以外で禁止
         if (!oWon.Contains("BB") && om.SymbolAt(0, st[0], 1) == "7" && om.SymbolAt(1, st[1], 1) == "BAR") return true;
         return false;
     }
@@ -314,7 +462,7 @@ public static class Program
         int stage = 0;
         foreach (int x in st) if (x >= 0) stage++;
         bool result = true;
-        if (stage == 3) result = !OBad(st, ord);
+        if (stage == 3) result = !OBad(st);
         else
             for (int r = 0; r < 3 && result; r++)
             {
@@ -339,7 +487,7 @@ public static class Program
         int stage = 0;
         foreach (int x in st) if (x >= 0) stage++;
         double result;
-        if (stage == 3) result = OMet(st, ord) && !OBad(st, ord) ? 1 : 0;
+        if (stage == 3) result = OMet(st) && !OBad(st) ? 1 : 0;
         else
         {
             double sum = 0; int n = 0;
@@ -365,17 +513,5 @@ public static class Program
         }
         oValue[key] = result;
         return result;
-    }
-
-    private static void UnavoidableChecks()
-    {
-        // 全コマ同じ図柄なら、その役のハズレは避けられない
-        var m = new Machine();
-        for (int r = 0; r < 3; r++) m.Strips[r] = new[] { "A", "A", "A", "A", "A", "A", "A", "A" };
-        m.Lines.Add(new PayLine { Rows = new[] { 1, 1, 1 }, BetMask = 7 });
-        m.Roles.Add(RoleOf("AAA", "A", "A", "A", 1));
-        AddFlag(m, "ハズレ");
-        var r0 = Generate(m, "")[0];
-        Check("unavoidable reported", r0.Stats.UnavoidableCells > 0 && r0.Stats.ViolationPaths == r0.Stats.Paths);
     }
 }

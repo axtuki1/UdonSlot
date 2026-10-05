@@ -81,8 +81,13 @@ namespace AX.UdonSlot.REV1_0.Editor.ReelRule
     public sealed class Shape
     {
         public string Name = "";
+        /// <summary>true なら許可した制御以外では出さない（リーチ目）。</summary>
         public bool Exclusive;
         public ShapeCell[] Cells = NewCells();
+        /// <summary>このリールを第1停止したときだけ有効。-1 なら押し順を問わない。</summary>
+        public int FirstReel = -1;
+        /// <summary>リールごとに有効な停止位置（下段インデックス）。null ならどこでもよい。</summary>
+        public int[][] Positions = new int[3][];
         public int Line;
 
         public static ShapeCell[] NewCells()
@@ -95,19 +100,18 @@ namespace AX.UdonSlot.REV1_0.Editor.ReelRule
         public ShapeCell Cell(int row, int reel) { return Cells[row * 3 + reel]; }
     }
 
+    /// <summary>停止形の1マス。含む図柄のどれかで、否定した図柄ではないとき合う。どちらも空ならANY。</summary>
     public sealed class ShapeCell
     {
-        /// <summary>許可図柄。空ならANY。</summary>
-        public List<string> Options = new List<string>();
-        public bool Negate;
+        public List<string> Include = new List<string>();
+        public List<string> Exclude = new List<string>();
 
-        public bool IsAny { get { return Options.Count == 0; } }
+        public bool IsAny { get { return Include.Count == 0 && Exclude.Count == 0; } }
 
         public bool Matches(string symbol)
         {
-            if (Options.Count == 0) return true;
-            bool contains = Options.Contains(symbol);
-            return Negate ? !contains : contains;
+            if (Include.Count > 0 && !Include.Contains(symbol)) return false;
+            return !Exclude.Contains(symbol);
         }
     }
 
@@ -127,8 +131,10 @@ namespace AX.UdonSlot.REV1_0.Editor.ReelRule
     public sealed class ControlRule
     {
         public string Name = "";
-        /// <summary>当選役を取り出す抽選フラグ名。空なら Name と同じ。</summary>
+        /// <summary>当選役を取り出す抽選フラグ名。空なら Name と同じ。LotteryFlags を指定したときは使わない。</summary>
         public string LotteryFlag = "";
+        /// <summary>当選役を取り出す抽選フラグ（複数）。null なら LotteryFlag を使う。</summary>
+        public List<string> LotteryFlags;
         public List<string> ExtraRoles = new List<string>();
         public List<Goal> Goals = new List<Goal>();
         public List<string> Denied = new List<string>();
@@ -136,17 +142,21 @@ namespace AX.UdonSlot.REV1_0.Editor.ReelRule
         public bool NoImplicitPull;
         public bool Explicit;
         public int Line;
+        /// <summary>手動指定の滑り。キーは ReelRuleEngine.Key(停止パターン, 停止済み位置)、値は 押下位置→滑り。</summary>
+        public Dictionary<long, Dictionary<int, int>> Overrides = new Dictionary<long, Dictionary<int, int>>();
 
         public string SourceFlag { get { return string.IsNullOrEmpty(LotteryFlag) ? Name : LotteryFlag; } }
     }
 
-    /// <summary>ルールファイル全体。</summary>
+    /// <summary>生成の入力一式。</summary>
     public sealed class RuleSet
     {
         public int MaxSlip = -1;
         public int Bet = 3;
         public List<Shape> Shapes = new List<Shape>();
         public List<ControlRule> Controls = new List<ControlRule>();
+        /// <summary>true なら Controls に書いた制御だけを生成する（抽選表の全フラグを自動で足さない）。</summary>
+        public bool OnlyListedControls;
 
         public Shape FindShape(string name)
         {
