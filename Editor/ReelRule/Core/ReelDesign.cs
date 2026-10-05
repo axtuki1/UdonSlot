@@ -208,7 +208,7 @@ namespace AX.UdonSlot.REV1_0.Editor.ReelRule
                 };
                 rule.ExtraRoles.AddRange(d.extraRoles);
 
-                // 優先順: [ボーナス（ボーナス優先時）] → 狙う出目 → 小役 → [ボーナス（小役優先時）]
+                // 優先順: [ボーナス（ボーナス優先時）] → 狙う出目 → 狙わない基本目を避ける → 小役 → [ボーナス（小役優先時）]
                 var won = new List<string>();
                 foreach (string flagName in d.lotteryFlags)
                 {
@@ -239,6 +239,11 @@ namespace AX.UdonSlot.REV1_0.Editor.ReelRule
                 }
                 if (bonusFirst) rule.Goals.AddRange(bonusPulls);
                 rule.Goals.AddRange(targets);
+                // 狙う出目がある制御では、狙っていない基本目は出さない
+                if (targets.Count > 0)
+                    foreach (var shape in design.shapes)
+                        if (!shape.reach && !string.IsNullOrEmpty(shape.name) && !d.targets.Contains(shape.name))
+                            rule.Goals.Add(new Goal { Kind = GoalKind.Avoid, Target = shape.name });
                 rule.Goals.AddRange(smallPulls);
                 if (!bonusFirst) rule.Goals.AddRange(bonusPulls);
                 foreach (var shape in design.shapes)
