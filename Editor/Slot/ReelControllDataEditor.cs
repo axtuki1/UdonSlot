@@ -313,8 +313,6 @@ namespace AX.UdonSlot.REV1_0.Editor
         {
             if (UdonSharpGUI.DrawDefaultUdonSharpBehaviourHeader(target)) return;
             ReelControlData data = (ReelControlData)target;
-            if (GUILayout.Button("専用ウィンドウで停止制御を設計", GUILayout.Height(28)))
-                ReelControlDesignWindow.OpenFor(data);
             if (!ConditionsValid(data))
             {
                 EditorGUILayout.HelpBox("条件テーブルの配列が不整合です。直前の操作をUndoするか、保存済みデータを復元してください。", MessageType.Error);
