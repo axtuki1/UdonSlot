@@ -208,7 +208,7 @@ namespace AX.UdonSlot.REV1_0.Editor.ReelRule
                 };
                 rule.ExtraRoles.AddRange(d.extraRoles);
 
-                // 役を揃えるのが先（役優先）。ボーナスと小役の順は制御方式に従う。
+                // 優先順: [ボーナス（ボーナス優先時）] → 狙う出目 → 小役 → [ボーナス（小役優先時）]
                 var won = new List<string>();
                 foreach (string flagName in d.lotteryFlags)
                 {
@@ -217,14 +217,15 @@ namespace AX.UdonSlot.REV1_0.Editor.ReelRule
                 }
                 foreach (string role in d.extraRoles) if (!won.Contains(role)) won.Add(role);
                 bool bonusFirst = design.priority == ControlPriority.BonusFirst;
-                foreach (bool pass in new[] { true, false })
-                    foreach (string name in won)
-                    {
-                        var role = machine.FindRole(name);
-                        bool bonus = role != null && role.IsBonus;
-                        if ((bonus == bonusFirst) == pass) rule.Goals.Add(new Goal { Kind = GoalKind.Pull, Target = name });
-                    }
-
+                var bonusPulls = new List<Goal>();
+                var smallPulls = new List<Goal>();
+                foreach (string name in won)
+                {
+                    var role = machine.FindRole(name);
+                    var pull = new Goal { Kind = GoalKind.Pull, Target = name };
+                    if (role != null && role.IsBonus) bonusPulls.Add(pull); else smallPulls.Add(pull);
+                }
+                var targets = new List<Goal>();
                 foreach (string target in d.targets)
                 {
                     var shape = design.FindShape(target);
@@ -234,8 +235,12 @@ namespace AX.UdonSlot.REV1_0.Editor.ReelRule
                         errors.Add(new RuleError(0, "リーチ目「" + target + "」は制御 " + d.name + " で出てよい設定になっていません"));
                         continue;
                     }
-                    rule.Goals.Add(new Goal { Kind = GoalKind.Prefer, Target = target });
+                    targets.Add(new Goal { Kind = GoalKind.Prefer, Target = target });
                 }
+                if (bonusFirst) rule.Goals.AddRange(bonusPulls);
+                rule.Goals.AddRange(targets);
+                rule.Goals.AddRange(smallPulls);
+                if (!bonusFirst) rule.Goals.AddRange(bonusPulls);
                 foreach (var shape in design.shapes)
                     if (shape.reach && shape.allowedControls.Contains(d.name)) rule.Allowed.Add(shape.name);
 

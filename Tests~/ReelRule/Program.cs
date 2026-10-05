@@ -201,9 +201,9 @@ public static partial class Program
         Check("replay rate is optimal", Near(Rate(Find(results, "リプレイ"), "リプレイ"), Optimum(machine, "リプレイ", new[] { "リプレイ" })));
         Check("cherry rate is optimal", Near(Rate(Find(results, "チェリー"), "チェリー"), Optimum(machine, "チェリー", new[] { "チェリー" })));
 
-        // 役優先: 狙う出目があっても役の入賞率は最大のまま
+        // 狙う出目は小役の引込より先
         var suika = Find(results, "スイカ");
-        Check("prize first keeps suika optimal", Near(Rate(suika, "スイカ"), Optimum(machine, "スイカ", new[] { "スイカ" })));
+        Check("target comes before small pull", suika.GoalLines[0] == "狙う 右下がりスイカ" && suika.GoalLines[1].StartsWith("引込 スイカ"));
         var plain = SampleDesign(machine);
         plain.FindControl("スイカ").targets.Clear();
         var untargeted = Find(Generate(machine, plain), "スイカ");
