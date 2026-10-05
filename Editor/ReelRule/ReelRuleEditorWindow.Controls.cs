@@ -188,7 +188,7 @@ namespace AX.UdonSlot.REV1_0.Editor.ReelRule
             var result = ResultOf(control.name);
             if (result == null || engine == null) return;
             if (view == 0) DrawSlipTables(control, result);
-            else DrawMap(result);
+            else DrawMap(control, result);
         }
 
         private void RenameControl(DesignControl control, string renamed)
@@ -476,7 +476,7 @@ namespace AX.UdonSlot.REV1_0.Editor.ReelRule
             return map;
         }
 
-        private void DrawMap(ControlResult result)
+        private void DrawMap(DesignControl control, ControlResult result)
         {
             int[] reels = ReelRuleEngine.Orders[order];
             var firstChoices = FirstStopChoices(result);
@@ -516,8 +516,8 @@ namespace AX.UdonSlot.REV1_0.Editor.ReelRule
                 using (new EditorGUILayout.VerticalScope())
                 {
                     DrawLegend(map);
-                    DrawMatrix(map, r2, r3, n2, n3);
-                    DrawMapSelection(result, map, r2, r3);
+                    DrawMatrix(result, map, r2, r3, n2, n3);
+                    DrawMapSelection(control, result, map, r2, r3);
                 }
             }
             EditorGUILayout.EndScrollView();
@@ -542,7 +542,7 @@ namespace AX.UdonSlot.REV1_0.Editor.ReelRule
             }
         }
 
-        private void DrawMatrix(MapCache map, int r2, int r3, int n2, int n3)
+        private void DrawMatrix(ControlResult result, MapCache map, int r2, int r3, int n2, int n3)
         {
             const float cw = 40, ch = 26, numW = 24, imgW = 52;
             var area = GUILayoutUtility.GetRect(numW + imgW + n3 * cw + 2, ch * 2 + n2 * ch + 2, GUILayout.ExpandWidth(false));
@@ -567,11 +567,60 @@ namespace AX.UdonSlot.REV1_0.Editor.ReelRule
                     if (Clicked(cell, 0)) { mapRow = row; mapColumn = column; Repaint(); }
                 }
             }
+            if (Event.current.type == EventType.Repaint && SelectionValid(map))
+            {
+                int[] orders;
+                var stops = engine.Resolve(result, order, firstStop, mapRow, mapColumn, out orders);
+                if (stops != null)
+                {
+                    float cx = x0 + mapColumn * cw + cw / 2, cy = y0 + mapRow * ch + ch / 2;
+                    // 第三停止: 左へ、第二停止: 上へ（滑りで位置が小さくなる方向）
+                    SlipArrow(cx, cy, cw, n3, mapColumn, Machine.Wrap(mapColumn - stops[r3], n3), x0, true);
+                    SlipArrow(cx, cy, ch, n2, mapRow, Machine.Wrap(mapRow - stops[r2], n2), y0, false);
+                }
+            }
         }
 
-        private void DrawMapSelection(ControlResult result, MapCache map, int r2, int r3)
+        private static readonly Color ArrowColor = new Color(0.92f, 0.22f, 0.22f);
+
+        private bool SelectionValid(MapCache map)
         {
-            if (mapRow < 0 || mapColumn < 0 || mapRow >= map.Cells.GetLength(0) || mapColumn >= map.Cells.GetLength(1)) return;
+            return mapRow >= 0 && mapColumn >= 0 && mapRow < map.Cells.GetLength(0) && mapColumn < map.Cells.GetLength(1);
+        }
+
+        /// <summary>選択セルから滑り数ぶんの矢印。端を越えるときは反対側から続ける。</summary>
+        private static void SlipArrow(float cx, float cy, float size, int count, int index, int slip, float origin, bool horizontal)
+        {
+            if (slip <= 0) return;
+            float from = horizontal ? cx : cy;
+            int target = index - slip;
+            if (target >= 0)
+            {
+                ArrowLine(from, origin + target * size + size / 2, horizontal ? cy : cx, horizontal, true);
+                return;
+            }
+            ArrowLine(from, origin, horizontal ? cy : cx, horizontal, false);
+            ArrowLine(origin + count * size, origin + (count + target) * size + size / 2, horizontal ? cy : cx, horizontal, true);
+        }
+
+        private static void ArrowLine(float from, float to, float across, bool horizontal, bool head)
+        {
+            const float thick = 3, headLength = 9, headHalf = 7;
+            float end = head ? to + headLength : to;
+            float a = Mathf.Min(from, end), b = Mathf.Max(from, end);
+            EditorGUI.DrawRect(horizontal ? new Rect(a, across - thick / 2, b - a, thick) : new Rect(across - thick / 2, a, thick, b - a), ArrowColor);
+            if (!head) return;
+            for (int i = 0; i < headLength; i++)
+            {
+                float half = headHalf * i / headLength;
+                float at = to + i;
+                EditorGUI.DrawRect(horizontal ? new Rect(at, across - half, 1, half * 2 + 1) : new Rect(across - half, at, half * 2 + 1, 1), ArrowColor);
+            }
+        }
+
+        private void DrawMapSelection(DesignControl control, ControlResult result, MapCache map, int r2, int r3)
+        {
+            if (!SelectionValid(map)) return;
             int[] orders;
             var stops = engine.Resolve(result, order, firstStop, mapRow, mapColumn, out orders);
             if (stops == null) return;
@@ -587,6 +636,12 @@ namespace AX.UdonSlot.REV1_0.Editor.ReelRule
                     int k = map.Cells[mapRow, mapColumn];
                     Chip(map.Labels[k], map.Colors[k], Color.white);
                     GUILayout.Space(4);
+                    var prior = new[] { -1, -1, -1 };
+                    prior[ReelRuleEngine.Orders[order][0]] = firstStop;
+                    DrawSlipEditor(control, result, 1, mapRow, prior);
+                    prior[r2] = stops[r2];
+                    DrawSlipEditor(control, result, 2, mapColumn, prior);
+                    GUILayout.Space(4);
                     if (Link("滑り表"))
                     {
                         secondStop = stops[r2];
@@ -595,6 +650,50 @@ namespace AX.UdonSlot.REV1_0.Editor.ReelRule
                 }
                 GUILayout.FlexibleSpace();
             }
+        }
+
+        private void DrawSlipEditor(DesignControl control, ControlResult result, int stage, int press, int[] prior)
+        {
+            var table = engine.FindTable(result, ReelRuleEngine.PatternFor(order, stage), prior);
+            if (table == null) return;
+            int reel = ReelRuleEngine.Orders[order][stage];
+            int slip = table.Slips[press];
+            using (new EditorGUILayout.HorizontalScope())
+            {
+                GUILayout.Label(ReelRuleEngine.ReelNames[reel] + " 滑り", EditorStyles.miniLabel, GUILayout.Width(44));
+                if (!manualEditing)
+                {
+                    GUILayout.Label(slip.ToString(), EditorStyles.boldLabel, GUILayout.Width(20));
+                    return;
+                }
+                var tablePrior = (int[])table.Prior.Clone();
+                bool manual = control.FindOverride(table.Pattern, tablePrior, press) != null;
+                for (int s = 0; s <= engine.MaxSlip; s++)
+                {
+                    var color = GUI.backgroundColor;
+                    if (s == slip) GUI.backgroundColor = manual ? ManualColor : AccentColor;
+                    if (GUILayout.Button(s.ToString(), EditorStyles.miniButton, GUILayout.Width(26)) && !(manual && s == slip))
+                        SetOverride(control, table.Pattern, tablePrior, press, s);
+                    GUI.backgroundColor = color;
+                }
+                using (new EditorGUI.DisabledScope(!manual))
+                    if (GUILayout.Button("自動", EditorStyles.miniButton, GUILayout.Width(36)))
+                        Edit("滑り数の手動指定を解除", delegate { control.overrides.Remove(control.FindOverride(table.Pattern, tablePrior, press)); });
+            }
+        }
+
+        private void SetOverride(DesignControl control, int pattern, int[] prior, int press, int slip)
+        {
+            Edit("滑り数の手動指定", delegate
+            {
+                var o = control.FindOverride(pattern, prior, press);
+                if (o == null)
+                {
+                    o = new DesignOverride { pattern = pattern, left = prior[0], center = prior[1], right = prior[2], press = press };
+                    control.overrides.Add(o);
+                }
+                o.slip = slip;
+            });
         }
 
         // ------------------------------------------------------------ 右: 狙う出目・リーチ目・手動指定・結果
