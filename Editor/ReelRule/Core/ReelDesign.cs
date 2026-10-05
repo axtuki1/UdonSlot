@@ -171,6 +171,25 @@ namespace AX.UdonSlot.REV1_0.Editor.ReelRule
     /// <summary>設計データを生成エンジンの入力へ変換する。</summary>
     public static class ReelDesignConverter
     {
+        private static List<Goal> StableSortByPayout(List<Goal> pulls, Machine machine)
+        {
+            var sorted = new List<Goal>();
+            foreach (var pull in pulls)
+            {
+                var role = machine.FindRole(pull.Target);
+                int payout = role != null ? role.Payout : 0;
+                int at = sorted.Count;
+                while (at > 0)
+                {
+                    var prev = machine.FindRole(sorted[at - 1].Target);
+                    if ((prev != null ? prev.Payout : 0) >= payout) break;
+                    at--;
+                }
+                sorted.Insert(at, pull);
+            }
+            return sorted;
+        }
+
         public static RuleSet ToRuleSet(ReelDesign design, Machine machine)
         {
             var errors = new List<RuleError>();
@@ -240,6 +259,8 @@ namespace AX.UdonSlot.REV1_0.Editor.ReelRule
                     var pull = new Goal { Kind = GoalKind.Pull, Target = name };
                     if (role != null && role.IsBonus) bonusPulls.Add(pull); else smallPulls.Add(pull);
                 }
+                // 小役は配当の多い順（押し順ベルの15枚役を1枚役より先に引き込む）
+                smallPulls = StableSortByPayout(smallPulls, machine);
                 var targets = new List<Goal>();
                 foreach (string target in d.targets)
                 {

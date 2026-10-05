@@ -227,6 +227,26 @@ public static partial class Program
         for (int o = 2; o < 6; o++)
             Check("other orders keep pulling bell " + o, bellLeft.Stats.RoleFormedByOrder[bellIndex, o] == bellPlain.Stats.RoleFormedByOrder[bellIndex, o]);
 
+        // 押し順ベル: 停止順つきの15枚役は正解押し順で、それ以外は1枚役（抽選表の並び順によらない）
+        foreach (bool highFirst in new[] { true, false })
+        {
+            var pm = SampleMachine();
+            var b15 = RoleOf("ベル15", "リプ", "ベル", "リプ", 15);
+            b15.StopOrder = new[] { 1, 0, 0 };
+            pm.Roles.Add(b15);
+            pm.Roles.Add(RoleOf("ベル1", "ベル", "リプ", "ベル", 1));
+            if (highFirst) AddFlag(pm, "押し順ベル", "ベル15", "ベル1"); else AddFlag(pm, "押し順ベル", "ベル1", "ベル15");
+            var pr = Find(Generate(pm, SampleDesign(pm)), "押し順ベル");
+            int i15 = Array.IndexOf(pr.Stats.RoleNames, "ベル15"), i1 = Array.IndexOf(pr.Stats.RoleNames, "ベル1");
+            for (int o = 0; o < 6; o++)
+            {
+                bool correct = o < 2;
+                Check("push-order bell " + highFirst + " " + o, correct
+                    ? pr.Stats.RoleFormedByOrder[i15, o] == pr.Stats.PathsByOrder[o]
+                    : pr.Stats.RoleFormedByOrder[i15, o] == 0 && pr.Stats.RoleFormedByOrder[i1, o] > 0);
+            }
+        }
+
         // 範囲外の手動指定・出目設定はエラーになる
         var badOverride = SampleDesign(machine);
         badOverride.FindControl("ベル").overrides.Add(new DesignOverride { pattern = 0, press = 5, slip = 9 });
