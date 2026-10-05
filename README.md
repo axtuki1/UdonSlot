@@ -25,7 +25,6 @@ Current version: `1.0.0`
 
 ## Notes
 
-- リール制御エディタの再設計・合意事項・実装進捗は `Docs/ReelControlEditorDesign.md` にまとめています。
 - 新しいスロットを作り始める手順は `Docs/GetStarted.md` にまとめています。
 - 各クラスの役割は `Docs/ClassRoles.md` にまとめています。
 - 枚数優先・個数優先の自動リール制御は `Docs/ReelPriorityControl.md` にまとめています。
