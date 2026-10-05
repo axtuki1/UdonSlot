@@ -110,7 +110,7 @@ namespace AX.UdonSlot.REV1_0.Editor.ReelRule
                 chanceMemo.Clear();
                 tables.Clear();
                 Expand(new[] { -1, -1, -1 }, new[] { 0, 0, 0 }, 0, 0);
-                var result = new ControlResult { Name = p.Rule.Name, LotteryFlag = p.Rule.SourceFlag };
+                var result = new ControlResult { Name = p.Rule.Name, LotteryFlag = p.Rule.LotteryFlags != null && p.Rule.LotteryFlags.Count > 0 ? string.Join(",", p.Rule.LotteryFlags.ToArray()) : p.Rule.SourceFlag };
                 for (int i = 0; i < machine.Roles.Count; i++) if (p.Won[i]) result.WonRoles.Add(machine.Roles[i].Name);
                 result.GoalLines.AddRange(p.Labels);
                 result.Tables.AddRange(tables.Values);
@@ -171,6 +171,12 @@ namespace AX.UdonSlot.REV1_0.Editor.ReelRule
                 else if ((line.BetMask & mask) != 0) activeLines.Add(line);
             }
             if (activeLines.Count == 0) errors.Add(new RuleError(0, rules.Bet + "BETで有効なラインがありません"));
+            foreach (var role in machine.Roles)
+            {
+                bool ok = role.StopOrder == null || role.StopOrder.Length == 3;
+                for (int r = 0; ok && role.StopOrder != null && r < 3; r++) ok = role.StopOrder[r] >= 0 && role.StopOrder[r] <= 3;
+                if (!ok) errors.Add(new RuleError(0, "役「" + role.Name + "」の停止順指定が不正です"));
+            }
         }
 
         private void Precompute()
@@ -480,7 +486,10 @@ namespace AX.UdonSlot.REV1_0.Editor.ReelRule
             {
                 case GoalKind.Pull: return PullLevel(target, stops, orders, reel);
                 case GoalKind.Prefer: return Score(Chance(machine.Roles.Count + target, stops, orders));
-                case GoalKind.AvoidRole: return -Score(Chance(target, stops, orders));
+                case GoalKind.AvoidRole:
+                    // この押し順で狙える基本目がなければ、通常どおり引き込む
+                    if (!BasicTargetPossible(orders)) return PullLevel(target, stops, orders, reel);
+                    return -Score(Chance(target, stops, orders));
                 default: return -Score(Chance(machine.Roles.Count + target, stops, orders));
             }
         }
@@ -557,6 +566,17 @@ namespace AX.UdonSlot.REV1_0.Editor.ReelRule
         {
             int roles = machine.Roles.Count;
             return target < roles ? RoleFormed(target, stops, orders) : ShapePossible(target - roles, stops, orders);
+        }
+
+        private bool BasicTargetPossible(int[] orders)
+        {
+            var none = new[] { -1, -1, -1 };
+            for (int g = 0; g < plan.Kinds.Count; g++)
+            {
+                if (plan.Kinds[g] != GoalKind.Prefer || rules.Shapes[plan.Targets[g]].Exclusive) continue;
+                if (ShapePossible(plan.Targets[g], none, orders)) return true;
+            }
+            return false;
         }
 
         private bool ShapePossible(int shape, int[] stops, int[] orders)

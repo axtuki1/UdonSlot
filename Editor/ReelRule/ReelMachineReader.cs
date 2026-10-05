@@ -99,7 +99,7 @@ namespace AX.UdonSlot.REV1_0.Editor.ReelRule
                 sb.Append(role.Name).Append('=');
                 foreach (var symbols in role.Symbols) sb.Append(string.Join("/", symbols)).Append(',');
                 if (role.StopOrder != null) sb.Append(string.Join("", role.StopOrder));
-                sb.Append('|');
+                sb.Append(role.IsBonus ? 'B' : '-').Append(role.IsReplay ? 'R' : '-').Append(role.Payout).Append('|');
             }
             foreach (var flag in m.Flags) sb.Append(flag.Name).Append('=').Append(string.Join(",", flag.Roles)).Append('|');
             sb.Append(m.MaxSlip).Append(m.BonusFirst);

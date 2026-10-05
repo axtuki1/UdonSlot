@@ -111,6 +111,12 @@ public static partial class Program
         m.Flags.Add(flag);
     }
 
+    private static bool Throws(Machine machine, ReelDesign design)
+    {
+        try { Generate(machine, design); return false; }
+        catch (RuleException) { return true; }
+    }
+
     private static DesignShape ShapeOf(string name, bool reach, params string[] cells)
     {
         var shape = new DesignShape { name = name, reach = reach };
@@ -208,6 +214,26 @@ public static partial class Program
         plain.FindControl("スイカ").targets.Clear();
         var untargeted = Find(Generate(machine, plain), "スイカ");
         Check("target raises shape rate", ShapeRate(suika, "右下がりスイカ") > ShapeRate(untargeted, "右下がりスイカ"));
+
+        // 押し順限定の基本目を狙う制御でも、その押し順以外では小役を通常どおり引き込む
+        var leftOnly = SampleDesign(machine);
+        var middleBell = ShapeOf("中段ベル", false, "*", "*", "*", "ベル", "ベル", "ベル", "*", "*", "*");
+        middleBell.firstReel = 0;
+        leftOnly.shapes.Add(middleBell);
+        leftOnly.FindControl("ベル").targets.Add("中段ベル");
+        var bellLeft = Find(Generate(machine, leftOnly), "ベル");
+        var bellPlain = Find(results, "ベル");
+        int bellIndex = Array.IndexOf(bellLeft.Stats.RoleNames, "ベル");
+        for (int o = 2; o < 6; o++)
+            Check("other orders keep pulling bell " + o, bellLeft.Stats.RoleFormedByOrder[bellIndex, o] == bellPlain.Stats.RoleFormedByOrder[bellIndex, o]);
+
+        // 範囲外の手動指定・出目設定はエラーになる
+        var badOverride = SampleDesign(machine);
+        badOverride.FindControl("ベル").overrides.Add(new DesignOverride { pattern = 0, press = 5, slip = 9 });
+        Check("out-of-range override is an error", Throws(machine, badOverride));
+        var badShape = SampleDesign(machine);
+        badShape.shapes[0].firstReel = 5;
+        Check("bad first reel is an error", Throws(machine, badShape));
 
         // リーチ目は出てよい制御以外で出ない
         foreach (var r in results)

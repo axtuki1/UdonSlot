@@ -92,12 +92,15 @@ namespace AX.UdonSlot.REV1_0.Editor.ReelRule
             EditorGUILayout.EndScrollView();
             using (new EditorGUILayout.HorizontalScope())
             {
-                if (GUILayout.Button("＋ 追加")) AddControl();
+                if (GUILayout.Button("＋ 追加")) { AddControl(); GUIUtility.ExitGUI(); }
                 using (new EditorGUI.DisabledScope(SelectedControl == null))
                     if (GUILayout.Button("複製")) DuplicateControl(controlIndex);
             }
             if (GUILayout.Button("抽選表から一括作成"))
+            {
                 Edit("抽選表から一括作成", delegate { Design.AddControlsFromLottery(machine); });
+                GUIUtility.ExitGUI();
+            }
             GUILayout.Space(4);
         }
 
@@ -131,6 +134,8 @@ namespace AX.UdonSlot.REV1_0.Editor.ReelRule
                 var copy = Design.controls[index].Copy();
                 copy.name = ReelDesign.NumberedName(Design.controls[index].name, ControlNameTaken);
                 Design.controls.Insert(index + 1, copy);
+                foreach (var shape in Design.shapes)
+                    if (shape.allowedControls.Contains(Design.controls[index].name)) shape.allowedControls.Add(copy.name);
                 controlIndex = index + 1;
             });
         }
@@ -189,7 +194,7 @@ namespace AX.UdonSlot.REV1_0.Editor.ReelRule
         private void RenameControl(DesignControl control, string renamed)
         {
             renamed = renamed.Trim();
-            if (renamed.Length == 0 || renamed == control.name) return;
+            if (renamed.Length == 0 || renamed == control.name || ControlNameTaken(renamed)) return;
             string old = control.name;
             Edit("内部名の変更", delegate
             {
@@ -564,7 +569,7 @@ namespace AX.UdonSlot.REV1_0.Editor.ReelRule
 
         private void DrawMapSelection(ControlResult result, MapCache map, int r2, int r3)
         {
-            if (mapRow < 0 || mapColumn < 0) return;
+            if (mapRow < 0 || mapColumn < 0 || mapRow >= map.Cells.GetLength(0) || mapColumn >= map.Cells.GetLength(1)) return;
             int[] orders;
             var stops = engine.Resolve(result, order, firstStop, mapRow, mapColumn, out orders);
             if (stops == null) return;

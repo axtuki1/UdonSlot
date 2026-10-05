@@ -77,7 +77,7 @@ namespace AX.UdonSlot.REV1_0.Editor.ReelRule
             EditorGUILayout.EndScrollView();
             using (new EditorGUILayout.HorizontalScope())
             {
-                if (GUILayout.Button("＋ 出目を追加")) AddShape();
+                if (GUILayout.Button("＋ 出目を追加")) { AddShape(); GUIUtility.ExitGUI(); }
                 using (new EditorGUI.DisabledScope(SelectedShape == null))
                     if (GUILayout.Button("複製")) DuplicateShape(shapeIndex);
             }
@@ -132,7 +132,7 @@ namespace AX.UdonSlot.REV1_0.Editor.ReelRule
         private void RenameShape(DesignShape shape, string renamed)
         {
             renamed = renamed.Trim();
-            if (renamed.Length == 0 || renamed == shape.name) return;
+            if (renamed.Length == 0 || renamed == shape.name || Design.FindShape(renamed) != null) return;
             string old = shape.name;
             Edit("出目名の変更", delegate
             {
@@ -393,7 +393,7 @@ namespace AX.UdonSlot.REV1_0.Editor.ReelRule
         {
             PanelHeader("種類");
             int kind = GUILayout.SelectionGrid(shape.reach ? 1 : 0, KindNames, 1, EditorStyles.radioButton);
-            if (kind != (shape.reach ? 1 : 0)) Edit("種類の変更", delegate { shape.reach = kind == 1; });
+            if (kind != (shape.reach ? 1 : 0)) { Edit("種類の変更", delegate { shape.reach = kind == 1; }); GUIUtility.ExitGUI(); }
             GUILayout.Space(8);
 
             if (shape.reach)

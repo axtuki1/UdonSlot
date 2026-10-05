@@ -264,6 +264,7 @@ namespace AX.UdonSlot.REV1_0.Editor.ReelRule
                     SavePrefs();
                     requested = null;
                     Changed();
+                    GUIUtility.ExitGUI();
                 }
                 if (GUILayout.Button("新規", EditorStyles.toolbarButton, GUILayout.Width(40))) { CreateAsset(); GUIUtility.ExitGUI(); }
 
@@ -356,6 +357,8 @@ namespace AX.UdonSlot.REV1_0.Editor.ReelRule
 
         private void Bake()
         {
+            Poll();
+            if (!Ready) return;
             var control = ReelMachineReader.ReelControlOf(machineObject);
             if (control == null || control.flagNames == null || control.reelControlDataList == null)
             {
@@ -664,11 +667,13 @@ namespace AX.UdonSlot.REV1_0.Editor.ReelRule
             controlIndex = Mathf.Clamp(controlIndex, 0, Mathf.Max(0, Design.controls.Count - 1));
             shapeIndex = Mathf.Clamp(shapeIndex, 0, Mathf.Max(0, Design.shapes.Count - 1));
             shapeCell = Mathf.Clamp(shapeCell, 0, 8);
+            bool repaired = false;
             foreach (var shape in Design.shapes)
             {
-                if (shape.cells == null) shape.cells = DesignShape.NewCells();
-                while (shape.cells.Count < 9) shape.cells.Add(new DesignCell());
+                if (shape.cells == null) { shape.cells = DesignShape.NewCells(); repaired = true; }
+                while (shape.cells.Count < 9) { shape.cells.Add(new DesignCell()); repaired = true; }
             }
+            if (repaired) EditorUtility.SetDirty(asset);
         }
 
         private static string OrderTag(int firstReel)

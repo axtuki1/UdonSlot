@@ -175,12 +175,17 @@ namespace AX.UdonSlot.REV1_0.Editor.ReelRule
         {
             var errors = new List<RuleError>();
             var rules = new RuleSet { MaxSlip = design.maxSlip, OnlyListedControls = true };
+            int maxSlip = design.maxSlip >= 0 ? design.maxSlip : machine.MaxSlip;
+            if (maxSlip > 4) errors.Add(new RuleError(0, "最大滑りは4までです（" + maxSlip + "）"));
+            int maxLength = 0;
+            if (machine.Strips != null) foreach (var strip in machine.Strips) if (strip != null) maxLength = Math.Max(maxLength, strip.Length);
 
             var shapeNames = new HashSet<string>();
             foreach (var d in design.shapes)
             {
                 if (string.IsNullOrEmpty(d.name)) { errors.Add(new RuleError(0, "名前のない出目があります")); continue; }
                 if (!shapeNames.Add(d.name)) { errors.Add(new RuleError(0, "出目の名前が重複しています: " + d.name)); continue; }
+                if (d.firstReel < -1 || d.firstReel > 2) errors.Add(new RuleError(0, "出目「" + d.name + "」の押し順が不正です"));
                 var shape = new Shape { Name = d.name, Exclusive = d.reach, FirstReel = d.firstReel };
                 for (int c = 0; c < 9; c++)
                 {
@@ -190,7 +195,17 @@ namespace AX.UdonSlot.REV1_0.Editor.ReelRule
                 }
                 if (d.specificPositions)
                     for (int r = 0; r < 3; r++)
-                        if (d.Positions(r).Count > 0) shape.Positions[r] = d.Positions(r).ToArray();
+                        if (d.Positions(r).Count > 0)
+                        {
+                            int length = machine.Strips != null && r < machine.Strips.Length && machine.Strips[r] != null ? machine.Strips[r].Length : 0;
+                            foreach (int position in d.Positions(r))
+                                if (position < 0 || position >= length)
+                                {
+                                    errors.Add(new RuleError(0, "出目「" + d.name + "」の停止位置 " + (position + 1) + " がリールにありません"));
+                                    break;
+                                }
+                            shape.Positions[r] = d.Positions(r).ToArray();
+                        }
                 rules.Shapes.Add(shape);
             }
 
@@ -254,6 +269,12 @@ namespace AX.UdonSlot.REV1_0.Editor.ReelRule
 
                 foreach (var o in d.overrides)
                 {
+                    if (o.slip < 0 || o.slip > Math.Min(maxSlip, 4) || o.press < 0 || o.press >= maxLength
+                        || o.left < -1 || o.left >= maxLength || o.center < -1 || o.center >= maxLength || o.right < -1 || o.right >= maxLength)
+                    {
+                        errors.Add(new RuleError(0, "制御 " + d.name + " の手動指定（" + (o.press + 1) + "押し → " + o.slip + "コマ）が範囲外です"));
+                        continue;
+                    }
                     long key = ReelRuleEngine.Key(o.pattern, new[] { o.left, o.center, o.right });
                     Dictionary<int, int> map;
                     if (!rule.Overrides.TryGetValue(key, out map)) rule.Overrides[key] = map = new Dictionary<int, int>();
