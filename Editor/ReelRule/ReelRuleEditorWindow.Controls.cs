@@ -322,12 +322,12 @@ namespace AX.UdonSlot.REV1_0.Editor.ReelRule
 
         private void DrawSlipTable(DesignControl control, SlipTable table)
         {
-            const float rowHeight = 26;
+            const float rowHeight = 29;
             var head = GUILayoutUtility.GetRect(10, 16, GUILayout.ExpandWidth(true));
             GUI.Label(new Rect(head.x, head.y, 26, 16), "コマ", EditorStyles.miniLabel);
             GUI.Label(new Rect(head.x + 28, head.y, 50, 16), "押し位置", EditorStyles.miniLabel);
-            GUI.Label(new Rect(head.x + 82, head.y, 30, 16), "滑り", EditorStyles.miniLabel);
-            GUI.Label(new Rect(head.x + 112, head.y, 60, 16), "決め手", EditorStyles.miniLabel);
+            GUI.Label(new Rect(head.x + 87, head.y, 30, 16), "滑り", EditorStyles.miniLabel);
+            GUI.Label(new Rect(head.x + 117, head.y, 60, 16), "決め手", EditorStyles.miniLabel);
             for (int press = 0; press < table.Slips.Length; press++)
             {
                 var row = GUILayoutUtility.GetRect(10, rowHeight, GUILayout.ExpandWidth(true));
@@ -338,15 +338,15 @@ namespace AX.UdonSlot.REV1_0.Editor.ReelRule
                 }
                 else if (press % 2 == 1) EditorGUI.DrawRect(row, new Color(0.18f, 0.18f, 0.18f));
                 GUI.Label(new Rect(row.x + 2, row.y, 24, row.height), (press + 1).ToString(), EditorStyles.miniLabel);
-                DrawStripSymbol(new Rect(row.x + 28, row.y + 2, 46, row.height - 4), table.Reel, press);
-                GUI.Label(new Rect(row.x + 82, row.y, 24, row.height), table.Slips[press].ToString(), EditorStyles.boldLabel);
+                DrawStripSymbol(new Rect(row.x + 28, row.y + 2, 51, row.height - 4), table.Reel, press);
+                GUI.Label(new Rect(row.x + 87, row.y, 24, row.height), table.Slips[press].ToString(), EditorStyles.boldLabel);
                 string reason = table.Unavoidable[press] && !table.Manual[press] ? "回避不能" : table.Reasons[press];
                 Color back, fore;
                 ReasonColors(reason, out back, out fore);
                 var size = ChipSize(reason);
-                DrawChip(new Rect(row.x + 112, row.y + (row.height - size.y) / 2, size.x, size.y), reason, back, fore);
+                DrawChip(new Rect(row.x + 117, row.y + (row.height - size.y) / 2, size.x, size.y), reason, back, fore);
                 if (table.Manual[press] && table.Unavoidable[press])
-                    GUI.Label(new Rect(row.x + 116 + size.x, row.y, 20, row.height), "⚠", EditorStyles.boldLabel);
+                    GUI.Label(new Rect(row.x + 121 + size.x, row.y, 20, row.height), "⚠", EditorStyles.boldLabel);
                 if (manualEditing)
                 {
                     EditorGUIUtility.AddCursorRect(row, MouseCursor.Link);
@@ -451,7 +451,7 @@ namespace AX.UdonSlot.REV1_0.Editor.ReelRule
                     map.Counts[k]++;
                     map.Cells[p2, p3] = k;
                 }
-            // 多い順に色を割り当てる。非成立は赤、取りこぼし・ハズレ目は灰色。
+            // 多い順に色を割り当てる。非成立は赤、取りこぼしは灰色、ハズレ目は青灰色。
             var rank = new List<int>();
             for (int k = 0; k < map.Labels.Count; k++) rank.Add(k);
             rank.Sort(delegate (int a, int b) { return map.Counts[b].CompareTo(map.Counts[a]); });
@@ -462,7 +462,7 @@ namespace AX.UdonSlot.REV1_0.Editor.ReelRule
                 string label = map.Labels[k];
                 if (label.Contains("非成立")) colors[k] = DangerColor;
                 else if (label == "取りこぼし") colors[k] = new Color(0.36f, 0.36f, 0.36f);
-                else if (label == "ハズレ目" || label == "-") colors[k] = new Color(0.22f, 0.22f, 0.22f);
+                else if (label == "ハズレ目" || label == "-") colors[k] = HazureColor;
                 else colors[k] = MapPalette[next++ % MapPalette.Length];
             }
             map.Colors.AddRange(colors);
@@ -487,12 +487,12 @@ namespace AX.UdonSlot.REV1_0.Editor.ReelRule
             using (new EditorGUILayout.HorizontalScope())
             {
                 // 第一停止の止まり位置
-                using (new EditorGUILayout.VerticalScope(GUILayout.Width(64)))
+                using (new EditorGUILayout.VerticalScope(GUILayout.Width(70)))
                 {
                     GUILayout.Label("第一停止 " + ReelRuleEngine.ReelNames[r1], EditorStyles.miniLabel);
                     for (int i = 0; i < n1; i++)
                     {
-                        var rect = GUILayoutUtility.GetRect(56, 22, GUILayout.Width(56), GUILayout.Height(22));
+                        var rect = GUILayoutUtility.GetRect(62, 24, GUILayout.Width(62), GUILayout.Height(24));
                         bool reachable = firstChoices.Contains(i);
                         var color = GUI.color;
                         if (!reachable) GUI.color = new Color(1, 1, 1, 0.35f);
@@ -537,7 +537,7 @@ namespace AX.UdonSlot.REV1_0.Editor.ReelRule
 
         private void DrawMatrix(MapCache map, int r2, int r3, int n2, int n3)
         {
-            const float cw = 24, ch = 20, numW = 24, imgW = 40;
+            const float cw = 40, ch = 26, numW = 24, imgW = 52;
             var area = GUILayoutUtility.GetRect(numW + imgW + n3 * cw + 2, ch * 2 + n2 * ch + 2, GUILayout.ExpandWidth(false));
             float x0 = area.x + numW + imgW, y0 = area.y + ch * 2;
             GUI.Label(new Rect(area.x, area.y, numW + imgW, ch), ReelRuleEngine.ReelNames[r2] + "＼" + ReelRuleEngine.ReelNames[r3], CenteredStyle);
@@ -571,7 +571,7 @@ namespace AX.UdonSlot.REV1_0.Editor.ReelRule
             GUILayout.Space(8);
             using (new EditorGUILayout.HorizontalScope())
             {
-                var preview = GUILayoutUtility.GetRect(126, 72, GUILayout.Width(126), GUILayout.Height(72));
+                var preview = GUILayoutUtility.GetRect(139, 79, GUILayout.Width(139), GUILayout.Height(79));
                 DrawWindow(preview, stops);
                 GUILayout.Space(10);
                 using (new EditorGUILayout.VerticalScope())

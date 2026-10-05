@@ -416,6 +416,7 @@ namespace AX.UdonSlot.REV1_0.Editor.ReelRule
         private static readonly Color DangerColor = new Color(0.90f, 0.28f, 0.30f);
         private static readonly Color ManualColor = new Color(0.79f, 0.54f, 0.17f);
         private static readonly Color AnyColor = new Color(0.16f, 0.16f, 0.16f);
+        private static readonly Color HazureColor = new Color(0.36f, 0.42f, 0.52f);
 
         private static GUIStyle chipStyle;
         private static GUIStyle headStyle;
@@ -551,6 +552,24 @@ namespace AX.UdonSlot.REV1_0.Editor.ReelRule
 
         private readonly Dictionary<string, Texture2D> pictures = new Dictionary<string, Texture2D>();
         private bool picturesLoaded;
+        private readonly Dictionary<Texture, float> sourceAspects = new Dictionary<Texture, float>();
+
+        /// <summary>インポート設定で縮められる前の、元画像ファイルの縦横比。</summary>
+        private float SourceAspect(Texture texture)
+        {
+            float aspect;
+            if (sourceAspects.TryGetValue(texture, out aspect)) return aspect;
+            aspect = (float)texture.width / texture.height;
+            var importer = AssetImporter.GetAtPath(AssetDatabase.GetAssetPath(texture)) as TextureImporter;
+            if (importer != null)
+            {
+                int width, height;
+                importer.GetSourceTextureWidthAndHeight(out width, out height);
+                if (width > 0 && height > 0) aspect = (float)width / height;
+            }
+            sourceAspects[texture] = aspect;
+            return aspect;
+        }
 
         private static Rect Fit(Rect rect, float aspect)
         {
@@ -572,7 +591,7 @@ namespace AX.UdonSlot.REV1_0.Editor.ReelRule
             if (texture != null)
             {
                 int n = strip.Length;
-                float aspect = (texture.width / 3f) / ((float)texture.height / n);
+                float aspect = SourceAspect(texture) * n / 3f;
                 var uv = new Rect(reel / 3f, 1f - (index + 1f) / n, 1f / 3f, 1f / n);
                 EditorGUI.DrawRect(rect, Color.black);
                 GUI.DrawTextureWithTexCoords(Fit(rect, aspect), texture, uv);
@@ -607,7 +626,7 @@ namespace AX.UdonSlot.REV1_0.Editor.ReelRule
             EditorGUI.DrawRect(rect, Color.black);
             Texture2D picture;
             if (pictures.TryGetValue(symbol, out picture) && picture != null)
-                GUI.DrawTexture(rect, picture, ScaleMode.ScaleToFit);
+                GUI.DrawTexture(Fit(rect, SourceAspect(picture)), picture, ScaleMode.StretchToFill);
             else
                 GUI.Label(rect, symbol, CenteredStyle);
         }

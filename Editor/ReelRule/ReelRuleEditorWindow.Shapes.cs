@@ -241,7 +241,7 @@ namespace AX.UdonSlot.REV1_0.Editor.ReelRule
         {
             GUILayout.Label("パレット", EditorStyles.miniLabel);
             var cell = shape.cells[shapeCell];
-            const float w = 84, h = 50, gap = 6;
+            const float w = 92, h = 55, gap = 6;
             int count = symbols.Count + 1;
             int rows = (count + 2) / 3;
             var area = GUILayoutUtility.GetRect(3 * (w + gap), rows * (h + gap), GUILayout.ExpandWidth(false));
