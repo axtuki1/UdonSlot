@@ -333,15 +333,17 @@ namespace AX.UdonSlot.REV1_0.Editor.ReelRule
             GUI.Label(new Rect(head.x + 28, head.y, 50, 16), "押し位置", EditorStyles.miniLabel);
             GUI.Label(new Rect(head.x + 87, head.y, 30, 16), "滑り", EditorStyles.miniLabel);
             GUI.Label(new Rect(head.x + 117, head.y, 60, 16), "決め手", EditorStyles.miniLabel);
-            for (int press = 0; press < table.Slips.Length; press++)
+            // リール配列表と同じく、下が1コマ目
+            for (int i = 0; i < table.Slips.Length; i++)
             {
+                int press = table.Slips.Length - 1 - i;
                 var row = GUILayoutUtility.GetRect(10, rowHeight, GUILayout.ExpandWidth(true));
                 if (table.Manual[press])
                 {
                     EditorGUI.DrawRect(row, new Color(0.23f, 0.18f, 0.12f));
                     Outline(row, ManualColor, 1);
                 }
-                else if (press % 2 == 1) EditorGUI.DrawRect(row, new Color(0.18f, 0.18f, 0.18f));
+                else if (i % 2 == 1) EditorGUI.DrawRect(row, new Color(0.18f, 0.18f, 0.18f));
                 GUI.Label(new Rect(row.x + 2, row.y, 24, row.height), (press + 1).ToString(), EditorStyles.miniLabel);
                 DrawStripSymbol(new Rect(row.x + 28, row.y + 2, 51, row.height - 4), table.Reel, press);
                 GUI.Label(new Rect(row.x + 87, row.y, 24, row.height), table.Slips[press].ToString(), EditorStyles.boldLabel);
