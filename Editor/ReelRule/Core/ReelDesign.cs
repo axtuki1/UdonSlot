@@ -237,14 +237,17 @@ namespace AX.UdonSlot.REV1_0.Editor.ReelRule
                     }
                     targets.Add(new Goal { Kind = GoalKind.Prefer, Target = target });
                 }
+                // 基本目を狙う制御では、狙っていない基本目は出さず、小役も狙う出目でだけ揃える（リーチ目だけなら小役は通常どおり）
+                bool basicTarget = false;
+                foreach (var goal in targets) if (!design.FindShape(goal.Target).reach) basicTarget = true;
                 if (bonusFirst) rule.Goals.AddRange(bonusPulls);
                 rule.Goals.AddRange(targets);
-                // 狙う出目がある制御では、狙っていない基本目は出さない
-                if (targets.Count > 0)
+                if (basicTarget)
                     foreach (var shape in design.shapes)
                         if (!shape.reach && !string.IsNullOrEmpty(shape.name) && !d.targets.Contains(shape.name))
                             rule.Goals.Add(new Goal { Kind = GoalKind.Avoid, Target = shape.name });
-                rule.Goals.AddRange(smallPulls);
+                foreach (var pull in smallPulls)
+                    rule.Goals.Add(basicTarget ? new Goal { Kind = GoalKind.AvoidRole, Target = pull.Target } : pull);
                 if (!bonusFirst) rule.Goals.AddRange(bonusPulls);
                 foreach (var shape in design.shapes)
                     if (shape.reach && shape.allowedControls.Contains(d.name)) rule.Allowed.Add(shape.name);

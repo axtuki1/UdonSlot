@@ -203,7 +203,7 @@ public static partial class Program
 
         // 狙う出目は小役の引込より先
         var suika = Find(results, "スイカ");
-        Check("target comes before small pull", suika.GoalLines[0] == "狙う 右下がりスイカ" && suika.GoalLines[1].StartsWith("引込 スイカ"));
+        Check("target comes before small pull", suika.GoalLines[0] == "狙う 右下がりスイカ" && suika.GoalLines[1].StartsWith("避ける スイカ"));
         var plain = SampleDesign(machine);
         plain.FindControl("スイカ").targets.Clear();
         var untargeted = Find(Generate(machine, plain), "スイカ");

@@ -284,6 +284,12 @@ namespace AX.UdonSlot.REV1_0.Editor.ReelRule
                         else if (!p.Won[index]) errors.Add(new RuleError(goal.Line, "「" + goal.Target + "」はフラグ " + rule.Name + " の当選役ではないため引き込めません"));
                         else AddGoal(p, GoalKind.Pull, index, "引込 " + goal.Target, goal.Target + "引込");
                     }
+                    else if (goal.Kind == GoalKind.AvoidRole)
+                    {
+                        int index = RoleIndex(goal.Target);
+                        if (index < 0) errors.Add(new RuleError(goal.Line, "配当表に役「" + goal.Target + "」がありません"));
+                        else AddGoal(p, GoalKind.AvoidRole, index, "避ける " + goal.Target, goal.Target + "回避");
+                    }
                     else
                     {
                         int index = ShapeIndex(goal.Target);
@@ -474,6 +480,7 @@ namespace AX.UdonSlot.REV1_0.Editor.ReelRule
             {
                 case GoalKind.Pull: return PullLevel(target, stops, orders, reel);
                 case GoalKind.Prefer: return Score(Chance(machine.Roles.Count + target, stops, orders));
+                case GoalKind.AvoidRole: return -Score(Chance(target, stops, orders));
                 default: return -Score(Chance(machine.Roles.Count + target, stops, orders));
             }
         }
