@@ -115,7 +115,7 @@ namespace AX.UdonSlot.REV1_0.Editor.ReelRule
         }
     }
 
-    public enum GoalKind { Pull, Prefer, Avoid, AvoidRole }
+    public enum GoalKind { Pull, Prefer, Avoid, AvoidRole, PreferAny }
 
     /// <summary>制御の優先順位1行。上にある行ほど優先する。</summary>
     public sealed class Goal

@@ -304,6 +304,16 @@ namespace AX.UdonSlot.REV1_0.Editor.ReelRule
                     }
                 }
 
+                // 狙う出目が複数あれば、まず「どれかになる」割合を最大にし、上下の順はその中で比べる
+                int firstPrefer = p.Kinds.IndexOf(GoalKind.Prefer);
+                if (firstPrefer >= 0 && p.Kinds.LastIndexOf(GoalKind.Prefer) != firstPrefer)
+                {
+                    p.Kinds.Insert(firstPrefer, GoalKind.PreferAny);
+                    p.Targets.Insert(firstPrefer, rules.Shapes.Count);
+                    p.Labels.Insert(firstPrefer, "狙う 出目のどれか");
+                    p.Reasons.Insert(firstPrefer, "出目狙い");
+                }
+
                 // 暗黙の引込：ルールに書かれていない当選役を最後に足す（書いた行が常に優先）
                 if (!rule.NoImplicitPull)
                 {
@@ -485,7 +495,8 @@ namespace AX.UdonSlot.REV1_0.Editor.ReelRule
             switch (plan.Kinds[g])
             {
                 case GoalKind.Pull: return PullLevel(target, stops, orders, reel);
-                case GoalKind.Prefer: return Score(Chance(machine.Roles.Count + target, stops, orders));
+                case GoalKind.Prefer:
+                case GoalKind.PreferAny: return Score(Chance(machine.Roles.Count + target, stops, orders));
                 case GoalKind.AvoidRole:
                     // この押し順で狙える基本目がなければ、通常どおり引き込む
                     if (!BasicTargetPossible(orders)) return PullLevel(target, stops, orders, reel);
@@ -565,7 +576,11 @@ namespace AX.UdonSlot.REV1_0.Editor.ReelRule
         private bool TargetMet(int target, int[] stops, int[] orders)
         {
             int roles = machine.Roles.Count;
-            return target < roles ? RoleFormed(target, stops, orders) : ShapePossible(target - roles, stops, orders);
+            if (target < roles) return RoleFormed(target, stops, orders);
+            if (target - roles < rules.Shapes.Count) return ShapePossible(target - roles, stops, orders);
+            for (int g = 0; g < plan.Kinds.Count; g++)
+                if (plan.Kinds[g] == GoalKind.Prefer && ShapePossible(plan.Targets[g], stops, orders)) return true;
+            return false;
         }
 
         private bool BasicTargetPossible(int[] orders)
