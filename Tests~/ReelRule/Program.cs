@@ -154,6 +154,8 @@ public static partial class Program
 
     private static void ModelChecks()
     {
+        Check("percent never rounds to 100", ReelRuleReport.Percent(9999, 10000) == "99.9%" && ReelRuleReport.Percent(10000, 10000) == "100.0%");
+        Check("percent never rounds to 0", ReelRuleReport.Percent(1, 10000) == "0.1%" && ReelRuleReport.Percent(0, 10000) == "0.0%");
         var cell = new ShapeCell();
         Check("empty cell is any", cell.IsAny && cell.Matches("ベル"));
         cell.Include.Add("7");

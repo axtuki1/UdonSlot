@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using System.Text;
 
@@ -9,7 +10,11 @@ namespace AX.UdonSlot.REV1_0.Editor.ReelRule
         public static string Percent(long part, long whole)
         {
             if (whole <= 0) return "-";
-            return (100.0 * part / whole).ToString("0.0") + "%";
+            // 100% と 0% はちょうどのときだけ（丸めで取りこぼしや入賞が隠れないように）
+            double percent = 100.0 * part / whole;
+            if (part < whole) percent = Math.Min(percent, 99.9);
+            if (part > 0) percent = Math.Max(percent, 0.1);
+            return percent.ToString("0.0") + "%";
         }
 
         public static string Markdown(List<ControlResult> results, int windowLimit)
