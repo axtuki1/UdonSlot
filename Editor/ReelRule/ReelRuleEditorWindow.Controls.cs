@@ -320,7 +320,7 @@ namespace AX.UdonSlot.REV1_0.Editor.ReelRule
         {
             if (choices.Count == 0) return current;
             var labels = new string[choices.Count];
-            for (int i = 0; i < choices.Count; i++) labels[i] = ReelRuleEngine.ReelNames[reel] + " " + (choices[i] + 1);
+            for (int i = 0; i < choices.Count; i++) labels[i] = ReelRuleEngine.ReelNames[reel] + " " + (machine.Strips[reel].Length - choices[i]);
             int selected = Mathf.Max(0, choices.IndexOf(current));
             return choices[EditorGUILayout.Popup(selected, labels, GUILayout.Width(70))];
         }
@@ -550,13 +550,13 @@ namespace AX.UdonSlot.REV1_0.Editor.ReelRule
             GUI.Label(new Rect(area.x, area.y, numW + imgW, ch), ReelRuleEngine.ReelNames[r2] + "＼" + ReelRuleEngine.ReelNames[r3], CenteredStyle);
             for (int c = 0; c < n3; c++)
             {
-                GUI.Label(new Rect(x0 + c * cw, area.y, cw, ch), (c + 1).ToString(), CenteredStyle);
+                GUI.Label(new Rect(x0 + c * cw, area.y, cw, ch), (n3 - c).ToString(), CenteredStyle);
                 DrawStripSymbol(new Rect(x0 + c * cw + 1, area.y + ch + 1, cw - 2, ch - 2), r3, c);
             }
             for (int r = 0; r < n2; r++)
             {
                 float y = y0 + r * ch;
-                GUI.Label(new Rect(area.x, y, numW, ch), (r + 1).ToString(), CenteredStyle);
+                GUI.Label(new Rect(area.x, y, numW, ch), (n2 - r).ToString(), CenteredStyle);
                 DrawStripSymbol(new Rect(area.x + numW + 1, y + 1, imgW - 2, ch - 2), r2, r);
                 for (int c = 0; c < n3; c++)
                 {
@@ -632,7 +632,7 @@ namespace AX.UdonSlot.REV1_0.Editor.ReelRule
                 GUILayout.Space(10);
                 using (new EditorGUILayout.VerticalScope())
                 {
-                    GUILayout.Label(ReelRuleEngine.ReelNames[r2] + " " + (mapRow + 1) + "押し × " + ReelRuleEngine.ReelNames[r3] + " " + (mapColumn + 1) + "押し", EditorStyles.miniLabel);
+                    GUILayout.Label(ReelRuleEngine.ReelNames[r2] + " " + (machine.Strips[r2].Length - mapRow) + "押し × " + ReelRuleEngine.ReelNames[r3] + " " + (machine.Strips[r3].Length - mapColumn) + "押し", EditorStyles.miniLabel);
                     int k = map.Cells[mapRow, mapColumn];
                     Chip(map.Labels[k], map.Colors[k], Color.white);
                     GUILayout.Space(4);

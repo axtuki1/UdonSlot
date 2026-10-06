@@ -291,7 +291,7 @@ namespace AX.UdonSlot.REV1_0.Editor.ReelRule
                         var sorted = new List<int>(positions);
                         sorted.Sort();
                         var labels = new List<string>();
-                        foreach (int p in sorted) labels.Add((p + 1).ToString());
+                        for (int q = sorted.Count - 1; q >= 0; q--) labels.Add((machine.Strips[r].Length - sorted[q]).ToString());
                         GUILayout.Label(ReelRuleEngine.ReelNames[r] + "リール  " + (labels.Count == 0 ? "指定なし" : string.Join(", ", labels.ToArray()) + " 番"), EditorStyles.miniLabel);
                         positionScroll[r] = EditorGUILayout.BeginScrollView(positionScroll[r], GUILayout.Height(240));
                         string[] strip = machine.Strips[r];
@@ -300,7 +300,7 @@ namespace AX.UdonSlot.REV1_0.Editor.ReelRule
                             var row = GUILayoutUtility.GetRect(10, 28, GUILayout.ExpandWidth(true));
                             bool on = positions.Contains(i);
                             if (on) EditorGUI.DrawRect(row, SelectedColor);
-                            GUI.Label(new Rect(row.x + 4, row.y, 26, row.height), (i + 1).ToString(), EditorStyles.miniLabel);
+                            GUI.Label(new Rect(row.x + 4, row.y, 26, row.height), (strip.Length - i).ToString(), EditorStyles.miniLabel);
                             DrawStripSymbol(new Rect(row.x + 32, row.y + 2, 46, row.height - 4), r, i);
                             if (on) Outline(row, AccentColor, 1);
                             int reel = r, index = i;
