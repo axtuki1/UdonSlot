@@ -805,6 +805,7 @@ namespace AX.UdonSlot.REV1_0
         private bool isNetworkStandby = false;
         public void NetworkStandby()
         {
+            isNetworkStandby = true;
             subBoard.NetworkStandby();
             NetworkStandbyLogic();
         }
