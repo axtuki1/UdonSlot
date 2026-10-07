@@ -168,22 +168,11 @@ namespace AX.UdonSlot.REV1_0
         public bool IsPayLineActive(int lineIndex, int bet)
         {
             if (!IsPayLineValid(lineIndex)) return false;
+            if (bet < 1 || bet > 3) return false;
 
-            int betMask = 0;
-            switch (bet)
-            {
-                case 1:
-                    betMask = 1;
-                    break;
-                case 2:
-                    betMask = 2;
-                    break;
-                case 3:
-                    betMask = 4;
-                    break;
-            }
-
-            return betMask != 0 && (payLineBetMasks[lineIndex] & betMask) != 0;
+            // 1BET=1、2BET=2、3BET=4
+            int betMask = 1 << (bet - 1);
+            return (payLineBetMasks[lineIndex] & betMask) != 0;
         }
 
         /// <summary>指定した成立役で、対象リールに要求される図柄名を返す。</summary>
@@ -231,18 +220,13 @@ namespace AX.UdonSlot.REV1_0
             if (!IsWinPairValid(pairIndex)) return 0;
             if (IsReplay(pairIndex)) return 0;
 
+            // BET 1・2の配当が未設定ならBET 3の配当を使う。
             switch (bet)
             {
-                case 1:
-                    if (payoutsBet1 == null || payoutsBet1.Length <= pairIndex) return payouts[pairIndex];
-                    return payoutsBet1[pairIndex];
-                case 2:
-                    if (payoutsBet2 == null || payoutsBet2.Length <= pairIndex) return payouts[pairIndex];
-                    return payoutsBet2[pairIndex];
-                case 3:
-                    return payouts[pairIndex];
-                default:
-                    return 0;
+                case 1: return payoutsBet1 != null && payoutsBet1.Length > pairIndex ? payoutsBet1[pairIndex] : payouts[pairIndex];
+                case 2: return payoutsBet2 != null && payoutsBet2.Length > pairIndex ? payoutsBet2[pairIndex] : payouts[pairIndex];
+                case 3: return payouts[pairIndex];
+                default: return 0;
             }
         }
 

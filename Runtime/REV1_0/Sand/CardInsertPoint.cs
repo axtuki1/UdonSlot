@@ -28,17 +28,13 @@ namespace AX.UdonSlot.REV1_0
 
         public void OnTriggerStay(Collider other)
         {
-            if (isCardInserting)
-            {
-                Card card = other.GetComponentInChildren<Card>();
-                if (!Utilities.IsValid(card) || !Networking.IsOwner(card.gameObject)) return;
-                float elapsedTime = (Networking.GetServerTimeInMilliseconds() - insertStartTime) / 1000.0f;
-                if (elapsedTime >= insertDuration)
-                {
-                    isCardInserting = false;
-                    sand.InsertCard(card);
-                }
-            }
+            if (!isCardInserting) return;
+            Card card = other.GetComponentInChildren<Card>();
+            if (!Utilities.IsValid(card) || !Networking.IsOwner(card.gameObject)) return;
+            float elapsedTime = (Networking.GetServerTimeInMilliseconds() - insertStartTime) / 1000.0f;
+            if (elapsedTime < insertDuration) return;
+            isCardInserting = false;
+            sand.InsertCard(card);
         }
     }
 }

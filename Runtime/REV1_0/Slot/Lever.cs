@@ -26,14 +26,8 @@ namespace AX.UdonSlot.REV1_0
 
         private void Update()
         {
-            if (isPushed)
-            {
-                transform.localRotation = Quaternion.Lerp(transform.localRotation, Quaternion.Euler(leverPushAngle, 0, 0) , Time.deltaTime * 10f);
-            }
-            else
-            {
-                transform.localRotation = Quaternion.Lerp(transform.localRotation, initialRotation, Time.deltaTime * 10f);
-            }
+            Quaternion targetRotation = isPushed ? Quaternion.Euler(leverPushAngle, 0, 0) : initialRotation;
+            transform.localRotation = Quaternion.Lerp(transform.localRotation, targetRotation, Time.deltaTime * 10f);
         }
 
         public override void Interact()
@@ -55,7 +49,6 @@ namespace AX.UdonSlot.REV1_0
             PlayerTracking tracking = other.GetComponent<PlayerTracking>();
             if (!Utilities.IsValid(tracking)) return;
             isPushed = false;
-            if (!tracking.IsOwner()) return;
         }
     }
 }

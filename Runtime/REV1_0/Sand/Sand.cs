@@ -77,19 +77,16 @@ namespace AX.UdonSlot.REV1_0
 
         private void Update()
         {
-            if (Utilities.IsValid(outingCardObj) && isCardOuting)
-            {
-                outingCardObj.transform.position =
-                    Vector3.Lerp(outingCardObj.transform.position, cardExitPoint.position, 0.1f);
-                outingCardObj.transform.rotation =
-                    Quaternion.Lerp(outingCardObj.transform.rotation, cardExitPoint.rotation, 0.1f);
-                if (Vector3.Distance(outingCardObj.transform.position, cardExitPoint.position) < 0.01f)
-                {
-                    outingCardObj.transform.position = cardExitPoint.position;
-                    outingCardObj.transform.rotation = cardExitPoint.rotation;
-                    isCardOuting = false;
-                }
-            }
+            if (!isCardOuting || !Utilities.IsValid(outingCardObj)) return;
+
+            // 排出位置へ寄せ、十分近づいたら位置を合わせて終了する。
+            Transform card = outingCardObj.transform;
+            card.position = Vector3.Lerp(card.position, cardExitPoint.position, 0.1f);
+            card.rotation = Quaternion.Lerp(card.rotation, cardExitPoint.rotation, 0.1f);
+            if (Vector3.Distance(card.position, cardExitPoint.position) >= 0.01f) return;
+            card.position = cardExitPoint.position;
+            card.rotation = cardExitPoint.rotation;
+            isCardOuting = false;
         }
 
         public void AddBalance(int amount)
@@ -139,15 +136,16 @@ namespace AX.UdonSlot.REV1_0
         public void StoredMedalUse()
         {
             SetOwner();
-            int medal;
+            // 持ちメダルを先に使い、なくなったら貯メダルを使う。
             if (inventoryMedal > 0)
             {
-                medal = inventoryMedal > moneyToCreditRate ? moneyToCreditRate : inventoryMedal;
+                int medal = Mathf.Min(inventoryMedal, moneyToCreditRate);
                 inventoryMedal -= medal;
                 mainBoard.AddCredit(medal);
-            } else if (storedMedal > 0)
-            { 
-                medal = storedMedal > moneyToCreditRate ? moneyToCreditRate : storedMedal;
+            }
+            else if (storedMedal > 0)
+            {
+                int medal = Mathf.Min(storedMedal, moneyToCreditRate);
                 storedMedal -= medal;
                 mainBoard.AddCredit(medal);
             }

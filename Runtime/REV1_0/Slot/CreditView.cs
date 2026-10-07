@@ -115,37 +115,22 @@ namespace AX.UdonSlot.REV1_0
 
         private void UpdateViewingCredit()
         {
-            if (mainBoard.credit != viewingCredit)
-            {
-                // クレジットが変わっている場合、1フレームに付きframeChangeingRateだけ増減させる
-                // changingTimeが0.5秒以上経過している場合は、frameChangeingRateを2倍にする
-                float changeRate = frameChangeingRate;
-                if (changingTime > 10f)
-                {
-                    changeRate *= 8f;
-                }
-                else if (changingTime > 5f)
-                {
-                    changeRate *= 2f;
-                }
-
-                if (mainBoard.credit > viewingCredit)
-                {
-                    viewingCredit += (int)changeRate;
-                    if (viewingCredit > mainBoard.credit) viewingCredit = mainBoard.credit;
-                }
-                else
-                {
-                    viewingCredit -= (int)changeRate;
-                    if (viewingCredit < mainBoard.credit) viewingCredit = mainBoard.credit;
-                }
-
-                changingTime += Time.deltaTime;
-            }
-            else
+            int credit = mainBoard.credit;
+            if (credit == viewingCredit)
             {
                 changingTime = 0f;
+                return;
             }
+
+            // 1フレームごとにframeChangeingRateずつ近づける。変化が5秒を超えたら2倍、10秒を超えたら8倍。
+            float changeRate = frameChangeingRate;
+            if (changingTime > 10f) changeRate *= 8f;
+            else if (changingTime > 5f) changeRate *= 2f;
+
+            viewingCredit = credit > viewingCredit
+                ? Mathf.Min(viewingCredit + (int)changeRate, credit)
+                : Mathf.Max(viewingCredit - (int)changeRate, credit);
+            changingTime += Time.deltaTime;
         }
 
         private void UpdateSegmentDisplay()

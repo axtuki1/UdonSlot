@@ -80,33 +80,35 @@ namespace AX.UdonSlot.REV1_0
         {
             for (int i = 0; i < queuedSound.Length; i++)
             {
-                // キューの時間が十分に過ぎているものはキューから消す
-                if (queuedTime[i] <= -9000000)
-                {
-                    // 配列をリサイズ
-                    SoundType[] newQueuedSound = new SoundType[queuedSound.Length - 1];
-                    int[] newQueuedClip = new int[queuedClip.Length - 1];
-                    float[] newQueuedTime = new float[queuedTime.Length - 1];
-                    bool[]  newQueuedIsOneShot = new bool[queuedIsOneShot.Length - 1];
-                    bool[]  newQueuedIsReplay = new bool[queuedIsReplay.Length - 1];
-                    int index = 0;
-                    // キューから消すもの以外を新しい配列にコピー
-                    Array.Copy(queuedSound, 0, newQueuedSound, 0, i);
-                    Array.Copy(queuedClip, 0, newQueuedClip, 0, i);
-                    Array.Copy(queuedTime, 0, newQueuedTime, 0, i);
-                    Array.Copy(queuedIsOneShot, 0, newQueuedIsOneShot, 0, i);
-                    Array.Copy(queuedSound, i + 1, newQueuedSound, i, queuedSound.Length - i - 1);
-                    Array.Copy(queuedClip, i + 1, newQueuedClip, i, queuedClip.Length - i - 1);
-                    Array.Copy(queuedTime, i + 1, newQueuedTime, i, queuedTime.Length - i - 1);
-                    Array.Copy(queuedIsOneShot, i + 1, newQueuedIsOneShot, i, queuedIsOneShot.Length - i - 1);
-                    Array.Copy(queuedIsReplay, i + 1, newQueuedIsReplay, i, queuedIsReplay.Length - i - 1);
-                    queuedSound = newQueuedSound;
-                    queuedClip = newQueuedClip;
-                    queuedTime = newQueuedTime;
-                    queuedIsOneShot = newQueuedIsOneShot;
-                    queuedIsReplay = newQueuedIsReplay;
-                }
+                // 再生済み（時間が大きく負になったもの）をキューから消す
+                if (queuedTime[i] <= -9000000) RemoveQueuedSound(i);
             }
+        }
+
+        private void RemoveQueuedSound(int index)
+        {
+            int newLength = queuedSound.Length - 1;
+            int tailLength = newLength - index;
+            SoundType[] newQueuedSound = new SoundType[newLength];
+            int[] newQueuedClip = new int[newLength];
+            float[] newQueuedTime = new float[newLength];
+            bool[] newQueuedIsOneShot = new bool[newLength];
+            bool[] newQueuedIsReplay = new bool[newLength];
+            Array.Copy(queuedSound, 0, newQueuedSound, 0, index);
+            Array.Copy(queuedClip, 0, newQueuedClip, 0, index);
+            Array.Copy(queuedTime, 0, newQueuedTime, 0, index);
+            Array.Copy(queuedIsOneShot, 0, newQueuedIsOneShot, 0, index);
+            Array.Copy(queuedIsReplay, 0, newQueuedIsReplay, 0, index);
+            Array.Copy(queuedSound, index + 1, newQueuedSound, index, tailLength);
+            Array.Copy(queuedClip, index + 1, newQueuedClip, index, tailLength);
+            Array.Copy(queuedTime, index + 1, newQueuedTime, index, tailLength);
+            Array.Copy(queuedIsOneShot, index + 1, newQueuedIsOneShot, index, tailLength);
+            Array.Copy(queuedIsReplay, index + 1, newQueuedIsReplay, index, tailLength);
+            queuedSound = newQueuedSound;
+            queuedClip = newQueuedClip;
+            queuedTime = newQueuedTime;
+            queuedIsOneShot = newQueuedIsOneShot;
+            queuedIsReplay = newQueuedIsReplay;
         }
         
         [NetworkCallable]
@@ -117,19 +119,13 @@ namespace AX.UdonSlot.REV1_0
             if (isOneShot)
             {
                 targetSource.PlayOneShot(targetClip);
+                return;
             }
-            else
-            {
-                if (
-                    isReplay ||
-                    (
-                        !isReplay && targetSource.clip != targetClip)
-                    )
-                {
-                    targetSource.clip = targetClip;
-                    targetSource.Play();
-                }
-            }
+
+            // isReplayなら同じクリップでも頭から再生し直す。
+            if (!isReplay && targetSource.clip == targetClip) return;
+            targetSource.clip = targetClip;
+            targetSource.Play();
         }
         
         [NetworkCallable]
@@ -154,7 +150,7 @@ namespace AX.UdonSlot.REV1_0
          */
         public void TryPlaySound(SoundType type, int clip, bool isReplay)
         {
-            if(IsPlayingSound(type)) return;
+            if (IsPlayingSound(type)) return;
             source[(int)type].clip = this.clip[clip];
             source[(int)type].Play();
         }
@@ -164,7 +160,7 @@ namespace AX.UdonSlot.REV1_0
          */
         public void TryMusicChange(SoundType type, int clip)
         {
-            if(!IsPlayingSound(type) || source[(int)type].clip == this.clip[clip]) return;
+            if (!IsPlayingSound(type) || source[(int)type].clip == this.clip[clip]) return;
             source[(int)type].clip = this.clip[clip];
             source[(int)type].Play();
         }
@@ -180,7 +176,7 @@ namespace AX.UdonSlot.REV1_0
          */
         public bool IsPlayingSound(SoundType type)
         {
-            return  source[(int)type].isPlaying;
+            return source[(int)type].isPlaying;
         }
 
         public void ScheduledPlaySound(SoundType type, int clip, float delay)
@@ -195,22 +191,23 @@ namespace AX.UdonSlot.REV1_0
 
         public void ScheduledPlaySound(SoundType type, int clip, float delay, bool isOneShot, bool isReplay)
         {
-            // キューに追加
-            SoundType[] newQueuedSound = new SoundType[queuedSound.Length + 1];
-            int[] newQueuedClip = new int[queuedClip.Length + 1];
-            float[] newQueuedTime = new float[queuedTime.Length + 1];
-            bool[]  newQueuedIsOneShot = new bool[queuedIsOneShot.Length + 1];
-            bool[]  newQueuedIsReplay = new bool[queuedIsReplay.Length + 1];
-            Array.Copy(queuedSound, newQueuedSound, queuedSound.Length);
-            Array.Copy(queuedClip, newQueuedClip, queuedClip.Length);
-            Array.Copy(queuedTime, newQueuedTime, queuedTime.Length);
-            Array.Copy(queuedIsOneShot, newQueuedIsOneShot, queuedIsOneShot.Length);
-            Array.Copy(queuedIsReplay, newQueuedIsReplay, queuedIsReplay.Length);
-            newQueuedSound[newQueuedSound.Length - 1] = type;
-            newQueuedClip[newQueuedClip.Length - 1] = clip;
-            newQueuedTime[newQueuedTime.Length - 1] = delay;
-            newQueuedIsOneShot[newQueuedIsOneShot.Length - 1] = isOneShot;
-            newQueuedIsReplay[newQueuedIsReplay.Length - 1] = isReplay;
+            // キューの末尾に追加
+            int length = queuedSound.Length;
+            SoundType[] newQueuedSound = new SoundType[length + 1];
+            int[] newQueuedClip = new int[length + 1];
+            float[] newQueuedTime = new float[length + 1];
+            bool[] newQueuedIsOneShot = new bool[length + 1];
+            bool[] newQueuedIsReplay = new bool[length + 1];
+            Array.Copy(queuedSound, newQueuedSound, length);
+            Array.Copy(queuedClip, newQueuedClip, length);
+            Array.Copy(queuedTime, newQueuedTime, length);
+            Array.Copy(queuedIsOneShot, newQueuedIsOneShot, length);
+            Array.Copy(queuedIsReplay, newQueuedIsReplay, length);
+            newQueuedSound[length] = type;
+            newQueuedClip[length] = clip;
+            newQueuedTime[length] = delay;
+            newQueuedIsOneShot[length] = isOneShot;
+            newQueuedIsReplay[length] = isReplay;
             queuedSound = newQueuedSound;
             queuedClip = newQueuedClip;
             queuedTime = newQueuedTime;

@@ -245,22 +245,11 @@ namespace AX.UdonSlot.REV1_0
         {
             get
             {
-                
                 for (int i = 0; i < stoppedReelsStopOrder.Length; i++)
                 {
-                    // 未指定は無視
-                    if (pushOrder[i] == -1)
-                    {
-                        continue;
-                    }
-                    // 押し順失敗(守られていない)
-                    if (
-                        stoppedReelsStopOrder[i] != -1 &&
-                        stoppedReelsStopOrder[i] != pushOrder[i]
-                    )
-                    {
-                        return true;
-                    }
+                    // 未指定と未停止は判定しない
+                    if (pushOrder[i] == -1 || stoppedReelsStopOrder[i] == -1) continue;
+                    if (stoppedReelsStopOrder[i] != pushOrder[i]) return true;
                 }
 
                 return false;
@@ -278,19 +267,11 @@ namespace AX.UdonSlot.REV1_0
                 int nextOrderReel = -1;
                 for (int i = 0; i < stoppedReelsStopOrder.Length; i++)
                 {
-                    // 未指定は無視
-                    if (pushOrder[i] == -1)
-                    {
-                        continue;
-                    }
-                    if (stoppedReelsStopOrder[i] == -1)
-                    {
-                        nextOrder = Math.Min(nextOrder, pushOrder[i]);
-                        if (nextOrder == pushOrder[i])
-                        {
-                            nextOrderReel = i;
-                        }
-                    }
+                    // 未指定と停止済みは対象外。同じ順番なら後のリールを返す。
+                    if (pushOrder[i] == -1 || stoppedReelsStopOrder[i] != -1) continue;
+                    if (pushOrder[i] > nextOrder) continue;
+                    nextOrder = pushOrder[i];
+                    nextOrderReel = i;
                 }
 
                 return nextOrderReel;
@@ -346,14 +327,14 @@ namespace AX.UdonSlot.REV1_0
         {
             if (!isInit) return;
             RemoveMockPlayShake();
-            if (IsOwner() && requestGameStart && ((isWaitMode && GetLastGameStartElapsed() > 4.1f * 1000f) || !isWaitMode))
+            bool isLocalOwner = IsOwner();
+            if (isLocalOwner && requestGameStart && (!isWaitMode || GetLastGameStartElapsed() > 4.1f * 1000f))
             {
                 Debug.Log("Game Start");
                 StartReel();
             }
 
             double currentServerMs = Networking.GetServerTimeInMilliseconds();
-            bool isLocalOwner = IsOwner();
             float maxStopStepDeg = maxReelSpeed * Time.deltaTime * 1000f;
 
             bool[] scheduledRollActive = UpdateScheduledRoll(currentServerMs);
@@ -507,10 +488,7 @@ namespace AX.UdonSlot.REV1_0
 
         public virtual void Bet()
         {
-            if (!isControllable) return;
-            if (isReplay) return;
-            if (credit == 0) return;
-            if (bet >= maxBet) return;
+            if (!CanBet()) return;
             SetOwner();
             OffControllable();
             lastPayout = 0;
@@ -521,25 +499,23 @@ namespace AX.UdonSlot.REV1_0
             RequestSerialization();
         }
         
-        /**
-         * 
-         */
         public virtual void MaxBet()
         {
-            if (!isControllable) return;
-            if (isReplay) return;
-            if (credit == 0) return;
-            if (bet >= maxBet) return;
+            if (!CanBet()) return;
             SetOwner();
             OffControllable();
-            int betAmount = maxBet - bet;
-            if (betAmount > credit) betAmount = credit;
+            int betAmount = Mathf.Min(maxBet - bet, credit);
             lastPayout = 0;
             bet += betAmount;
             credit -= betAmount;
             BetLogic(betAmount);
             subBoard.Bet(betAmount);
             RequestSerialization();
+        }
+
+        private bool CanBet()
+        {
+            return isControllable && !isReplay && credit != 0 && bet < maxBet;
         }
 
         public virtual void PushMaxBet()
@@ -561,24 +537,16 @@ namespace AX.UdonSlot.REV1_0
         public virtual void LeverOn()
         {
             if (!isControllable || requestGameStart) return;
-            if (bet == 0) return;
-            if (bet < requiredBet) return;
+            if (bet == 0 || bet < requiredBet) return;
             if (isRollingReel1 || isRollingReel2 || isRollingReel3) return;
             SetOwner();
             OffControllable(0.75f);
             firstLeverOnTime = Networking.GetServerTimeInMilliseconds();
             // 疑似遊技中は再抽選せず、現在のフラグを維持する。
-            if (!isMockPlay)
-            {
-                reelOutputController.GenerateFlag(bet);
-            }
-            bool isGameStart = LeverOnLogic();
-            if(isGameStart)
-            {
-                subBoard.Wait();
-                RequestGameStart();
-            }
-            
+            if (!isMockPlay) reelOutputController.GenerateFlag(bet);
+            if (!LeverOnLogic()) return;
+            subBoard.Wait();
+            RequestGameStart();
         }
 
         /// <summary>
@@ -629,9 +597,10 @@ namespace AX.UdonSlot.REV1_0
         public void StartReel()
         {
             if (!requestGameStart) return;
+            int now = Networking.GetServerTimeInMilliseconds();
             isReplay = false;
             isGaming = true;
-            gameStartTime = Networking.GetServerTimeInMilliseconds();
+            gameStartTime = now;
             requestGameStart = false;
             isRollingReel1 = true;
             isRollingReel2 = true;
@@ -642,9 +611,9 @@ namespace AX.UdonSlot.REV1_0
 
             CaptureReelAccumulatedRotations();
 
-            reelRotTime_1 = Networking.GetServerTimeInMilliseconds();
-            reelRotTime_2 = Networking.GetServerTimeInMilliseconds();
-            reelRotTime_3 = Networking.GetServerTimeInMilliseconds();
+            reelRotTime_1 = now;
+            reelRotTime_2 = now;
+            reelRotTime_3 = now;
 
             stoppedReelsSymbolIndex = new int[] { -1, -1, -1 };
             stoppedReelsStopOrder = new int[] { -1, -1, -1 };
@@ -667,9 +636,8 @@ namespace AX.UdonSlot.REV1_0
         /// <param name="reelIndex">停止リール</param>
         public virtual void PushStopButton(int reelIndex)
         {
-            if(!isControllable) return;
-            bool isStopReelLogic = PushStopButtonLogic(reelIndex);
-            if(isStopReelLogic) StopReel(reelIndex);
+            if (!isControllable) return;
+            if (PushStopButtonLogic(reelIndex)) StopReel(reelIndex);
         }
 
         /// <summary>
@@ -688,39 +656,23 @@ namespace AX.UdonSlot.REV1_0
         /// <param name="reelIndex">停止リール</param>
         public void StopReel(int reelIndex)
         {
-            if (!isControllable) return;
-            switch (reelIndex)
-            {
-                case 0: if (!isRollingReel1) return; break;
-                case 1: if (!isRollingReel2) return; break;
-                case 2: if (!isRollingReel3) return; break;
-            }
+            if (!isControllable || !IsReelRolling(reelIndex)) return;
 
-            int symbolIndex = 0;
-            int throughSymbolCount = 0;
-            float pressedYAngle = 0f;
-
-            int stopCount = 0;
-            for (int i = 0; i < stoppedReelsSymbolIndex.Length; i++)
-            {
-                if (stoppedReelsSymbolIndex[i] != -1) stopCount++;
-            }
-            stoppedReelsStopOrder[reelIndex] = stopCount + 1;
+            stoppedReelsStopOrder[reelIndex] = stoppedReelCount + 1;
 
             Transform reelTransform = GetReelTransform(reelIndex);
             SetOwner();
             SetReelRolling(reelIndex, false);
 
-            Quaternion currentRot = reelTransform.localRotation;
-            Vector3 forwardA = defaultReelRot * Vector3.right;
-            Vector3 forwardB = currentRot * Vector3.right;
-            float yAngle = Vector3.SignedAngle(forwardA, forwardB, defaultReelRot * Vector3.down);
-            pressedYAngle = yAngle;
-            yAngle += anglePerSymbol / 2f;
-            symbolIndex = Mathf.RoundToInt(yAngle / anglePerSymbol % pictureCount);
+            // 押下時の角度から、滑り前の図柄位置を求める。
+            Vector3 defaultForward = defaultReelRot * Vector3.right;
+            Vector3 currentForward = reelTransform.localRotation * Vector3.right;
+            float pressedAngle = Vector3.SignedAngle(defaultForward, currentForward, defaultReelRot * Vector3.down);
+            int symbolIndex = Mathf.RoundToInt((pressedAngle + anglePerSymbol / 2f) / anglePerSymbol % pictureCount);
             if (symbolIndex < 0) symbolIndex += pictureCount;
+            int viewLowerReelIndex = (pictureCount - symbolIndex + 2) % pictureCount;
 
-            throughSymbolCount = ControllReel(reelIndex, (pictureCount - symbolIndex + 2) % pictureCount);
+            int throughSymbolCount = ControllReel(reelIndex, viewLowerReelIndex);
             Quaternion targetRotation = Quaternion.Euler(
                 REEL_ANGLEPOS_BASE + ((symbolIndex + throughSymbolCount) % pictureCount) * anglePerSymbol,
                 0f,
@@ -730,20 +682,16 @@ namespace AX.UdonSlot.REV1_0
             RequestSerialization();
             SetReelAccumulatedRotation(reelIndex, reelTransform.localRotation * Quaternion.Inverse(targetRotation));
 
-            int viewLowerReelIndex = (pictureCount - symbolIndex + 2) % pictureCount;
             OffControllable(0.001f);
             stoppedReelsSymbolIndex[reelIndex] = viewLowerReelIndex;
             stoppedReelsThroughSymbolCount[reelIndex] = throughSymbolCount;
-            float delta = Mathf.Abs(Mathf.DeltaAngle(pressedYAngle, symbolIndex * anglePerSymbol));
-            stoppedReelsPerfectAccuracy[reelIndex] = Mathf.Clamp01(1f - (delta / anglePerSymbol));
+            float delta = Mathf.Abs(Mathf.DeltaAngle(pressedAngle, symbolIndex * anglePerSymbol));
+            stoppedReelsPerfectAccuracy[reelIndex] = Mathf.Clamp01(1f - delta / anglePerSymbol);
 
             pushingButton[reelIndex] = true;
-            StopReelLogic(
-                reelIndex,
-                GetReelStopIndex(reelIndex),
-                stoppedReelsPerfectAccuracy[reelIndex]
-                );
-            
+            StopReelLogic(reelIndex, GetReelStopIndex(reelIndex), stoppedReelsPerfectAccuracy[reelIndex]);
+
+            // StopReelLogicで書き換えられた値も通知するため、ここで読み直す。
             if (IsOwner())
             {
                 subBoard.SendCustomNetworkEvent(NetworkEventTarget.All,
@@ -806,7 +754,11 @@ namespace AX.UdonSlot.REV1_0
         public void GameEnd()
         {
             GameEndLogic();
-            if (!isMockPlay)
+            if (isMockPlay)
+            {
+                isReplay = false;
+            }
+            else
             {
                 int previousBet = bet;
                 bool shouldReplay = false;
@@ -821,21 +773,17 @@ namespace AX.UdonSlot.REV1_0
                     lastPayout = payoutAmount;
                 }
 
+                // リプレイ時は今回のBETを次ゲームへ持ち越す。
                 isReplay = shouldReplay;
                 bet = shouldReplay ? previousBet : 0;
                 if (shouldReplay)
                 {
                     ReplayBetLogic(previousBet);
-                    subBoard.SendCustomNetworkEvent(
-                        NetworkEventTarget.All,
-                        nameof(subBoard.ReplayBet),
-                        previousBet
-                    );
+                    subBoard.SendCustomNetworkEvent(NetworkEventTarget.All, nameof(subBoard.ReplayBet), previousBet);
                 }
                 reelOutputController.FlagPostProcess();
                 RequestSerialization();
             }
-            else isReplay = false;
             isGaming = false;
             subBoard.SendCustomNetworkEvent(NetworkEventTarget.All, nameof(subBoard.GameEnd));
         }
@@ -851,10 +799,7 @@ namespace AX.UdonSlot.REV1_0
         public override void OnDeserialization()
         {
             CaptureReelAccumulatedRotations();
-            if (!isNetworkStandby)
-            {
-                NetworkStandby();
-            }
+            if (!isNetworkStandby) NetworkStandby();
         }
 
         private bool isNetworkStandby = false;
@@ -1114,32 +1059,15 @@ namespace AX.UdonSlot.REV1_0
             Quaternion rotation = Quaternion.Euler(scheduledAngle, 0f, 90f);
             reelTransform.localRotation = rotation;
 
-            bool isRolling = reelIndex == 0 ? isRollingReel1 : (reelIndex == 1 ? isRollingReel2 : isRollingReel3);
-            if (isHoldingGoal && !isRolling)
+            if (isHoldingGoal && !IsReelRolling(reelIndex))
             {
                 // 一時保持で確定停止角を上書きしない。滑り途中なら演出終了後に残りを進める。
                 SetReelAccumulatedRotation(reelIndex, rotation * Quaternion.Inverse(GetReelRotation(reelIndex)));
                 return;
             }
 
-            switch (reelIndex)
-            {
-                case 0:
-                    reelRot_1 = rotation;
-                    reelRotTime_1 = currentServerMs;
-                    _reel1AccumRot = Quaternion.identity;
-                    break;
-                case 1:
-                    reelRot_2 = rotation;
-                    reelRotTime_2 = currentServerMs;
-                    _reel2AccumRot = Quaternion.identity;
-                    break;
-                case 2:
-                    reelRot_3 = rotation;
-                    reelRotTime_3 = currentServerMs;
-                    _reel3AccumRot = Quaternion.identity;
-                    break;
-            }
+            SetReelRotation(reelIndex, rotation, currentServerMs);
+            SetReelAccumulatedRotation(reelIndex, Quaternion.identity);
         }
 
         public Transform GetReelTransform(int reelIndex)
@@ -1156,17 +1084,11 @@ namespace AX.UdonSlot.REV1_0
         private void CaptureReelAccumulatedRotations()
         {
             RemoveMockPlayShake();
-            if (Utilities.IsValid(reel1Transform))
+            for (int i = 0; i < 3; i++)
             {
-                _reel1AccumRot = reel1Transform.localRotation * Quaternion.Inverse(reelRot_1);
-            }
-            if (Utilities.IsValid(reel2Transform))
-            {
-                _reel2AccumRot = reel2Transform.localRotation * Quaternion.Inverse(reelRot_2);
-            }
-            if (Utilities.IsValid(reel3Transform))
-            {
-                _reel3AccumRot = reel3Transform.localRotation * Quaternion.Inverse(reelRot_3);
+                Transform reel = GetReelTransform(i);
+                if (!Utilities.IsValid(reel)) continue;
+                SetReelAccumulatedRotation(i, reel.localRotation * Quaternion.Inverse(GetReelRotation(i)));
             }
         }
 
@@ -1227,6 +1149,17 @@ namespace AX.UdonSlot.REV1_0
                 case 1: return _reel2AccumRot;
                 case 2: return _reel3AccumRot;
                 default: return Quaternion.identity;
+            }
+        }
+
+        private bool IsReelRolling(int reelIndex)
+        {
+            switch (reelIndex)
+            {
+                case 0: return isRollingReel1;
+                case 1: return isRollingReel2;
+                case 2: return isRollingReel3;
+                default: return false;
             }
         }
 
@@ -1323,12 +1256,6 @@ namespace AX.UdonSlot.REV1_0
             return result;
         }
 
-        private int[] CreateDefaultStartTimes()
-        {
-            int now = Networking.GetServerTimeInMilliseconds();
-            return new int[] { now, now, now };
-        }
-
         private int[] CreateDefaultEndTimes(int[] startTimes, int durationMs = 1000)
         {
             int[] safeStartTimes = NormalizeIntArray3(startTimes, Networking.GetServerTimeInMilliseconds());
@@ -1342,11 +1269,7 @@ namespace AX.UdonSlot.REV1_0
 
         private float[] GetCurrentReelAngles()
         {
-            float[] angles = new float[3];
-            angles[0] = GetCurrentReelAngle(0);
-            angles[1] = GetCurrentReelAngle(1);
-            angles[2] = GetCurrentReelAngle(2);
-            return angles;
+            return new float[] { GetCurrentReelAngle(0), GetCurrentReelAngle(1), GetCurrentReelAngle(2) };
         }
 
         public int AddScheduledVariableArray()
@@ -1476,15 +1399,16 @@ namespace AX.UdonSlot.REV1_0
             int firstIndex = AddScheduledVariableArrays(count);
             for (int section = 0; section < count; section++)
             {
-                int index = firstIndex + section;
                 int offset = section * 3;
-                scheduledRollType[index] = 0;
-                scheduledRollStartTime[index] = new int[] { baseTime + startOffsets[offset], baseTime + startOffsets[offset + 1], baseTime + startOffsets[offset + 2] };
-                scheduledRollEndTime[index] = new int[] { baseTime + endOffsets[offset], baseTime + endOffsets[offset + 1], baseTime + endOffsets[offset + 2] };
-                scheduledRollStartAngle[index] = new float[] { startAngles[offset], startAngles[offset + 1], startAngles[offset + 2] };
-                scheduledRollGoalAngle[index] = new float[] { goalAngles[offset], goalAngles[offset + 1], goalAngles[offset + 2] };
-                scheduledRollSpeed[index] = new float[3];
-                scheduledRollDirection[index] = new int[3];
+                SetScheduledRoll(
+                    firstIndex + section,
+                    0,
+                    new int[] { baseTime + startOffsets[offset], baseTime + startOffsets[offset + 1], baseTime + startOffsets[offset + 2] },
+                    new int[] { baseTime + endOffsets[offset], baseTime + endOffsets[offset + 1], baseTime + endOffsets[offset + 2] },
+                    new float[] { startAngles[offset], startAngles[offset + 1], startAngles[offset + 2] },
+                    new float[] { goalAngles[offset], goalAngles[offset + 1], goalAngles[offset + 2] },
+                    new float[3],
+                    new int[3]);
             }
         }
 
@@ -1541,19 +1465,11 @@ namespace AX.UdonSlot.REV1_0
         public void scheduleRollWithGoal(int[] rollStartTime, float[] rollStartAngle, int[] rollEndTime, float[] rollGoalAngle)
         {
             int index = AddScheduledVariableArray();
-            scheduledRollType[index] = 0;
-
-            int[] startTimes = rollStartTime != null ? NormalizeIntArray3(rollStartTime, Networking.GetServerTimeInMilliseconds()) : CreateDefaultStartTimes();
-            int[] endTimes = rollEndTime != null ? NormalizeIntArray3(rollEndTime, startTimes[0] + 1000) : CreateDefaultEndTimes(startTimes);
-            float[] startAngles = rollStartAngle != null ? NormalizeFloatArray3(rollStartAngle, 0f) : GetCurrentReelAngles();
-            float[] goalAngles = rollGoalAngle != null ? NormalizeFloatArray3(rollGoalAngle, 0f) : startAngles;
-
-            scheduledRollStartTime[index] = startTimes;
-            scheduledRollStartAngle[index] = startAngles;
-            scheduledRollEndTime[index] = endTimes;
-            scheduledRollGoalAngle[index] = goalAngles;
-            scheduledRollSpeed[index] = new float[] { 0f, 0f, 0f };
-            scheduledRollDirection[index] = new int[] { 0, 0, 0 }; // 方向省略時は最短経路
+            int[] startTimes = ResolveStartTimes(rollStartTime);
+            float[] startAngles = ResolveStartAngles(rollStartAngle);
+            // 方向0は最短経路
+            SetScheduledRoll(index, 0, startTimes, ResolveEndTimes(rollEndTime, startTimes),
+                startAngles, ResolveGoalAngles(rollGoalAngle, startAngles), new float[3], new int[3]);
         }
 
         /// <summary>
@@ -1587,20 +1503,10 @@ namespace AX.UdonSlot.REV1_0
         public void scheduleRollWithGoalDirection(int[] rollStartTime, float[] rollStartAngle, int[] rollEndTime, float[] rollGoalAngle, int[] rollDirection)
         {
             int index = AddScheduledVariableArray();
-            scheduledRollType[index] = 0;
-
-            int[] startTimes = rollStartTime != null ? NormalizeIntArray3(rollStartTime, Networking.GetServerTimeInMilliseconds()) : CreateDefaultStartTimes();
-            int[] endTimes = rollEndTime != null ? NormalizeIntArray3(rollEndTime, startTimes[0] + 1000) : CreateDefaultEndTimes(startTimes);
-            float[] startAngles = rollStartAngle != null ? NormalizeFloatArray3(rollStartAngle, 0f) : GetCurrentReelAngles();
-            float[] goalAngles = rollGoalAngle != null ? NormalizeFloatArray3(rollGoalAngle, 0f) : startAngles;
-            int[] directions = NormalizeDirectionArray3(rollDirection);
-
-            scheduledRollStartTime[index] = startTimes;
-            scheduledRollStartAngle[index] = startAngles;
-            scheduledRollEndTime[index] = endTimes;
-            scheduledRollGoalAngle[index] = goalAngles;
-            scheduledRollSpeed[index] = new float[] { 0f, 0f, 0f };
-            scheduledRollDirection[index] = directions;
+            int[] startTimes = ResolveStartTimes(rollStartTime);
+            float[] startAngles = ResolveStartAngles(rollStartAngle);
+            SetScheduledRoll(index, 0, startTimes, ResolveEndTimes(rollEndTime, startTimes),
+                startAngles, ResolveGoalAngles(rollGoalAngle, startAngles), new float[3], NormalizeDirectionArray3(rollDirection));
         }
 
         /// <summary>
@@ -1631,24 +1537,49 @@ namespace AX.UdonSlot.REV1_0
         public void scheduleRollWithSpeed(int[] rollStartTime, int[] rollEndTime, float[] rollSpeed)
         {
             int index = AddScheduledVariableArray();
-            scheduledRollType[index] = 1;
-
-            int[] startTimes = rollStartTime != null ? NormalizeIntArray3(rollStartTime, Networking.GetServerTimeInMilliseconds()) : CreateDefaultStartTimes();
-            int[] endTimes = rollEndTime != null ? NormalizeIntArray3(rollEndTime, startTimes[0] + 1000) : CreateDefaultEndTimes(startTimes);
-            float[] speeds = rollSpeed != null ? NormalizeFloatArray3(rollSpeed, 0f) : new float[] { 0f, 0f, 0f };
+            int[] startTimes = ResolveStartTimes(rollStartTime);
+            float[] speeds = NormalizeFloatArray3(rollSpeed, 0f);
             int[] directions = new int[]
             {
                 speeds[0] < 0f ? -1 : 1,
                 speeds[1] < 0f ? -1 : 1,
                 speeds[2] < 0f ? -1 : 1
             };
+            SetScheduledRoll(index, 1, startTimes, ResolveEndTimes(rollEndTime, startTimes),
+                GetCurrentReelAngles(), GetCurrentReelAngles(), speeds, directions);
+        }
 
+        private void SetScheduledRoll(int index, int type, int[] startTimes, int[] endTimes, float[] startAngles, float[] goalAngles, float[] speeds, int[] directions)
+        {
+            scheduledRollType[index] = type;
             scheduledRollStartTime[index] = startTimes;
             scheduledRollEndTime[index] = endTimes;
+            scheduledRollStartAngle[index] = startAngles;
+            scheduledRollGoalAngle[index] = goalAngles;
             scheduledRollSpeed[index] = speeds;
-            scheduledRollStartAngle[index] = GetCurrentReelAngles();
-            scheduledRollGoalAngle[index] = GetCurrentReelAngles();
             scheduledRollDirection[index] = directions;
+        }
+
+        /// <summary>nullや不足分は呼び出し時点の時刻で補う。</summary>
+        private int[] ResolveStartTimes(int[] rollStartTime)
+        {
+            return NormalizeIntArray3(rollStartTime, Networking.GetServerTimeInMilliseconds());
+        }
+
+        /// <summary>nullなら各開始時刻の1000ms後、不足分は左リール開始の1000ms後で補う。</summary>
+        private int[] ResolveEndTimes(int[] rollEndTime, int[] startTimes)
+        {
+            return rollEndTime != null ? NormalizeIntArray3(rollEndTime, startTimes[0] + 1000) : CreateDefaultEndTimes(startTimes);
+        }
+
+        private float[] ResolveStartAngles(float[] rollStartAngle)
+        {
+            return rollStartAngle != null ? NormalizeFloatArray3(rollStartAngle, 0f) : GetCurrentReelAngles();
+        }
+
+        private float[] ResolveGoalAngles(float[] rollGoalAngle, float[] startAngles)
+        {
+            return rollGoalAngle != null ? NormalizeFloatArray3(rollGoalAngle, 0f) : startAngles;
         }
 
         private int GetScheduledDirection(int reelIndex)

@@ -138,81 +138,77 @@ namespace AX.UdonSlot.REV1_0
             int stopReelCount = GetStoppedReelCount();
             
             Debug.Log($"制御名: {flag}");
-
             Debug.Log("リール停止数: " + stopReelCount);
             Debug.Log($"停止位置(内部値): {reelDatas[reelIndex].symbols[currentSymbol]}({currentSymbol})");
             Debug.Log($"滑り猶予圏内シンボルs: {string.Join(", ", symbols)}");
 
-            // ReelControlの確認をし、なければコントロール制御で返す。
-            int reelControlDataIndex = 0;
-            ReelControlData reelControlData = null;
-            int stopPatternIndex = 0;
-
-            // reelControlDataが有効かどうかのフラグ。これがfalseの場合はコントロール制御で滑りコマ数を決定する。
-            bool isReelControlDataValid = false;
-
-            if (reelControl == null || reelControl.flagNames == null || reelControl.reelControlDataList == null)
-            {
-                Debug.Log("ReelControl が未設定");
-            }
-            else
-            {
-                reelControlDataIndex = Array.IndexOf(reelControl.flagNames, flag);
-                if (reelControlDataIndex == -1 || reelControlDataIndex >= reelControl.reelControlDataList.Length)
-                {
-                    Debug.Log("ReelControlData が見つからない");
-                }
-                else
-                {
-                    reelControlData = reelControl.reelControlDataList[reelControlDataIndex];
-                    isReelControlDataValid = Utilities.IsValid(reelControlData);
-                    stopPatternIndex = ReelControlData.GetIndexForReelStopPattern(
-                        mainBoard.stoppedReelsStopOrder[0],
-                        mainBoard.stoppedReelsStopOrder[1],
-                        mainBoard.stoppedReelsStopOrder[2]
-                    );
-                    Debug.Log("ReelControlData が見つかりました: " + flag + "、停止パターンインデックス: " +
-                              stopPatternIndex);
-                }
-            }
-
-
-            bool isTableControlEnabled =
-                !isAllDynamicControl &&
-                isReelControlDataValid &&
-                reelControlData.IsReelStopTableStyle != null &&
-                reelControlData.IsReelStopTableStyle.Length > stopPatternIndex &&
-                reelControlData.IsReelStopTableStyle[stopPatternIndex];
-
-            if (isTableControlEnabled)
-            {
-                int left = mainBoard.stoppedReelsSymbolIndex[0] >= 0 ? GetStoppedLowerSymbolIndex(0) : -1;
-                int center = mainBoard.stoppedReelsSymbolIndex[1] >= 0 ? GetStoppedLowerSymbolIndex(1) : -1;
-                int right = mainBoard.stoppedReelsSymbolIndex[2] >= 0 ? GetStoppedLowerSymbolIndex(2) : -1;
-                int conditionalSlip = reelControlData.GetConditionalSlip(stopPatternIndex, left, center, right, currentSymbol);
-                if (conditionalSlip >= 0) return conditionalSlip;
-
-                // テーブル制御
-                if (reelControlData.reelStopSlipCount != null &&
-                    reelControlData.reelStopSlipCount.Length > stopPatternIndex &&
-                    reelControlData.reelStopSlipCount[stopPatternIndex] != null &&
-                    reelControlData.reelStopSlipCount[stopPatternIndex].Length > currentSymbol)
-                {
-                    int slipCount = reelControlData.reelStopSlipCount[stopPatternIndex][currentSymbol];
-                    Debug.Log($"テーブル制御: パターン{stopPatternIndex}のリール{reelIndex}の停止位置({currentSymbol})の滑りコマ数は{slipCount}");
-                    return slipCount;
-                }
-                else
-                {
-                    Debug.Log(
-                        $"テーブル制御: パターン{stopPatternIndex}のリール{reelIndex}の停止位置({currentSymbol})の滑りコマ数の情報が存在しないため0を返す");
-                    return 0;
-                }
-            }
-            else
+            // 該当するテーブル制御がなければコントロール制御で決める。
+            int stopPatternIndex = ReelControlData.GetIndexForReelStopPattern(
+                mainBoard.stoppedReelsStopOrder[0],
+                mainBoard.stoppedReelsStopOrder[1],
+                mainBoard.stoppedReelsStopOrder[2]
+            );
+            ReelControlData reelControlData = FindReelControlData(flag, stopPatternIndex);
+            if (isAllDynamicControl || !IsTableControlPattern(reelControlData, stopPatternIndex))
             {
                 return DynamicControl(symbols, currentSymbol, reelIndex, stopReelCount);
             }
+
+            int conditionalSlip = reelControlData.GetConditionalSlip(
+                stopPatternIndex,
+                GetFinalLowerSymbolIndex(0),
+                GetFinalLowerSymbolIndex(1),
+                GetFinalLowerSymbolIndex(2),
+                currentSymbol
+            );
+            if (conditionalSlip >= 0) return conditionalSlip;
+
+            int[][] slipTable = reelControlData.reelStopSlipCount;
+            if (slipTable == null ||
+                slipTable.Length <= stopPatternIndex ||
+                slipTable[stopPatternIndex] == null ||
+                slipTable[stopPatternIndex].Length <= currentSymbol)
+            {
+                Debug.Log($"テーブル制御: パターン{stopPatternIndex}のリール{reelIndex}の停止位置({currentSymbol})の滑りコマ数の情報が存在しないため0を返す");
+                return 0;
+            }
+
+            int slipCount = slipTable[stopPatternIndex][currentSymbol];
+            Debug.Log($"テーブル制御: パターン{stopPatternIndex}のリール{reelIndex}の停止位置({currentSymbol})の滑りコマ数は{slipCount}");
+            return slipCount;
+        }
+
+        /// <summary>制御名に対応するReelControlDataを返す。未設定・未登録ならnull。</summary>
+        private ReelControlData FindReelControlData(string flag, int stopPatternIndex)
+        {
+            if (reelControl == null || reelControl.flagNames == null || reelControl.reelControlDataList == null)
+            {
+                Debug.Log("ReelControl が未設定");
+                return null;
+            }
+
+            int dataIndex = Array.IndexOf(reelControl.flagNames, flag);
+            if (dataIndex == -1 || dataIndex >= reelControl.reelControlDataList.Length)
+            {
+                Debug.Log("ReelControlData が見つからない");
+                return null;
+            }
+
+            Debug.Log("ReelControlData が見つかりました: " + flag + "、停止パターンインデックス: " + stopPatternIndex);
+            return reelControl.reelControlDataList[dataIndex];
+        }
+
+        private bool IsTableControlPattern(ReelControlData reelControlData, int stopPatternIndex)
+        {
+            if (!Utilities.IsValid(reelControlData)) return false;
+            bool[] tableStyles = reelControlData.IsReelStopTableStyle;
+            return tableStyles != null && tableStyles.Length > stopPatternIndex && tableStyles[stopPatternIndex];
+        }
+
+        /// <summary>停止済みリールの滑り後の下段位置。未停止なら-1。</summary>
+        private int GetFinalLowerSymbolIndex(int reelIndex)
+        {
+            return mainBoard.stoppedReelsSymbolIndex[reelIndex] >= 0 ? GetStoppedLowerSymbolIndex(reelIndex) : -1;
         }
 
         private string[] GetVisibleSymbols(int reelIndex, int currentSymbol)
@@ -341,24 +337,14 @@ namespace AX.UdonSlot.REV1_0
                         if (!IsWinPairPossible(winPair, payLine, reelIndex, candidateLowerSymbol)) continue;
 
                         candidateCombinationCount++;
-                        if (winPair.payout > candidatePayout)
-                        {
-                            candidatePayout = winPair.payout;
-                        }
+                        if (winPair.payout > candidatePayout) candidatePayout = winPair.payout;
                     }
                 }
 
-                if (IsPriorityCandidateBetter(
-                    priority,
-                    candidatePayout,
-                    candidateCombinationCount,
-                    bestPayout,
-                    bestCombinationCount))
-                {
-                    bestSlip = slip;
-                    bestPayout = candidatePayout;
-                    bestCombinationCount = candidateCombinationCount;
-                }
+                if (!IsPriorityCandidateBetter(priority, candidatePayout, candidateCombinationCount, bestPayout, bestCombinationCount)) continue;
+                bestSlip = slip;
+                bestPayout = candidatePayout;
+                bestCombinationCount = candidateCombinationCount;
             }
 
             return bestSlip;
@@ -373,19 +359,11 @@ namespace AX.UdonSlot.REV1_0
         {
             if (priority == ReelControlPriority.CombinationCount)
             {
-                if (candidateCombinationCount != bestCombinationCount)
-                {
-                    return candidateCombinationCount > bestCombinationCount;
-                }
-
+                if (candidateCombinationCount != bestCombinationCount) return candidateCombinationCount > bestCombinationCount;
                 return candidatePayout > bestPayout;
             }
 
-            if (candidatePayout != bestPayout)
-            {
-                return candidatePayout > bestPayout;
-            }
-
+            if (candidatePayout != bestPayout) return candidatePayout > bestPayout;
             return candidateCombinationCount > bestCombinationCount;
         }
 
@@ -403,15 +381,13 @@ namespace AX.UdonSlot.REV1_0
                     continue;
                 }
 
+                // 停止済みは実際の停止順、未停止は今後の停止順に収まるか確認する。
                 int stoppedOrder = mainBoard.stoppedReelsStopOrder[reelIndex];
                 if (stoppedOrder >= 1)
                 {
                     if (requiredOrder != stoppedOrder) return false;
                 }
-                else if (requiredOrder <= currentStopOrder || requiredOrder > reelDatas.Length)
-                {
-                    return false;
-                }
+                else if (requiredOrder <= currentStopOrder || requiredOrder > reelDatas.Length) return false;
             }
 
             return true;
@@ -437,23 +413,12 @@ namespace AX.UdonSlot.REV1_0
                 string requiredSymbol = winPair.symbols[reelIndex];
                 if (string.IsNullOrEmpty(requiredSymbol)) continue;
 
-                if (reelIndex == targetReelIndex)
+                int lowerSymbol = reelIndex == targetReelIndex ? candidateLowerSymbol : GetFinalLowerSymbolIndex(reelIndex);
+                if (lowerSymbol >= 0)
                 {
-                    string candidateSymbol = GetSymbolAtRow(reelIndex, candidateLowerSymbol, row);
-                    if (candidateSymbol != requiredSymbol) return false;
-                    continue;
+                    if (GetSymbolAtRow(reelIndex, lowerSymbol, row) != requiredSymbol) return false;
                 }
-
-                if (mainBoard.stoppedReelsSymbolIndex[reelIndex] >= 0)
-                {
-                    int stoppedLowerSymbol = GetStoppedLowerSymbolIndex(reelIndex);
-                    string stoppedSymbol = GetSymbolAtRow(reelIndex, stoppedLowerSymbol, row);
-                    if (stoppedSymbol != requiredSymbol) return false;
-                }
-                else if (!ReelContainsSymbol(reelIndex, requiredSymbol))
-                {
-                    return false;
-                }
+                else if (!ReelContainsSymbol(reelIndex, requiredSymbol)) return false;
             }
 
             return true;
@@ -574,6 +539,7 @@ namespace AX.UdonSlot.REV1_0
             for (int slip = 0; slip <= maximumSlip; slip++)
             {
                 int candidateLowerSymbol = NormalizeSymbolIndex(normalizedCurrentSymbol - slip, reelSymbolCount);
+                // 当選役は「全リールで揃い得る」と「今回のリールだけ一致」を、優先側と非優先側に分けて集計する。
                 int preferredPayout = 0;
                 int preferredCombinationCount = 0;
                 int fallbackPayout = 0;
@@ -582,46 +548,51 @@ namespace AX.UdonSlot.REV1_0
                 int preferredReelCombinationCount = 0;
                 int fallbackReelPayout = 0;
                 int fallbackReelCombinationCount = 0;
+                // 非当選役は、この位置で止めると成立が確定してしまう組み合わせ数を数える。
                 int forbiddenCombinationCount = 0;
 
                 for (int pairIndex = 0; pairIndex < payoutTable.GetWinPairCount(); pairIndex++)
                 {
-                    if (!IsPayoutTableCandidate(payoutTable, lotteryTable, pairIndex, activeFlag)) continue;
+                    bool isWon = IsPayoutTableCandidate(payoutTable, lotteryTable, pairIndex, activeFlag);
                     if (!IsPayoutTableStopOrderPossible(payoutTable, pairIndex, reelIndex, currentStopOrder)) continue;
+
+                    int payout = 0;
+                    bool isPreferred = false;
+                    if (isWon)
+                    {
+                        payout = payoutTable.GetPayout(pairIndex, mainBoard.bet);
+                        bool isBonus = payoutTable.IsBonus(pairIndex);
+                        isPreferred = rolePriority == ReelRolePriority.BonusFirst ? isBonus : !isBonus;
+                    }
 
                     for (int lineIndex = 0; lineIndex < payoutTable.GetPayLineCount(); lineIndex++)
                     {
                         if (!payoutTable.IsPayLineActive(lineIndex, mainBoard.bet)) continue;
-                        bool isTargetReelMatched = IsPayoutTableTargetReelMatched(
-                            payoutTable,
-                            pairIndex,
-                            lineIndex,
-                            reelIndex,
-                            candidateLowerSymbol
-                        );
 
-                        int payout = payoutTable.GetPayout(pairIndex, mainBoard.bet);
-                        bool isBonus = payoutTable.IsBonus(pairIndex);
-                        bool isPreferred = rolePriority == ReelRolePriority.BonusFirst
-                            ? isBonus
-                            : !isBonus;
-                        if (isTargetReelMatched && isPreferred)
+                        if (!isWon)
                         {
-                            preferredReelCombinationCount++;
-                            if (payout > preferredReelPayout) preferredReelPayout = payout;
-                        }
-                        else if (isTargetReelMatched)
-                        {
-                            fallbackReelCombinationCount++;
-                            if (payout > fallbackReelPayout) fallbackReelPayout = payout;
+                            if (IsPayoutTableWinPairForced(payoutTable, pairIndex, lineIndex, reelIndex, candidateLowerSymbol))
+                            {
+                                forbiddenCombinationCount++;
+                            }
+                            continue;
                         }
 
-                        if (!IsPayoutTableWinPairPossible(
-                            payoutTable,
-                            pairIndex,
-                            lineIndex,
-                            reelIndex,
-                            candidateLowerSymbol)) continue;
+                        if (IsPayoutTableTargetReelMatched(payoutTable, pairIndex, lineIndex, reelIndex, candidateLowerSymbol))
+                        {
+                            if (isPreferred)
+                            {
+                                preferredReelCombinationCount++;
+                                if (payout > preferredReelPayout) preferredReelPayout = payout;
+                            }
+                            else
+                            {
+                                fallbackReelCombinationCount++;
+                                if (payout > fallbackReelPayout) fallbackReelPayout = payout;
+                            }
+                        }
+
+                        if (!IsPayoutTableWinPairPossible(payoutTable, pairIndex, lineIndex, reelIndex, candidateLowerSymbol)) continue;
 
                         if (isPreferred)
                         {
@@ -636,86 +607,56 @@ namespace AX.UdonSlot.REV1_0
                     }
                 }
 
-                for (int pairIndex = 0; pairIndex < payoutTable.GetWinPairCount(); pairIndex++)
-                {
-                    if (IsPayoutTableCandidate(payoutTable, lotteryTable, pairIndex, activeFlag)) continue;
-                    if (!IsPayoutTableStopOrderPossible(
-                        payoutTable,
-                        pairIndex,
-                        reelIndex,
-                        currentStopOrder)) continue;
+                // 優先側に候補が1つでもあれば優先側だけで評価する。
+                bool hasPreferredCandidate = preferredCombinationCount > 0 || preferredReelCombinationCount > 0;
+                int fullCombinationCount = hasPreferredCandidate ? preferredCombinationCount : fallbackCombinationCount;
+                int fullPayout = hasPreferredCandidate ? preferredPayout : fallbackPayout;
+                int reelCombinationCount = hasPreferredCandidate ? preferredReelCombinationCount : fallbackReelCombinationCount;
+                int reelPayout = hasPreferredCandidate ? preferredReelPayout : fallbackReelPayout;
 
-                    for (int lineIndex = 0; lineIndex < payoutTable.GetPayLineCount(); lineIndex++)
-                    {
-                        if (!payoutTable.IsPayLineActive(lineIndex, mainBoard.bet)) continue;
-                        if (IsPayoutTableWinPairForced(
-                            payoutTable,
-                            pairIndex,
-                            lineIndex,
-                            reelIndex,
-                            candidateLowerSymbol))
-                        {
-                            forbiddenCombinationCount++;
-                        }
-                    }
-                }
-
-                bool hasPreferredCandidate = preferredCombinationCount > 0 ||
-                    preferredReelCombinationCount > 0;
                 int candidateRolePriority = hasPreferredCandidate ? 1 : 0;
-                int fullCombinationCount = hasPreferredCandidate
-                    ? preferredCombinationCount
-                    : fallbackCombinationCount;
-                int reelCombinationCount = hasPreferredCandidate
-                    ? preferredReelCombinationCount
-                    : fallbackReelCombinationCount;
-                int candidateMatchLevel = fullCombinationCount > 0
-                    ? 2
-                    : reelCombinationCount > 0 ? 1 : 0;
+                int candidateMatchLevel = 0;
                 int candidatePayout = 0;
                 int candidateCombinationCount = 0;
-                if (candidateMatchLevel == 2)
+                if (fullCombinationCount > 0)
                 {
-                    candidatePayout = hasPreferredCandidate ? preferredPayout : fallbackPayout;
+                    candidateMatchLevel = 2;
+                    candidatePayout = fullPayout;
                     candidateCombinationCount = fullCombinationCount;
                 }
-                else if (candidateMatchLevel == 1)
+                else if (reelCombinationCount > 0)
                 {
-                    candidatePayout = hasPreferredCandidate ? preferredReelPayout : fallbackReelPayout;
+                    candidateMatchLevel = 1;
+                    candidatePayout = reelPayout;
                     candidateCombinationCount = reelCombinationCount;
                 }
-                bool hasFewerForbiddenCombinations =
-                    bestForbiddenCombinationCount < 0 ||
-                    forbiddenCombinationCount < bestForbiddenCombinationCount;
-                bool hasSameForbiddenCombinationCount =
-                    forbiddenCombinationCount == bestForbiddenCombinationCount;
-                bool isBetterRolePriority = hasSameForbiddenCombinationCount &&
-                    candidateRolePriority > bestRolePriority;
-                bool hasSameRolePriority = hasSameForbiddenCombinationCount &&
-                    candidateRolePriority == bestRolePriority;
-                bool isBetterMatchLevel = hasSameRolePriority &&
-                    candidateMatchLevel > bestMatchLevel;
-                bool isSameMatchLevelAndBetter = hasSameRolePriority &&
-                    candidateMatchLevel == bestMatchLevel &&
-                    IsPriorityCandidateBetter(
-                        priority,
-                        candidatePayout,
-                        candidateCombinationCount,
-                        bestPayout,
-                        bestCombinationCount
-                    );
-                if (hasFewerForbiddenCombinations ||
-                    isBetterRolePriority ||
-                    isBetterMatchLevel ||
-                    isSameMatchLevelAndBetter)
+
+                // 確定してしまう非当選役が少ない → 優先側 → 一致段階 → 枚数/組み合わせ数 の順で比較する。
+                bool isBetter;
+                if (forbiddenCombinationCount != bestForbiddenCombinationCount)
                 {
-                    bestSlip = slip;
-                    bestForbiddenCombinationCount = forbiddenCombinationCount;
-                    bestRolePriority = candidateRolePriority;
-                    bestMatchLevel = candidateMatchLevel;
-                    bestPayout = candidatePayout;
-                    bestCombinationCount = candidateCombinationCount;
+                    isBetter = bestForbiddenCombinationCount < 0 || forbiddenCombinationCount < bestForbiddenCombinationCount;
                 }
+                else if (candidateRolePriority != bestRolePriority)
+                {
+                    isBetter = candidateRolePriority > bestRolePriority;
+                }
+                else if (candidateMatchLevel != bestMatchLevel)
+                {
+                    isBetter = candidateMatchLevel > bestMatchLevel;
+                }
+                else
+                {
+                    isBetter = IsPriorityCandidateBetter(priority, candidatePayout, candidateCombinationCount, bestPayout, bestCombinationCount);
+                }
+                if (!isBetter) continue;
+
+                bestSlip = slip;
+                bestForbiddenCombinationCount = forbiddenCombinationCount;
+                bestRolePriority = candidateRolePriority;
+                bestMatchLevel = candidateMatchLevel;
+                bestPayout = candidatePayout;
+                bestCombinationCount = candidateCombinationCount;
             }
 
             return bestSlip;
@@ -756,9 +697,7 @@ namespace AX.UdonSlot.REV1_0
 
             for (int reelIndex = 0; reelIndex < 3; reelIndex++)
             {
-                if (!Utilities.IsValid(reelDatas[reelIndex])) return symbols;
-                if (reelDatas[reelIndex].symbols == null ||
-                    reelDatas[reelIndex].symbols.Length == 0) return symbols;
+                if (!IsReelDataValid(reelIndex)) return symbols;
                 if (mainBoard.stoppedReelsSymbolIndex[reelIndex] < 0) return symbols;
             }
 
@@ -777,8 +716,7 @@ namespace AX.UdonSlot.REV1_0
                 for (int reelIndex = 0; reelIndex < 3; reelIndex++)
                 {
                     int row = payoutTable.GetPayLineRow(lineIndex, reelIndex);
-                    int stoppedLowerSymbol = GetStoppedLowerSymbolIndex(reelIndex);
-                    symbols[outputIndex] = GetSymbolAtRow(reelIndex, stoppedLowerSymbol, row);
+                    symbols[outputIndex] = GetSymbolAtRow(reelIndex, GetStoppedLowerSymbolIndex(reelIndex), row);
                     outputIndex++;
                 }
             }
@@ -822,8 +760,7 @@ namespace AX.UdonSlot.REV1_0
             if (!Utilities.IsValid(mainBoard) || !Utilities.IsValid(payoutTable)) return false;
             if (reelDatas == null || reelDatas.Length < 3) return false;
             if (reelIndex < 0 || reelIndex >= reelDatas.Length) return false;
-            if (!Utilities.IsValid(reelDatas[reelIndex])) return false;
-            if (reelDatas[reelIndex].symbols == null || reelDatas[reelIndex].symbols.Length == 0) return false;
+            if (!IsReelDataValid(reelIndex)) return false;
             if (mainBoard.stoppedReelsSymbolIndex == null || mainBoard.stoppedReelsSymbolIndex.Length < 3) return false;
             if (mainBoard.stoppedReelsThroughSymbolCount == null ||
                 mainBoard.stoppedReelsThroughSymbolCount.Length < 3) return false;
@@ -848,15 +785,13 @@ namespace AX.UdonSlot.REV1_0
                     continue;
                 }
 
+                // 停止済みは実際の停止順、未停止は今後の停止順に収まるか確認する。
                 int stoppedOrder = mainBoard.stoppedReelsStopOrder[reelIndex];
                 if (stoppedOrder >= 1)
                 {
                     if (requiredOrder != stoppedOrder) return false;
                 }
-                else if (requiredOrder <= currentStopOrder || requiredOrder > 3)
-                {
-                    return false;
-                }
+                else if (requiredOrder <= currentStopOrder || requiredOrder > 3) return false;
             }
 
             return true;
@@ -871,8 +806,7 @@ namespace AX.UdonSlot.REV1_0
         {
             for (int reelIndex = 0; reelIndex < 3; reelIndex++)
             {
-                if (!Utilities.IsValid(reelDatas[reelIndex])) return false;
-                if (reelDatas[reelIndex].symbols == null || reelDatas[reelIndex].symbols.Length == 0) return false;
+                if (!IsReelDataValid(reelIndex)) return false;
 
                 int row = payoutTable.GetPayLineRow(lineIndex, reelIndex);
                 if (row < 0 || row > 2) return false;
@@ -880,23 +814,13 @@ namespace AX.UdonSlot.REV1_0
                 string requiredSymbol = payoutTable.GetSymbol(pairIndex, reelIndex);
                 if (string.IsNullOrEmpty(requiredSymbol)) continue;
 
-                if (reelIndex == targetReelIndex)
+                // 対象リールは候補位置、停止済みは最終位置、未停止はリール上に図柄があるかで判定する。
+                int lowerSymbol = reelIndex == targetReelIndex ? candidateLowerSymbol : GetFinalLowerSymbolIndex(reelIndex);
+                if (lowerSymbol >= 0)
                 {
-                    if (!IsPayoutSymbolMatched(
-                        GetSymbolAtRow(reelIndex, candidateLowerSymbol, row),
-                        requiredSymbol)) return false;
+                    if (!IsPayoutSymbolMatched(GetSymbolAtRow(reelIndex, lowerSymbol, row), requiredSymbol)) return false;
                 }
-                else if (mainBoard.stoppedReelsSymbolIndex[reelIndex] >= 0)
-                {
-                    int stoppedLowerSymbol = GetStoppedLowerSymbolIndex(reelIndex);
-                    if (!IsPayoutSymbolMatched(
-                        GetSymbolAtRow(reelIndex, stoppedLowerSymbol, row),
-                        requiredSymbol)) return false;
-                }
-                else if (!ReelContainsPayoutSymbol(reelIndex, requiredSymbol))
-                {
-                    return false;
-                }
+                else if (!ReelContainsPayoutSymbol(reelIndex, requiredSymbol)) return false;
             }
 
             return true;
@@ -919,10 +843,7 @@ namespace AX.UdonSlot.REV1_0
             int row = payoutTable.GetPayLineRow(lineIndex, targetReelIndex);
             if (row < 0 || row > 2) return false;
 
-            return IsPayoutSymbolMatched(
-                GetSymbolAtRow(targetReelIndex, candidateLowerSymbol, row),
-                requiredSymbol
-            );
+            return IsPayoutSymbolMatched(GetSymbolAtRow(targetReelIndex, candidateLowerSymbol, row), requiredSymbol);
         }
 
         /// <summary>
@@ -938,31 +859,18 @@ namespace AX.UdonSlot.REV1_0
         {
             for (int reelIndex = 0; reelIndex < 3; reelIndex++)
             {
-                if (!Utilities.IsValid(reelDatas[reelIndex])) return false;
-                if (reelDatas[reelIndex].symbols == null ||
-                    reelDatas[reelIndex].symbols.Length == 0) return false;
+                if (!IsReelDataValid(reelIndex)) return false;
 
                 string requiredSymbol = payoutTable.GetSymbol(pairIndex, reelIndex);
                 int row = payoutTable.GetPayLineRow(lineIndex, reelIndex);
                 if (row < 0 || row > 2) return false;
 
-                if (reelIndex == targetReelIndex)
+                int lowerSymbol = reelIndex == targetReelIndex ? candidateLowerSymbol : GetFinalLowerSymbolIndex(reelIndex);
+                if (lowerSymbol >= 0)
                 {
-                    if (!IsPayoutSymbolMatched(
-                        GetSymbolAtRow(reelIndex, candidateLowerSymbol, row),
-                        requiredSymbol)) return false;
+                    if (!IsPayoutSymbolMatched(GetSymbolAtRow(reelIndex, lowerSymbol, row), requiredSymbol)) return false;
                 }
-                else if (mainBoard.stoppedReelsSymbolIndex[reelIndex] >= 0)
-                {
-                    int stoppedLowerSymbol = GetStoppedLowerSymbolIndex(reelIndex);
-                    if (!IsPayoutSymbolMatched(
-                        GetSymbolAtRow(reelIndex, stoppedLowerSymbol, row),
-                        requiredSymbol)) return false;
-                }
-                else if (!string.IsNullOrEmpty(requiredSymbol))
-                {
-                    return false;
-                }
+                else if (!string.IsNullOrEmpty(requiredSymbol)) return false;
             }
 
             return true;
@@ -985,21 +893,24 @@ namespace AX.UdonSlot.REV1_0
         {
             for (int reelIndex = 0; reelIndex < 3; reelIndex++)
             {
-                if (!Utilities.IsValid(reelDatas[reelIndex])) return false;
-                if (reelDatas[reelIndex].symbols == null || reelDatas[reelIndex].symbols.Length == 0) return false;
+                if (!IsReelDataValid(reelIndex)) return false;
                 if (mainBoard.stoppedReelsSymbolIndex[reelIndex] < 0) return false;
 
                 string requiredSymbol = payoutTable.GetSymbol(pairIndex, reelIndex);
                 if (string.IsNullOrEmpty(requiredSymbol)) continue;
 
                 int row = payoutTable.GetPayLineRow(lineIndex, reelIndex);
-                int stoppedLowerSymbol = GetStoppedLowerSymbolIndex(reelIndex);
-                if (!IsPayoutSymbolMatched(
-                    GetSymbolAtRow(reelIndex, stoppedLowerSymbol, row),
-                    requiredSymbol)) return false;
+                if (!IsPayoutSymbolMatched(GetSymbolAtRow(reelIndex, GetStoppedLowerSymbolIndex(reelIndex), row), requiredSymbol)) return false;
             }
 
             return true;
+        }
+
+        private bool IsReelDataValid(int reelIndex)
+        {
+            return Utilities.IsValid(reelDatas[reelIndex]) &&
+                reelDatas[reelIndex].symbols != null &&
+                reelDatas[reelIndex].symbols.Length > 0;
         }
 
         /// <summary>リール上に、カンマ区切り候補のいずれかが存在するか確認する。</summary>
@@ -1026,12 +937,8 @@ namespace AX.UdonSlot.REV1_0
             int textLength = requiredSymbols.Length;
             for (int i = 0; i <= textLength; i++)
             {
-                bool isSeparator = i == textLength;
-                if (!isSeparator)
-                {
-                    isSeparator = requiredSymbols.Substring(i, 1) == ",";
-                }
-                if (!isSeparator) continue;
+                // 区切りのカンマか末尾に来たら、直前の候補を前後の空白を除いて比較する。
+                if (i < textLength && requiredSymbols.Substring(i, 1) != ",") continue;
 
                 int trimmedStart = candidateStart;
                 int trimmedEnd = i;

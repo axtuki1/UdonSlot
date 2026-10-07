@@ -23,42 +23,23 @@ namespace AX.UdonSlot.REV1_0 {
         
         private void FixedUpdate()
         {
+            MainBoard mainBoard = reelOutputController.mainBoard;
             activeFlagText.text = reelOutputController.GetActiveFlagDisplayName();
-            string activeLineText = "";
-            string[] activePayLineSymbols = reelOutputController.mainBoard.lastPayLineSymbols;
-            int lineCount = 0;
-            for (int i = 0; i < activePayLineSymbols.Length; i += 3)
+
+            string lineText = "";
+            string[] payLineSymbols = mainBoard.lastPayLineSymbols;
+            for (int i = 0; i < payLineSymbols.Length; i += 3)
             {
-                lineCount++;
-                activeLineText += $"LINE{lineCount}: {activePayLineSymbols[i]}, {activePayLineSymbols[i + 1]}, {activePayLineSymbols[i + 2]}\n";
+                lineText += $"LINE{i / 3 + 1}: {payLineSymbols[i]}, {payLineSymbols[i + 1]}, {payLineSymbols[i + 2]}\n";
             }
-            this.activeLineText.text = activeLineText;
-            int[] throughSymbolCount = reelOutputController.mainBoard.stoppedReelsThroughSymbolCount;
-            string[] throughSymbolCountText = new string[3];
-            for (int i = 0; i < throughSymbolCount.Length; i++)
-            {
-                if (reelOutputController.mainBoard.isRollingReel1 && i == 0)
-                {
-                    throughSymbolCountText[i] = "-";
-                }
-                else if (reelOutputController.mainBoard.isRollingReel2 && i == 1)
-                {
-                    throughSymbolCountText[i] = "-";
-                }
-                else if (reelOutputController.mainBoard.isRollingReel3 && i == 2)
-                {
-                    throughSymbolCountText[i] = "-";
-                }
-                else if (throughSymbolCount[i] < 0)
-                {
-                    throughSymbolCountText[i] = throughSymbolCount[i].ToString();
-                }
-                else
-                {
-                    throughSymbolCountText[i] = throughSymbolCount[i].ToString();
-                }
-            }
-            slipCountText.text = $"{throughSymbolCountText[0]} / {throughSymbolCountText[1]} / {throughSymbolCountText[2]}";
+            activeLineText.text = lineText;
+
+            // 回転中のリールは滑りコマ数を「-」で表示する。
+            int[] throughSymbolCount = mainBoard.stoppedReelsThroughSymbolCount;
+            string left = mainBoard.isRollingReel1 ? "-" : throughSymbolCount[0].ToString();
+            string center = mainBoard.isRollingReel2 ? "-" : throughSymbolCount[1].ToString();
+            string right = mainBoard.isRollingReel3 ? "-" : throughSymbolCount[2].ToString();
+            slipCountText.text = $"{left} / {center} / {right}";
             WriteDebugText();
         }
         

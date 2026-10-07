@@ -118,7 +118,6 @@ namespace AX.UdonSlot.REV1_0
         /// <summary>ハズレ指定がない既存データを、各値の相対比率で抽選する。</summary>
         private string DrawFlagFromRelativeRatios(int entryCount, float[] probabilityRatios)
         {
-
             float totalWeight = 0f;
             for (int i = 0; i < entryCount; i++)
             {

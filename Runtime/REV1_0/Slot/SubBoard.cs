@@ -127,9 +127,7 @@ namespace AX.UdonSlot.REV1_0
         /// <summary>指定リール（左から0～2）の上下照明色を設定する。HDR値対応、ローカル演出。</summary>
         public void SetReelLightColors(int reelIndex, Color upperColor, Color lowerColor)
         {
-            if (reelIndex < 0 || reelIndex >= 3) return;
-            InitializeReelEmissionMasks();
-            if (!reelLightColorsSupported[reelIndex] || !Utilities.IsValid(emissionMaterials[reelIndex])) return;
+            if (!CanSetReelLightColor(reelIndex)) return;
             emissionMaterials[reelIndex].SetColor(ReelUpperLightColorProperty, upperColor);
             emissionMaterials[reelIndex].SetColor(ReelLowerLightColorProperty, lowerColor);
         }
@@ -137,19 +135,29 @@ namespace AX.UdonSlot.REV1_0
         /// <summary>指定リールの上側の照明色のみ変更する。</summary>
         public void SetReelUpperLightColor(int reelIndex, Color color)
         {
-            if (reelIndex < 0 || reelIndex >= 3) return;
-            InitializeReelEmissionMasks();
-            if (!reelLightColorsSupported[reelIndex] || !Utilities.IsValid(emissionMaterials[reelIndex])) return;
+            if (!CanSetReelLightColor(reelIndex)) return;
             emissionMaterials[reelIndex].SetColor(ReelUpperLightColorProperty, color);
         }
 
         /// <summary>指定リールの下側の照明色のみ変更する。</summary>
         public void SetReelLowerLightColor(int reelIndex, Color color)
         {
-            if (reelIndex < 0 || reelIndex >= 3) return;
-            InitializeReelEmissionMasks();
-            if (!reelLightColorsSupported[reelIndex] || !Utilities.IsValid(emissionMaterials[reelIndex])) return;
+            if (!CanSetReelLightColor(reelIndex)) return;
             emissionMaterials[reelIndex].SetColor(ReelLowerLightColorProperty, color);
+        }
+
+        private bool CanSetReelLightColor(int reelIndex)
+        {
+            if (reelIndex < 0 || reelIndex >= 3) return false;
+            InitializeReelEmissionMasks();
+            return reelLightColorsSupported[reelIndex] && Utilities.IsValid(emissionMaterials[reelIndex]);
+        }
+
+        private bool CanSetReelSymbolLight(int reelIndex)
+        {
+            if (reelIndex < 0 || reelIndex >= 3) return false;
+            InitializeReelEmissionMasks();
+            return reelSymbolLightsSupported[reelIndex] && Utilities.IsValid(emissionMaterials[reelIndex]);
         }
 
         /// <summary>3リールすべての上下照明色を設定する。</summary>
@@ -167,9 +175,8 @@ namespace AX.UdonSlot.REV1_0
         /// <summary>表示窓の1コマのバックライト（発光1st）を0～1で指定する。通常の陰影・上下照明（発光2nd）は維持する。</summary>
         public void SetReelSymbolBrightness(int reelIndex, int rowIndex, float brightness)
         {
-            if (reelIndex < 0 || reelIndex >= 3 || rowIndex < 0 || rowIndex >= 3) return;
-            InitializeReelEmissionMasks();
-            if (!reelSymbolLightsSupported[reelIndex] || !Utilities.IsValid(emissionMaterials[reelIndex])) return;
+            if (rowIndex < 0 || rowIndex >= 3) return;
+            if (!CanSetReelSymbolLight(reelIndex)) return;
             Vector4 lights = reelSymbolLights[reelIndex];
             brightness = Mathf.Clamp01(brightness);
             if (rowIndex == 0) lights.x = brightness;
@@ -182,9 +189,7 @@ namespace AX.UdonSlot.REV1_0
         /// <summary>指定リールの上・中・下の点灯状態をまとめて設定する。</summary>
         public void SetReelSymbolLights(int reelIndex, bool top, bool middle, bool bottom)
         {
-            if (reelIndex < 0 || reelIndex >= 3) return;
-            InitializeReelEmissionMasks();
-            if (!reelSymbolLightsSupported[reelIndex] || !Utilities.IsValid(emissionMaterials[reelIndex])) return;
+            if (!CanSetReelSymbolLight(reelIndex)) return;
             Vector4 lights = new Vector4(top ? 1f : 0f, middle ? 1f : 0f, bottom ? 1f : 0f, 1f);
             reelSymbolLights[reelIndex] = lights;
             emissionMaterials[reelIndex].SetVector(ReelSymbolLightsProperty, lights);
@@ -249,24 +254,24 @@ namespace AX.UdonSlot.REV1_0
             StopButtonEffect(2, rightStopButton, mainBoard.isRollingReel3);
             // MaxBetボタン制御
             BetButtonEffect();
-            // wait
-            if (Utilities.IsValid(waitWrapper))
-            {
-                if (Utilities.IsValid(waitValue) && mainBoard.requestGameStart)
-                {
-                    float wait = mainBoard.GetLastGameStartElapsed() / (4.1f * 1000f);
-                    if (wait <= 1f)
-                    {
-                        waitValue.localScale = new Vector3(Mathf.Clamp01(wait), 1f, 1f);
-                        waitWrapper.gameObject.SetActive(true);
-                    }
-                }
-                else
-                {
-                    waitWrapper.gameObject.SetActive(false);
-                }
-            }
+            UpdateWaitView();
             UpdateLogic();
+        }
+
+        /// <summary>ウェイト中は残り時間のバーを表示する。ウェイト明けの表示はゲーム開始まで維持する。</summary>
+        private void UpdateWaitView()
+        {
+            if (!Utilities.IsValid(waitWrapper)) return;
+            if (!Utilities.IsValid(waitValue) || !mainBoard.requestGameStart)
+            {
+                waitWrapper.SetActive(false);
+                return;
+            }
+
+            float wait = mainBoard.GetLastGameStartElapsed() / (4.1f * 1000f);
+            if (wait > 1f) return;
+            waitValue.localScale = new Vector3(Mathf.Clamp01(wait), 1f, 1f);
+            waitWrapper.SetActive(true);
         }
 
         public void StopButtonEffect(int reelIndex)
@@ -294,37 +299,20 @@ namespace AX.UdonSlot.REV1_0
         public void StopButtonEffect(int reelIndex, Renderer stopButton, bool isRolling)
         {
             Material mat = stopButton.material;
-            // 押し順点滅
-            if (
-                mainBoard.isGaming &&
-                mainBoard.isPushOrder &&
-                mainBoard.isControllable &&
-                !mainBoard.isPushOrderMiss
-                )
+            Color emissionColor;
+            if (mainBoard.isGaming && mainBoard.isPushOrder && mainBoard.isControllable && !mainBoard.isPushOrderMiss)
             {
-                if (reelIndex == mainBoard.nextOrderReelIndex)
-                {
-                    // 対象リール
-                    float emission = Mathf.PingPong(Time.time * 4f, 0.8f);
-                    mat.SetColor("_EmissionColor", Color.white * 1.5f * emission);
-                }
-                else
-                {
-                    // 対象リールでない
-                    mat.SetColor("_EmissionColor", Color.black * 1.5f);
-                }
+                // 押し順ナビ: 次に押すリールだけ点滅させる。
+                emissionColor = reelIndex == mainBoard.nextOrderReelIndex
+                    ? Color.white * 1.5f * Mathf.PingPong(Time.time * 4f, 0.8f)
+                    : Color.black * 1.5f;
             }
             else
             {
-                if (isRolling && mainBoard.isControllable)
-                {
-                    mat.SetColor("_EmissionColor", stopButtonActiveColor);
-                } else
-                {
-                    mat.SetColor("_EmissionColor", stopButtonInactiveColor);
-                }
+                emissionColor = isRolling && mainBoard.isControllable ? stopButtonActiveColor : stopButtonInactiveColor;
             }
-            
+            mat.SetColor("_EmissionColor", emissionColor);
+
             StopButtonEffectLogic(reelIndex, stopButton, mat, isRolling);
         }
         
@@ -333,20 +321,8 @@ namespace AX.UdonSlot.REV1_0
         public void BetButtonEffect()
         {
             Material mat = betButton.material;
-            bool isCanBetting = false;
-            // bet可能か判定
-            if(mainBoard.maxBet > 0 && mainBoard.bet < mainBoard.maxBet && mainBoard.isControllable)
-            {
-                isCanBetting = true;
-            }
-            
-            if (isCanBetting && mainBoard.isControllable)
-            {
-                mat.SetColor("_EmissionColor", betButtonActiveColor);
-            } else
-            {
-                mat.SetColor("_EmissionColor", betButtonInactiveColor);
-            }
+            bool isCanBetting = mainBoard.maxBet > 0 && mainBoard.bet < mainBoard.maxBet && mainBoard.isControllable;
+            mat.SetColor("_EmissionColor", isCanBetting ? betButtonActiveColor : betButtonInactiveColor);
             BetButtonEffectLogic(betButton, mat, isCanBetting);
         }
         
@@ -376,11 +352,9 @@ namespace AX.UdonSlot.REV1_0
         
         public virtual void LeverOnLogic()
         {
-            if (Utilities.IsValid(soundBoard))
-            {
-                if(IsMainBoardOwner()) soundBoard.StopSound(SoundType.WAIT);
-                if(IsMainBoardOwner()) soundBoard.PlaySound(SoundType.SE1, (int)ClipType.START);
-            }
+            if (!CanPlaySound()) return;
+            soundBoard.StopSound(SoundType.WAIT);
+            soundBoard.PlaySound(SoundType.SE1, (int)ClipType.START);
         }
 
         [NetworkCallable]
@@ -391,11 +365,9 @@ namespace AX.UdonSlot.REV1_0
 
         public virtual void GameStartLogic()
         {
-            if (Utilities.IsValid(soundBoard))
-            {
-                if(IsMainBoardOwner()) soundBoard.StopSound(SoundType.WAIT);
-                if(IsMainBoardOwner()) soundBoard.PlaySound(SoundType.SE1, (int)ClipType.START);
-            }
+            if (!CanPlaySound()) return;
+            soundBoard.StopSound(SoundType.WAIT);
+            soundBoard.PlaySound(SoundType.SE1, (int)ClipType.START);
         }
 
         [NetworkCallable]
@@ -417,11 +389,9 @@ namespace AX.UdonSlot.REV1_0
 
         public virtual void ReelStopLogic(int reelIndex, int stopIndex, float accuracy)
         {
-            if (Utilities.IsValid(soundBoard))
-            {
-                if(IsMainBoardOwner()) soundBoard.StopSound(SoundType.WAIT);
-                if(IsMainBoardOwner()) soundBoard.PlaySound(SoundType.SE1, (int)ClipType.STOP);
-            }
+            if (!CanPlaySound()) return;
+            soundBoard.StopSound(SoundType.WAIT);
+            soundBoard.PlaySound(SoundType.SE1, (int)ClipType.STOP);
         }
 
         [NetworkCallable]
@@ -433,22 +403,12 @@ namespace AX.UdonSlot.REV1_0
         public virtual void BetLogic(int betCount)
         {
             Debug.Log($"SubBoard: Bet {betCount}");
-            if (Utilities.IsValid(soundBoard))
+            if (!CanPlaySound() || betCount <= 0) return;
+            // 1枚目は即時、2枚目以降は0.13秒間隔でベット音を鳴らす。
+            soundBoard.PlaySound(SoundType.SE1, (int)ClipType.BET);
+            for (int i = 1; i < betCount; i++)
             {
-                // ベット音を鳴らす
-                float delay = 0.13f;
-                if (betCount > 0)
-                {
-                    if(IsMainBoardOwner()) soundBoard.PlaySound(SoundType.SE1, (int)ClipType.BET);
-                }
-
-                if (betCount > 1)
-                {
-                    for (int i = 1; i < betCount; i++)
-                    {
-                        if(IsMainBoardOwner()) soundBoard.ScheduledPlaySound(SoundType.SE1, (int)ClipType.BET, delay * i);
-                    }
-                }
+                soundBoard.ScheduledPlaySound(SoundType.SE1, (int)ClipType.BET, 0.13f * i);
             }
         }
 
@@ -470,10 +430,8 @@ namespace AX.UdonSlot.REV1_0
         
         public virtual void CreditLogic()
         {
-            if (Utilities.IsValid(soundBoard))
-            {
-                if(IsMainBoardOwner()) soundBoard.PlaySound(SoundType.SE1, (int)ClipType.CREDIT);
-            }
+            if (!CanPlaySound()) return;
+            soundBoard.PlaySound(SoundType.SE1, (int)ClipType.CREDIT);
         }
 
         [NetworkCallable]
@@ -485,12 +443,16 @@ namespace AX.UdonSlot.REV1_0
         public virtual void WaitLogic()
         {
             Debug.Log("SubBoard: Wait");
-            if (Utilities.IsValid(soundBoard))
-            {
-                if(IsMainBoardOwner()) soundBoard.PlaySound(SoundType.WAIT, (int)ClipType.WAIT);
-            }
+            if (!CanPlaySound()) return;
+            soundBoard.PlaySound(SoundType.WAIT, (int)ClipType.WAIT);
         }
         
+        /// <summary>効果音は全員へ送信されるため、メイン基板のオーナーだけが鳴らす。</summary>
+        private bool CanPlaySound()
+        {
+            return Utilities.IsValid(soundBoard) && IsMainBoardOwner();
+        }
+
         public bool IsMainBoardOwner()
         {
             return Networking.IsOwner(mainBoard.gameObject);
@@ -503,10 +465,7 @@ namespace AX.UdonSlot.REV1_0
         
         public void SetOwner()
         {
-            if (!IsSubBoardOwner())
-            {
-                Networking.SetOwner(Networking.LocalPlayer, gameObject);
-            }
+            if (!IsSubBoardOwner()) Networking.SetOwner(Networking.LocalPlayer, gameObject);
         }
 
         public void NetworkStandby()
