@@ -100,7 +100,7 @@ namespace AX.UdonSlot.REV1_0
         /// フラグ抽選後に機種固有処理を追加するための拡張ポイント。
         /// 既存のGenerateFlagLogic(int)オーバーライドも呼び出す。
         /// </summary>
-        public virtual void GenerateFlagLogic(int bet, string generatedFlag)
+        public virtual void GenerateFlagLogic(int bet, string activeFlag)
         {
             
         }
@@ -136,6 +136,8 @@ namespace AX.UdonSlot.REV1_0
             string flag = GetReelControlFlagName();
             string[] symbols = GetVisibleSymbols(reelIndex, currentSymbol);
             int stopReelCount = GetStoppedReelCount();
+            
+            Debug.Log($"制御名: {flag}");
 
             Debug.Log("リール停止数: " + stopReelCount);
             Debug.Log($"停止位置(内部値): {reelDatas[reelIndex].symbols[currentSymbol]}({currentSymbol})");

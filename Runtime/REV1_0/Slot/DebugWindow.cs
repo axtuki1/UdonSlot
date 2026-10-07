@@ -10,7 +10,7 @@ namespace AX.UdonSlot.REV1_0 {
     public class DebugWindow : UdonSharpBehaviour
     {
         [SerializeField]
-        private ReelOutputController reelOutputController;
+        protected ReelOutputController reelOutputController;
 
         [SerializeField]
         private TextMeshProUGUI activeFlagText;
