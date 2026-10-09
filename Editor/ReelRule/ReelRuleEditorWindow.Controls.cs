@@ -793,10 +793,12 @@ namespace AX.UdonSlot.REV1_0.Editor.ReelRule
             var result = ResultOf(control.name);
             if (result == null) return;
             var s = result.Stats;
+            // 出目マップ表示中は、マップと同じ色を名前の左に付ける
+            var map = view == 1 && mapCache != null && mapCache.Result == result && mapCache.Order == order && mapCache.FirstStop == firstStop ? mapCache : null;
             for (int i = 0; i < s.RoleNames.Length; i++)
-                if (s.RoleWon[i]) RateBar(s.RoleNames[i], s.RoleFormed[i], s.Paths, new Color(0.23f, 0.62f, 0.33f));
+                if (s.RoleWon[i]) RateBar(s.RoleNames[i], s.RoleFormed[i], s.Paths, new Color(0.23f, 0.62f, 0.33f), map);
             for (int k = 0; k < s.ShapeNames.Count; k++)
-                if (s.ShapeMatched[k] > 0) RateBar(s.ShapeNames[k], s.ShapeMatched[k], s.Paths, AccentColor);
+                if (s.ShapeMatched[k] > 0) RateBar(s.ShapeNames[k], s.ShapeMatched[k], s.Paths, AccentColor, map);
             GUILayout.Space(6);
 
             long leaks = 0;
@@ -818,10 +820,17 @@ namespace AX.UdonSlot.REV1_0.Editor.ReelRule
             if (unavoidable > 0) CheckRow("回避不能", unavoidable);
         }
 
-        private static void RateBar(string label, long part, long whole, Color color)
+        private static void RateBar(string label, long part, long whole, Color color, MapCache map)
         {
             using (new EditorGUILayout.HorizontalScope())
             {
+                if (map != null)
+                {
+                    var mark = GUILayoutUtility.GetRect(4, 16, GUILayout.Width(4));
+                    int k = map.Labels.IndexOf(label);
+                    if (k >= 0) EditorGUI.DrawRect(new Rect(mark.x, mark.y + 2, 4, mark.height - 4), map.Colors[k]);
+                    GUILayout.Space(2);
+                }
                 GUILayout.Label(label, EditorStyles.miniLabel);
                 GUILayout.FlexibleSpace();
                 GUILayout.Label(ReelRuleReport.Percent(part, whole), EditorStyles.miniBoldLabel);
