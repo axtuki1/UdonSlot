@@ -62,6 +62,8 @@ namespace AX.UdonSlot.REV1_0.Editor.ReelRule
         public string name = "";
         /// <summary>true ならリーチ目（allowedControls の制御でだけ出る）。</summary>
         public bool reach;
+        /// <summary>true なら禁止目（bannedControls の制御では出さない）。</summary>
+        public bool forbidden;
         /// <summary>このリールを第1停止したときだけ使う。-1 ならすべての押し順。</summary>
         public int firstReel = -1;
         /// <summary>true なら停止位置を指定する（リーチ目ミッション向け）。</summary>
@@ -73,6 +75,40 @@ namespace AX.UdonSlot.REV1_0.Editor.ReelRule
         /// <summary>[段*3+リール]、段は 0=上段。</summary>
         public List<DesignCell> cells = NewCells();
         public List<string> allowedControls = new List<string>();
+        public List<string> bannedControls = new List<string>();
+
+        /// <summary>許可した制御以外では出さない出目（リーチ目・禁止目）。</summary>
+        public bool Exclusive { get { return reach || forbidden; } }
+
+        /// <summary>この制御で出してよいか。</summary>
+        public bool AllowedIn(string control)
+        {
+            if (forbidden) return !bannedControls.Contains(control);
+            if (reach) return allowedControls.Contains(control);
+            return true;
+        }
+
+        /// <summary>制御名の変更・複製・削除を出目の制御リストに反映する。</summary>
+        public void RenameControl(string old, string renamed)
+        {
+            foreach (var list in new[] { allowedControls, bannedControls })
+            {
+                int i = list.IndexOf(old);
+                if (i >= 0) list[i] = renamed;
+            }
+        }
+
+        public void CopyControl(string source, string copy)
+        {
+            foreach (var list in new[] { allowedControls, bannedControls })
+                if (list.Contains(source) && !list.Contains(copy)) list.Add(copy);
+        }
+
+        public void RemoveControl(string name)
+        {
+            allowedControls.Remove(name);
+            bannedControls.Remove(name);
+        }
 
         public static List<DesignCell> NewCells()
         {
@@ -95,6 +131,7 @@ namespace AX.UdonSlot.REV1_0.Editor.ReelRule
             copy.cells = new List<DesignCell>();
             foreach (var c in cells) copy.cells.Add(c.Copy());
             copy.allowedControls = new List<string>(allowedControls);
+            copy.bannedControls = new List<string>(bannedControls);
             return copy;
         }
     }
@@ -205,7 +242,7 @@ namespace AX.UdonSlot.REV1_0.Editor.ReelRule
                 if (string.IsNullOrEmpty(d.name)) { errors.Add(new RuleError(0, "名前のない出目があります")); continue; }
                 if (!shapeNames.Add(d.name)) { errors.Add(new RuleError(0, "出目の名前が重複しています: " + d.name)); continue; }
                 if (d.firstReel < -1 || d.firstReel > 2) errors.Add(new RuleError(0, "出目「" + d.name + "」の押し順が不正です"));
-                var shape = new Shape { Name = d.name, Exclusive = d.reach, FirstReel = d.firstReel };
+                var shape = new Shape { Name = d.name, Exclusive = d.Exclusive, FirstReel = d.firstReel };
                 for (int c = 0; c < 9; c++)
                 {
                     if (d.cells == null || c >= d.cells.Count || d.cells[c] == null) continue;
@@ -266,6 +303,11 @@ namespace AX.UdonSlot.REV1_0.Editor.ReelRule
                 {
                     var shape = design.FindShape(target);
                     if (shape == null) { errors.Add(new RuleError(0, "制御 " + d.name + " の狙う出目「" + target + "」がありません")); continue; }
+                    if (shape.forbidden)
+                    {
+                        errors.Add(new RuleError(0, "禁止目「" + target + "」は狙えません（制御 " + d.name + "）"));
+                        continue;
+                    }
                     if (shape.reach && !shape.allowedControls.Contains(d.name))
                     {
                         errors.Add(new RuleError(0, "リーチ目「" + target + "」は制御 " + d.name + " で出てよい設定になっていません"));
@@ -275,18 +317,18 @@ namespace AX.UdonSlot.REV1_0.Editor.ReelRule
                 }
                 // 基本目を狙う制御では、狙っていない基本目は出さず、小役も狙う出目でだけ揃える（リーチ目だけなら小役は通常どおり）
                 bool basicTarget = false;
-                foreach (var goal in targets) if (!design.FindShape(goal.Target).reach) basicTarget = true;
+                foreach (var goal in targets) if (!design.FindShape(goal.Target).Exclusive) basicTarget = true;
                 if (bonusFirst) rule.Goals.AddRange(bonusPulls);
                 rule.Goals.AddRange(targets);
                 if (basicTarget)
                     foreach (var shape in design.shapes)
-                        if (!shape.reach && !string.IsNullOrEmpty(shape.name) && !d.targets.Contains(shape.name))
+                        if (!shape.Exclusive && !string.IsNullOrEmpty(shape.name) && !d.targets.Contains(shape.name))
                             rule.Goals.Add(new Goal { Kind = GoalKind.Avoid, Target = shape.name });
                 foreach (var pull in smallPulls)
                     rule.Goals.Add(basicTarget ? new Goal { Kind = GoalKind.AvoidRole, Target = pull.Target } : pull);
                 if (!bonusFirst) rule.Goals.AddRange(bonusPulls);
                 foreach (var shape in design.shapes)
-                    if (shape.reach && shape.allowedControls.Contains(d.name)) rule.Allowed.Add(shape.name);
+                    if (shape.Exclusive && shape.AllowedIn(d.name)) rule.Allowed.Add(shape.name);
 
                 foreach (var o in d.overrides)
                 {

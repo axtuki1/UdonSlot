@@ -134,8 +134,7 @@ namespace AX.UdonSlot.REV1_0.Editor.ReelRule
                 var copy = Design.controls[index].Copy();
                 copy.name = ReelDesign.NumberedName(Design.controls[index].name, ControlNameTaken);
                 Design.controls.Insert(index + 1, copy);
-                foreach (var shape in Design.shapes)
-                    if (shape.allowedControls.Contains(Design.controls[index].name)) shape.allowedControls.Add(copy.name);
+                foreach (var shape in Design.shapes) shape.CopyControl(Design.controls[index].name, copy.name);
                 controlIndex = index + 1;
             });
         }
@@ -147,7 +146,7 @@ namespace AX.UdonSlot.REV1_0.Editor.ReelRule
                 string name = Design.controls[index].name;
                 Design.controls.RemoveAt(index);
                 if (Design.FindControl(name) == null)
-                    foreach (var shape in Design.shapes) shape.allowedControls.Remove(name);
+                    foreach (var shape in Design.shapes) shape.RemoveControl(name);
                 controlIndex = Mathf.Max(0, Mathf.Min(controlIndex, Design.controls.Count - 1));
             });
         }
@@ -199,11 +198,7 @@ namespace AX.UdonSlot.REV1_0.Editor.ReelRule
             Edit("内部名の変更", delegate
             {
                 control.name = renamed;
-                foreach (var shape in Design.shapes)
-                {
-                    int i = shape.allowedControls.IndexOf(old);
-                    if (i >= 0) shape.allowedControls[i] = renamed;
-                }
+                foreach (var shape in Design.shapes) shape.RenameControl(old, renamed);
             });
         }
 
@@ -704,7 +699,7 @@ namespace AX.UdonSlot.REV1_0.Editor.ReelRule
             {
                 var gray = new Color(0.23f, 0.23f, 0.23f);
                 var text = new Color(0.66f, 0.66f, 0.66f);
-                Chip(shape.reach ? "リーチ目" : "基本目", gray, text);
+                Chip(KindName(shape), gray, text);
                 GUILayout.Space(3);
                 Chip(OrderTag(shape.firstReel), gray, text);
                 GUILayout.FlexibleSpace();
@@ -750,7 +745,7 @@ namespace AX.UdonSlot.REV1_0.Editor.ReelRule
                 {
                     string name = shape.name;
                     if (control.targets.Contains(name)) continue;
-                    if (shape.reach && !shape.allowedControls.Contains(control.name)) menu.AddDisabledItem(new GUIContent(name));
+                    if (shape.Exclusive && !(shape.reach && shape.AllowedIn(control.name))) menu.AddDisabledItem(new GUIContent(name));
                     else menu.AddItem(new GUIContent(name), false, delegate { Edit("狙う出目を追加", delegate { control.targets.Add(name); }); });
                 }
                 if (menu.GetItemCount() == 0) menu.AddDisabledItem(new GUIContent("-"));
@@ -808,7 +803,7 @@ namespace AX.UdonSlot.REV1_0.Editor.ReelRule
             for (int k = 0; k < s.ShapeNames.Count; k++)
             {
                 var shape = Design.FindShape(s.ShapeNames[k]);
-                if (shape != null && shape.reach && !shape.allowedControls.Contains(control.name)) leaks += s.ShapeMatched[k];
+                if (shape != null && !shape.AllowedIn(control.name)) leaks += s.ShapeMatched[k];
             }
             int manualWarnings = 0, unavoidable = 0;
             foreach (var t in result.Tables)
@@ -818,7 +813,7 @@ namespace AX.UdonSlot.REV1_0.Editor.ReelRule
                     if (t.Manual[p]) manualWarnings++; else unavoidable++;
                 }
             CheckRow("非成立役の入賞", s.ViolationPaths);
-            CheckRow("リーチ目の漏れ", leaks);
+            CheckRow("リーチ目・禁止目の漏れ", leaks);
             CheckRow("手動指定による警告", manualWarnings);
             if (unavoidable > 0) CheckRow("回避不能", unavoidable);
         }

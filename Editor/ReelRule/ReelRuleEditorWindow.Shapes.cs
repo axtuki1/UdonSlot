@@ -4,12 +4,16 @@ using UnityEngine;
 
 namespace AX.UdonSlot.REV1_0.Editor.ReelRule
 {
-    // ② 出目: 基本目・リーチ目の形、押し順、特定停止位置、出てよい制御
+    // ② 出目: 基本目・リーチ目・禁止目の形、押し順、特定停止位置、出てよい／出さない制御
     public sealed partial class ReelRuleEditorWindow
     {
         private static readonly string[] FirstReelNames = { "すべて", "左第一停止のみ", "中第一停止のみ", "右第一停止のみ" };
         private static readonly string[] RowNames = { "上段", "中段", "下段" };
-        private static readonly string[] KindNames = { "基本目", "リーチ目" };
+        private static readonly string[] KindNames = { "基本目", "リーチ目", "禁止目" };
+
+        private static int KindIndex(DesignShape shape) { return shape.forbidden ? 2 : shape.reach ? 1 : 0; }
+
+        private static string KindName(DesignShape shape) { return KindNames[KindIndex(shape)]; }
         private static readonly string[] HowNames = { "通常", "特定停止位置のみ" };
 
         [SerializeField] private int shapeIndex;
@@ -58,9 +62,10 @@ namespace AX.UdonSlot.REV1_0.Editor.ReelRule
                 DrawMiniShape(new Rect(rect.x + 8, rect.y + 6, 96, 54), shape);
                 GUI.Label(new Rect(rect.x + 114, rect.y + 10, rect.width - 120, 18), shape.name);
                 Color back, fore;
-                if (shape.reach) { back = new Color(0.29f, 0.23f, 0.11f); fore = new Color(0.94f, 0.77f, 0.42f); }
+                if (shape.forbidden) { back = new Color(0.33f, 0.14f, 0.14f); fore = new Color(1f, 0.56f, 0.56f); }
+                else if (shape.reach) { back = new Color(0.29f, 0.23f, 0.11f); fore = new Color(0.94f, 0.77f, 0.42f); }
                 else { back = new Color(0.23f, 0.23f, 0.23f); fore = new Color(0.66f, 0.66f, 0.66f); }
-                string kind = shape.reach ? "リーチ目" : "基本目";
+                string kind = KindName(shape);
                 var size = ChipSize(kind);
                 DrawChip(new Rect(rect.x + 114, rect.y + 32, size.x, size.y), kind, back, fore);
                 int index = i;
@@ -351,7 +356,8 @@ namespace AX.UdonSlot.REV1_0.Editor.ReelRule
         {
             GUILayout.Label("表示可否", EditorStyles.boldLabel);
             var names = new List<string>();
-            if (shape.reach) names.AddRange(shape.allowedControls);
+            if (shape.forbidden) names.AddRange(shape.bannedControls);
+            else if (shape.reach) names.AddRange(shape.allowedControls);
             else foreach (var control in Design.controls) if (control.targets.Contains(shape.name)) names.Add(control.name);
             if (names.Count == 0) { GUILayout.Label("-", EditorStyles.miniLabel); return; }
             string impossible = ShapeImpossibleReason(shape);
@@ -372,14 +378,15 @@ namespace AX.UdonSlot.REV1_0.Editor.ReelRule
                 using (new EditorGUILayout.HorizontalScope())
                 {
                     string message;
-                    bool ok = paths > 0;
-                    if (ok) message = paths + " 経路";
+                    bool ok = shape.forbidden ? paths == 0 : paths > 0;
+                    if (shape.forbidden) message = paths < 0 ? "" : ok ? "出ない" : paths + " 経路で出る";
+                    else if (ok) message = paths + " 経路";
                     else if (impossible != null) message = impossible;
                     else if (control == null) message = "制御がない";
                     else if (!control.targets.Contains(shape.name)) message = "狙う出目に入っていない";
                     else if (paths < 0) message = "";
                     else message = "役・上位の出目が優先されて出ない";
-                    GUILayout.Label(paths < 0 && impossible == null ? "…" : ok ? "✓" : "✗", ok ? okStyle : ngStyle, GUILayout.Width(16));
+                    GUILayout.Label(paths < 0 && (impossible == null || shape.forbidden) ? "…" : ok ? "✓" : "✗", ok ? okStyle : ngStyle, GUILayout.Width(16));
                     GUILayout.Label(name, GUILayout.Width(160));
                     GUILayout.Label(message, EditorStyles.miniLabel);
                     GUILayout.FlexibleSpace();
@@ -392,13 +399,24 @@ namespace AX.UdonSlot.REV1_0.Editor.ReelRule
         private void DrawShapeSettings(DesignShape shape)
         {
             PanelHeader("種類");
-            int kind = GUILayout.SelectionGrid(shape.reach ? 1 : 0, KindNames, 1, EditorStyles.radioButton);
-            if (kind != (shape.reach ? 1 : 0)) { Edit("種類の変更", delegate { shape.reach = kind == 1; }); GUIUtility.ExitGUI(); }
+            int kind = GUILayout.SelectionGrid(KindIndex(shape), KindNames, 1, EditorStyles.radioButton);
+            if (kind != KindIndex(shape))
+            {
+                Edit("種類の変更", delegate
+                {
+                    shape.reach = kind == 1;
+                    shape.forbidden = kind == 2;
+                    if (shape.forbidden)
+                        foreach (var control in Design.controls) control.targets.Remove(shape.name);
+                });
+                GUIUtility.ExitGUI();
+            }
             GUILayout.Space(8);
 
-            if (shape.reach)
+            if (shape.Exclusive)
             {
-                PanelHeader("出てよい制御（内部名）");
+                var list = shape.forbidden ? shape.bannedControls : shape.allowedControls;
+                PanelHeader(shape.forbidden ? "出さない制御（内部名）" : "出てよい制御（内部名）");
                 int columns = 2;
                 for (int i = 0; i < Design.controls.Count; i += columns)
                 {
@@ -407,13 +425,13 @@ namespace AX.UdonSlot.REV1_0.Editor.ReelRule
                         for (int j = i; j < i + columns && j < Design.controls.Count; j++)
                         {
                             string name = Design.controls[j].name;
-                            bool on = shape.allowedControls.Contains(name);
+                            bool on = list.Contains(name);
                             bool next = EditorGUILayout.ToggleLeft(name, on, GUILayout.Width(150));
                             if (next != on)
-                                Edit("出てよい制御の変更", delegate
+                                Edit(shape.forbidden ? "出さない制御の変更" : "出てよい制御の変更", delegate
                                 {
-                                    if (next) shape.allowedControls.Add(name);
-                                    else shape.allowedControls.Remove(name);
+                                    if (next) list.Add(name);
+                                    else list.Remove(name);
                                 });
                         }
                     }

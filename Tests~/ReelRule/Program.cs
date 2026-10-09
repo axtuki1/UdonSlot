@@ -33,6 +33,7 @@ public static partial class Program
         RuntimeLookupChecks(results);
         ErrorChecks(machine);
         UnavoidableChecks();
+        ForbiddenChecks(machine);
         RealMachineChecks();
         if (args.Length > 0) File.WriteAllText(args[0], ReelRuleReport.Markdown(results, 15));
         Console.WriteLine(checks + " checks, " + failures + " failures, " + watch.ElapsedMilliseconds + " ms");
@@ -148,6 +149,41 @@ public static partial class Program
         replayBB.extraRoles.Add("BB");
         d.controls.Add(replayBB);
         return d;
+    }
+
+    // ------------------------------------------------------------ 禁止目
+
+    private static long ShapeCount(ControlResult r, string name)
+    {
+        int k = r.Stats.ShapeNames.IndexOf(name);
+        return k < 0 ? 0 : r.Stats.ShapeMatched[k];
+    }
+
+    private static void ForbiddenChecks(Machine machine)
+    {
+        // 中段スイカテンパイハズレ（左中スイカ・右スイカ以外）
+        var d = new ReelDesign();
+        d.AddControlsFromLottery(machine);
+        var tenpai = ShapeOf("中段スイカテンパイ", false, "*", "*", "*", "スイカ", "スイカ", "!スイカ", "*", "*", "*");
+        d.shapes.Add(tenpai);
+        var free = Find(Generate(machine, d), "ハズレ");
+        Check("tenpai appears in miss without a ban", ShapeCount(free, "中段スイカテンパイ") > 0);
+        tenpai.forbidden = true;
+        tenpai.bannedControls.Add("ハズレ");
+        var results = Generate(machine, d);
+        var miss = Find(results, "ハズレ");
+        Check("forbidden shape never shows in banned control", ShapeCount(miss, "中段スイカテンパイ") == 0 && miss.Stats.ViolationPaths == 0);
+        Check("forbidden shape stays allowed elsewhere", !Find(results, "スイカ").GoalLines.Contains("禁止 中段スイカテンパイ"));
+        Check("forbidden shape labeled in banned control", miss.GoalLines.Contains("禁止 中段スイカテンパイ"));
+        d.FindControl("ハズレ").targets.Add("中段スイカテンパイ");
+        Check("forbidden shape cannot be targeted", Throws(machine, d));
+        d.FindControl("ハズレ").targets.Clear();
+
+        tenpai.CopyControl("ハズレ", "ハズレ (1)");
+        tenpai.RenameControl("ハズレ (1)", "ハズレ2");
+        Check("banned list follows copy and rename", tenpai.bannedControls.Contains("ハズレ2") && tenpai.AllowedIn("リプレイ") && !tenpai.AllowedIn("ハズレ2"));
+        tenpai.RemoveControl("ハズレ2");
+        Check("banned list follows delete", !tenpai.bannedControls.Contains("ハズレ2") && tenpai.Copy().bannedControls.Count == 1);
     }
 
     // ------------------------------------------------------------ 検証
