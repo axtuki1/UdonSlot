@@ -18,6 +18,9 @@ namespace AX.UdonSlot.REV1_0.Editor.ReelRule
 
         [SerializeField] private int shapeIndex;
         [SerializeField] private int shapeCell = 4;
+        // 出目一覧の絞り込み（種類: -1=すべて、フラグ: 空=すべて）
+        [SerializeField] private int shapeKindFilter = -1;
+        [SerializeField] private string shapeFlagFilter = "";
         private Vector2 shapeListScroll, shapeCenterScroll, shapeSideScroll;
         private readonly Vector2[] positionScroll = new Vector2[3];
 
@@ -53,10 +56,12 @@ namespace AX.UdonSlot.REV1_0.Editor.ReelRule
         private void DrawShapeList()
         {
             PanelHeader("出目");
+            DrawShapeFilter();
             shapeListScroll = EditorGUILayout.BeginScrollView(shapeListScroll);
             for (int i = 0; i < Design.shapes.Count; i++)
             {
                 var shape = Design.shapes[i];
+                if (!ShapeVisible(shape)) continue;
                 var rect = GUILayoutUtility.GetRect(10, 66, GUILayout.ExpandWidth(true));
                 if (i == shapeIndex) EditorGUI.DrawRect(rect, SelectedColor);
                 DrawMiniShape(new Rect(rect.x + 8, rect.y + 6, 96, 54), shape);
@@ -87,6 +92,41 @@ namespace AX.UdonSlot.REV1_0.Editor.ReelRule
                     if (GUILayout.Button("複製")) DuplicateShape(shapeIndex);
             }
             GUILayout.Space(4);
+        }
+
+        private void DrawShapeFilter()
+        {
+            var flags = new List<string>();
+            foreach (var control in Design.controls)
+                foreach (string flag in control.lotteryFlags)
+                    if (!flags.Contains(flag)) flags.Add(flag);
+            using (new EditorGUILayout.HorizontalScope())
+            {
+                var kinds = new List<string> { "すべての種類" };
+                kinds.AddRange(KindNames);
+                shapeKindFilter = EditorGUILayout.Popup(shapeKindFilter + 1, kinds.ToArray()) - 1;
+                var flagNames = new List<string> { "すべてのフラグ" };
+                flagNames.AddRange(flags);
+                int current = Mathf.Max(0, flags.IndexOf(shapeFlagFilter) + 1);
+                int picked = EditorGUILayout.Popup(current, flagNames.ToArray());
+                shapeFlagFilter = picked == 0 ? "" : flags[picked - 1];
+            }
+            GUILayout.Space(2);
+        }
+
+        /// <summary>種類とフラグの絞り込みに合うか。フラグは、そのフラグを持つ制御で狙う／出てよい／出さない出目。</summary>
+        private bool ShapeVisible(DesignShape shape)
+        {
+            if (shapeKindFilter >= 0 && KindIndex(shape) != shapeKindFilter) return false;
+            if (string.IsNullOrEmpty(shapeFlagFilter)) return true;
+            foreach (var control in Design.controls)
+            {
+                if (!control.lotteryFlags.Contains(shapeFlagFilter)) continue;
+                if (shape.forbidden ? shape.bannedControls.Contains(control.name)
+                    : shape.reach ? shape.allowedControls.Contains(control.name) || control.targets.Contains(shape.name)
+                    : control.targets.Contains(shape.name)) return true;
+            }
+            return false;
         }
 
         private void SelectShape(int index)
