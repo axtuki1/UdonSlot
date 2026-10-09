@@ -824,20 +824,27 @@ namespace AX.UdonSlot.REV1_0.Editor.ReelRule
         {
             using (new EditorGUILayout.HorizontalScope())
             {
+                // 出目マップの色（名前とバーの2行ぶん）
                 if (map != null)
                 {
-                    var mark = GUILayoutUtility.GetRect(4, 16, GUILayout.Width(4));
+                    var mark = GUILayoutUtility.GetRect(10, 24, GUILayout.Width(10), GUILayout.Height(24));
                     int k = map.Labels.IndexOf(label);
-                    if (k >= 0) EditorGUI.DrawRect(new Rect(mark.x, mark.y + 2, 4, mark.height - 4), map.Colors[k]);
-                    GUILayout.Space(2);
+                    if (k >= 0) EditorGUI.DrawRect(new Rect(mark.x, mark.y + 2, mark.width, mark.height - 2), map.Colors[k]);
+                    GUILayout.Space(4);
                 }
-                GUILayout.Label(label, EditorStyles.miniLabel);
-                GUILayout.FlexibleSpace();
-                GUILayout.Label(ReelRuleReport.Percent(part, whole), EditorStyles.miniBoldLabel);
+                using (new EditorGUILayout.VerticalScope())
+                {
+                    using (new EditorGUILayout.HorizontalScope())
+                    {
+                        GUILayout.Label(label, EditorStyles.miniLabel);
+                        GUILayout.FlexibleSpace();
+                        GUILayout.Label(ReelRuleReport.Percent(part, whole), EditorStyles.miniBoldLabel);
+                    }
+                    var bar = GUILayoutUtility.GetRect(10, 6, GUILayout.ExpandWidth(true));
+                    EditorGUI.DrawRect(bar, new Color(0.12f, 0.12f, 0.12f));
+                    if (whole > 0) EditorGUI.DrawRect(new Rect(bar.x, bar.y, bar.width * part / whole, bar.height), color);
+                }
             }
-            var bar = GUILayoutUtility.GetRect(10, 6, GUILayout.ExpandWidth(true));
-            EditorGUI.DrawRect(bar, new Color(0.12f, 0.12f, 0.12f));
-            if (whole > 0) EditorGUI.DrawRect(new Rect(bar.x, bar.y, bar.width * part / whole, bar.height), color);
             GUILayout.Space(4);
         }
 
