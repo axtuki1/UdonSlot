@@ -21,14 +21,6 @@ namespace AX.UdonSlot.REV1_0.Editor.ReelRule
         private Vector2 controlListScroll, tableScroll, mapScroll, controlSideScroll;
         private int mapRow = -1, mapColumn = -1;
 
-        /// <summary>選んでいる自動の制御（ボーナス成立中）の名前。null なら Design.controls から選んでいる。</summary>
-        [NonSerialized] private string autoSelected;
-
-        private List<DesignControl> AutoControls
-        {
-            get { return machine != null && asset != null ? ReelDesign.AutoBonusControls(Design, machine) : new List<DesignControl>(); }
-        }
-
         private DesignControl SelectedControl
         {
             get { return Design.controls.Count == 0 ? null : Design.controls[controlIndex]; }
@@ -40,22 +32,15 @@ namespace AX.UdonSlot.REV1_0.Editor.ReelRule
             using (new EditorGUILayout.HorizontalScope())
             {
                 using (new EditorGUILayout.VerticalScope(GUILayout.Width(230))) DrawControlList();
-                DesignControl control = null;
-                if (autoSelected != null) control = AutoControls.Find(c => c.name == autoSelected);
-                if (control == null) { autoSelected = null; control = SelectedControl; }
+                var control = SelectedControl;
                 if (control == null) return;
-                bool auto = control.source != null;
-                if (auto) manualEditing = false;
                 using (new EditorGUILayout.VerticalScope(GUILayout.ExpandWidth(true))) DrawControlCenter(control);
                 using (new EditorGUILayout.VerticalScope(GUILayout.Width(330)))
                 {
                     controlSideScroll = EditorGUILayout.BeginScrollView(controlSideScroll);
-                    if (!auto)
-                    {
-                        DrawTargets(control);
-                        DrawAllowedReach(control);
-                        DrawManualPanel(control);
-                    }
+                    DrawTargets(control);
+                    DrawAllowedReach(control);
+                    DrawManualPanel(control);
                     DrawResultPanel(control);
                     EditorGUILayout.EndScrollView();
                 }
@@ -92,7 +77,7 @@ namespace AX.UdonSlot.REV1_0.Editor.ReelRule
             {
                 var control = Design.controls[i];
                 var rect = GUILayoutUtility.GetRect(10, 34, GUILayout.ExpandWidth(true));
-                if (i == controlIndex && autoSelected == null) EditorGUI.DrawRect(rect, SelectedColor);
+                if (i == controlIndex) EditorGUI.DrawRect(rect, SelectedColor);
                 string name = (IsRegistered(control.name) ? "" : "⚠ ") + control.name;
                 GUI.Label(new Rect(rect.x + 8, rect.y + 2, rect.width - 12, 16), name, EditorStyles.boldLabel);
                 var won = WonRolesOf(control);
@@ -108,25 +93,6 @@ namespace AX.UdonSlot.REV1_0.Editor.ReelRule
                     menu.ShowAsContext();
                 }
             }
-            var autoControls = AutoControls;
-            if (autoControls.Count > 0)
-            {
-                GUILayout.Space(6);
-                GUILayout.Label("自動（ボーナス成立中）", MutedLabel);
-                foreach (var control in autoControls)
-                {
-                    var rect = GUILayoutUtility.GetRect(10, 20, GUILayout.ExpandWidth(true));
-                    if (control.name == autoSelected) EditorGUI.DrawRect(rect, SelectedColor);
-                    GUI.Label(new Rect(rect.x + 8, rect.y + 2, rect.width - 12, 16), control.name, MutedLabel);
-                    if (Clicked(rect, 0))
-                    {
-                        autoSelected = control.name;
-                        mapCache = null;
-                        firstStop = secondStop = -1;
-                        GUI.FocusControl(null);
-                    }
-                }
-            }
             EditorGUILayout.EndScrollView();
             using (new EditorGUILayout.HorizontalScope())
             {
@@ -136,15 +102,41 @@ namespace AX.UdonSlot.REV1_0.Editor.ReelRule
             }
             if (GUILayout.Button("抽選表から一括作成"))
             {
-                Edit("抽選表から一括作成", delegate { Design.AddControlsFromLottery(machine); });
+                Edit("抽選表から一括作成", delegate
+                {
+                    Design.AddControlsFromLottery(machine);
+                    AddCarriedBonusControls();
+                });
                 GUIUtility.ExitGUI();
             }
             GUILayout.Space(4);
         }
 
+        /// <summary>ボーナス成立中のハズレ用の制御（例 NoWin_RedBB）を作る。</summary>
+        private void AddCarriedBonusControls()
+        {
+            var bonusTable = MachineBonusTable;
+            var main = ReelMachineReader.LotteryTableOf(machineObject);
+            if (bonusTable == null || main == null) return;
+            foreach (var entry in LotteryModel.Load(main).Entries)
+            {
+                if (!entry.Remainder) continue;
+                for (int b = 0; b < bonusTable.GetBonusCount(); b++)
+                {
+                    string role = bonusTable.GetBonusStartRole(b);
+                    if (role.Length == 0) continue;
+                    string name = BonusEntryName(entry.Name, bonusTable.bonusNames[b]);
+                    if (Design.FindControl(name) != null) continue;
+                    var control = new DesignControl { name = name };
+                    control.lotteryFlags.Add(entry.Name);
+                    control.bonus = bonusTable.bonusNames[b];
+                    Design.controls.Add(control);
+                }
+            }
+        }
+
         private void SelectControl(int index)
         {
-            autoSelected = null;
             if (index == controlIndex) return;
             controlIndex = index;
             mapCache = null;
@@ -195,24 +187,21 @@ namespace AX.UdonSlot.REV1_0.Editor.ReelRule
         private void DrawControlCenter(DesignControl control)
         {
             PanelHeader("制御：" + control.name);
-            using (new EditorGUI.DisabledScope(control.source != null))
+            using (new EditorGUILayout.HorizontalScope())
             {
-                using (new EditorGUILayout.HorizontalScope())
-                {
-                    GUILayout.Label("内部名", GUILayout.Width(40));
-                    string renamed = EditorGUILayout.DelayedTextField(control.name, GUILayout.Width(180));
-                    if (renamed != control.name) RenameControl(control, renamed);
-                    GUILayout.Space(16);
-                    DrawLotteryFlags(control);
-                    GUILayout.Space(16);
-                    GUILayout.Label("当選役", GUILayout.Width(40));
-                    foreach (string role in WonRolesOf(control)) Chip(role, new Color(0.14f, 0.29f, 0.19f), new Color(0.62f, 0.88f, 0.69f));
-                    GUILayout.Space(4);
-                    if (Link("抽選表で編集")) { screen = 2; GUI.FocusControl(null); }
-                    GUILayout.FlexibleSpace();
-                }
-                DrawControlConditions(control);
+                GUILayout.Label("内部名", GUILayout.Width(40));
+                string renamed = EditorGUILayout.DelayedTextField(control.name, GUILayout.Width(180));
+                if (renamed != control.name) RenameControl(control, renamed);
+                GUILayout.Space(16);
+                DrawLotteryFlags(control);
+                GUILayout.Space(16);
+                GUILayout.Label("当選役", GUILayout.Width(40));
+                foreach (string role in WonRolesOf(control)) Chip(role, new Color(0.14f, 0.29f, 0.19f), new Color(0.62f, 0.88f, 0.69f));
+                GUILayout.Space(4);
+                if (Link("抽選表で編集")) { screen = 2; GUI.FocusControl(null); }
+                GUILayout.FlexibleSpace();
             }
+            DrawControlConditions(control);
             GUILayout.Space(6);
             using (new EditorGUILayout.HorizontalScope())
             {

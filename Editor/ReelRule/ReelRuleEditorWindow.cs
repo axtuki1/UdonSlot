@@ -18,7 +18,7 @@ namespace AX.UdonSlot.REV1_0.Editor.ReelRule
         private const string MachinePrefKey = "AX.UdonSlot.ReelRuleEditor.Machine";
         private const string DesignPrefKey = "AX.UdonSlot.ReelRuleEditor.Design";
         private static readonly string[] ScreenNames = { "制御", "出目", "抽選表", "配当表", "ボーナス・RT" };
-        private static readonly string[] PriorityNames = { "ボーナス優先", "小役優先", "ハズレ時のみ" };
+        private static readonly string[] PriorityNames = { "ボーナス優先", "小役優先" };
 
         private ReelOutputController machineObject;
         [SerializeField] private ReelDesignAsset asset;
@@ -437,9 +437,7 @@ namespace AX.UdonSlot.REV1_0.Editor.ReelRule
             var bonuses = new List<string>();
             var states = new List<string>();
             var names = new List<string>();
-            var all = new List<DesignControl>(Design.controls);
-            all.AddRange(ReelDesign.AutoBonusControls(Design, machine));
-            foreach (var c in all)
+            foreach (var c in Design.controls)
                 foreach (string flag in c.lotteryFlags)
                 {
                     flags.Add(flag);
