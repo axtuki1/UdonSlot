@@ -1349,6 +1349,26 @@ namespace AX.UdonSlot.REV1_0
         }
 
         public BonusTable GetBonusTable() { return bonusTable; }
+
+        /// <summary>デバッグ用: 指定したボーナスを成立させる（作動中なら何もしない）。</summary>
+        public void SetPendingBonus(string bonusName)
+        {
+            if (!Utilities.IsValid(bonusTable) || activeBonus >= 0) return;
+            int bonus = bonusTable.FindBonus(bonusName);
+            if (bonus < 0) return;
+            SetOwner();
+            pendingBonus = bonus;
+            RequestSerialization();
+        }
+
+        /// <summary>デバッグ用: 成立中のボーナスを取り消す。</summary>
+        public void ClearPendingBonus()
+        {
+            SetOwner();
+            pendingBonus = -1;
+            RequestSerialization();
+        }
+
         public bool IsBonusPending() { return pendingBonus >= 0; }
         public bool IsBonusActive() { return activeBonus >= 0; }
 

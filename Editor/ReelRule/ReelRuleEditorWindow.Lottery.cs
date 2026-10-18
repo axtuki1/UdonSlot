@@ -160,7 +160,7 @@ namespace AX.UdonSlot.REV1_0.Editor.ReelRule
                 }
                 else
                 {
-                    bool canAdd = !e.Remainder && bonusTable != null && bonusTable.GetBonusCount() > 0;
+                    bool canAdd = bonusTable != null && bonusTable.GetBonusCount() > 0;
                     var field = canAdd ? new Rect(nameRect.x, nameRect.y, nameRect.width - 24, 18) : nameRect;
                     string display = EditorGUI.DelayedTextField(field, e.Label);
                     if (display != e.Label) { e.Display = display == e.Name ? "" : display; saveLabel = "フラグ名の変更"; }
@@ -287,18 +287,20 @@ namespace AX.UdonSlot.REV1_0.Editor.ReelRule
             var rows = new List<LotteryRowRef>();
             var placed = new HashSet<LotteryEntry>();
             foreach (var e in model.Entries)
-                if (e.Remainder) { rows.Add(new LotteryRowRef { Entry = e }); placed.Add(e); }
+                if (e.Remainder && !e.IsBonusRow) AddWithChildren(model, e, rows, placed);
             foreach (var e in model.Entries)
-            {
-                if (placed.Contains(e) || e.IsBonusRow) continue;
-                rows.Add(new LotteryRowRef { Entry = e });
-                placed.Add(e);
-                foreach (var child in model.Entries)
-                    if (child.IsBonusRow && child.Base == e.Name && placed.Add(child)) rows.Add(new LotteryRowRef { Entry = child, Sub = true });
-            }
+                if (!placed.Contains(e) && !e.IsBonusRow) AddWithChildren(model, e, rows, placed);
             foreach (var e in model.Entries)
                 if (placed.Add(e)) rows.Add(new LotteryRowRef { Entry = e, Sub = e.IsBonusRow });
             return rows;
+        }
+
+        private static void AddWithChildren(LotteryModel model, LotteryEntry e, List<LotteryRowRef> rows, HashSet<LotteryEntry> placed)
+        {
+            rows.Add(new LotteryRowRef { Entry = e });
+            placed.Add(e);
+            foreach (var child in model.Entries)
+                if (child.IsBonusRow && child.Base == e.Name && placed.Add(child)) rows.Add(new LotteryRowRef { Entry = child, Sub = true });
         }
 
         private static LotteryEntry NewLotteryEntry(LotteryModel model, string name)
