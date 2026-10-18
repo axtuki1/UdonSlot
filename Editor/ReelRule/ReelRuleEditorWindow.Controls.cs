@@ -112,7 +112,7 @@ namespace AX.UdonSlot.REV1_0.Editor.ReelRule
             GUILayout.Space(4);
         }
 
-        /// <summary>ボーナス持越し中のハズレ用の制御（例 NoWin_RedBB）を作る。</summary>
+        /// <summary>ボーナス内部中のハズレ用の制御（例 NoWin_RedBB）を作る。</summary>
         private void AddCarriedBonusControls()
         {
             var bonusTable = MachineBonusTable;
@@ -229,7 +229,7 @@ namespace AX.UdonSlot.REV1_0.Editor.ReelRule
             });
         }
 
-        /// <summary>持越しボーナスと RT 状態の条件。ボーナス・RT表がある機種だけ。</summary>
+        /// <summary>内部中のボーナスと RT 状態の条件。ボーナス・RT表がある機種だけ。</summary>
         private void DrawControlConditions(DesignControl control)
         {
             var bonusTable = MachineBonusTable;
@@ -246,10 +246,10 @@ namespace AX.UdonSlot.REV1_0.Editor.ReelRule
                     bonusLabels.Add(bonusTable.GetBonusDisplayName(b));
                 }
                 AddMissing(bonusNames, bonusLabels, control.bonus);
-                GUILayout.Label("持越し", GUILayout.Width(40));
+                GUILayout.Label("内部中", GUILayout.Width(40));
                 int bonusAt = bonusNames.IndexOf(control.bonus ?? "");
                 int nextBonus = EditorGUILayout.Popup(bonusAt, bonusLabels.ToArray(), GUILayout.Width(120));
-                if (nextBonus != bonusAt) { string value = bonusNames[nextBonus]; Edit("持越しの変更", delegate { control.bonus = value; }); }
+                if (nextBonus != bonusAt) { string value = bonusNames[nextBonus]; Edit("内部中の変更", delegate { control.bonus = value; }); }
 
                 if (bonusTable.GetStateCount() > 1)
                 {
@@ -279,7 +279,7 @@ namespace AX.UdonSlot.REV1_0.Editor.ReelRule
         }
 
         /// <summary>
-        /// 名前で選んでいた頃の持越し制御（例 NoWin_RedBB、作動役を当選役に追加）を、持越しの条件に置き換える。
+        /// 名前で選んでいた頃の内部中の制御（例 NoWin_RedBB、作動役を当選役に追加）を、内部中の条件に置き換える。
         /// </summary>
         private void UpgradeCarriedControls()
         {
@@ -303,7 +303,7 @@ namespace AX.UdonSlot.REV1_0.Editor.ReelRule
                 }
             }
             if (changes.Count == 0) return;
-            Edit("持越し制御の更新", delegate
+            Edit("内部中の制御の更新", delegate
             {
                 foreach (var change in changes)
                 {

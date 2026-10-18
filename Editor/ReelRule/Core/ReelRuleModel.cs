@@ -16,7 +16,7 @@ namespace AX.UdonSlot.REV1_0.Editor.ReelRule
         public int MaxSlip = 4;
         /// <summary>trueならボーナス役を小役より先に引き込む（暗黙の引込の並び順）。</summary>
         public bool BonusFirst;
-        /// <summary>ボーナスの内部名 → 作動役。持越し中の制御で当選として扱う。</summary>
+        /// <summary>ボーナスの内部名 → 作動役。内部中の制御で当選として扱う。</summary>
         public Dictionary<string, string> BonusStartRoles = new Dictionary<string, string>();
 
         public Role FindRole(string name)
