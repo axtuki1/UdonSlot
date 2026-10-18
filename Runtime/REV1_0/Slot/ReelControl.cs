@@ -19,7 +19,7 @@ namespace AX.UdonSlot.REV1_0
         [SerializeField]
         public string[] mapFlags = new string[0];
 
-        /// <summary>対応表: 持越し中のボーナスの内部名。空ならボーナスの有無を問わない。</summary>
+        /// <summary>対応表: 成立中のボーナスの内部名。空ならボーナスの有無を問わない。</summary>
         [SerializeField]
         public string[] mapBonuses = new string[0];
 
@@ -38,7 +38,7 @@ namespace AX.UdonSlot.REV1_0
         }
 
         /// <summary>
-        /// 抽選フラグ・持越しボーナス・RT 状態に合う制御名を返す。条件の多い行を優先する。なければ空文字。
+        /// 抽選フラグ・成立中のボーナス・RT 状態に合う制御名を返す。条件の多い行を優先する。なければ空文字。
         /// </summary>
         public string FindControlName(string flag, string bonus, string state)
         {

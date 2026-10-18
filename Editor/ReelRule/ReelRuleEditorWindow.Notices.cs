@@ -63,7 +63,7 @@ namespace AX.UdonSlot.REV1_0.Editor.ReelRule
                     string other;
                     if (keys.TryGetValue(key, out other))
                     {
-                        string condition = (bonus.Length > 0 ? "・内部中 " + bonus : "") + (state.Length > 0 ? "・" + state : "");
+                        string condition = (bonus.Length > 0 ? "・ボーナス成立中 " + bonus : "") + (state.Length > 0 ? "・" + state : "");
                         list.Add(new Notice { Warning = true, Text = flag + condition + " の制御が重複しています（" + other + "、" + c.name + "）", Screen = 0, Control = c.name });
                     }
                     else keys[key] = c.name;

@@ -205,15 +205,15 @@ namespace AX.UdonSlot.REV1_0.Editor.ReelRule
         }
     }
 
-    /// <summary>制御1件。抽選フラグ（＋内部中のボーナス・RT）からこの制御が選ばれる。対応はベイクで ReelControl に書き出す。</summary>
+    /// <summary>制御1件。抽選フラグ（＋成立中のボーナス・RT）からこの制御が選ばれる。対応はベイクで ReelControl に書き出す。</summary>
     [Serializable]
     public sealed class DesignControl
     {
         public string name = "";
         public List<string> lotteryFlags = new List<string>();
-        /// <summary>抽選表のフラグ以外に当選として扱う役（内部中のボーナスなど）。</summary>
+        /// <summary>抽選表のフラグ以外に当選として扱う役（成立中のボーナスなど）。</summary>
         public List<string> extraRoles = new List<string>();
-        /// <summary>内部中のボーナスの内部名。空ならボーナスの有無を問わない。</summary>
+        /// <summary>成立中のボーナスの内部名。空ならボーナスの有無を問わない。</summary>
         public string bonus = "";
         /// <summary>RT 状態の内部名。空ならどの状態でも使う。</summary>
         public string state = "";
@@ -336,7 +336,7 @@ namespace AX.UdonSlot.REV1_0.Editor.ReelRule
                 {
                     string startRole;
                     if (!machine.BonusStartRoles.TryGetValue(d.bonus, out startRole))
-                        errors.Add(new RuleError(0, "制御 " + d.name + " の内部中のボーナス「" + d.bonus + "」がありません"));
+                        errors.Add(new RuleError(0, "制御 " + d.name + " の成立中のボーナス「" + d.bonus + "」がありません"));
                     else if (startRole.Length > 0 && !rule.ExtraRoles.Contains(startRole)) rule.ExtraRoles.Add(startRole);
                 }
 

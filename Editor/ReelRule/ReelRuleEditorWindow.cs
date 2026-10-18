@@ -430,7 +430,7 @@ namespace AX.UdonSlot.REV1_0.Editor.ReelRule
             EditorUtility.DisplayDialog("ベイク", targets.Count + "件をベイクしました。", "OK");
         }
 
-        /// <summary>抽選フラグ（＋内部中のボーナス・RT）→ 制御名 の対応表を ReelControl に書き出す。</summary>
+        /// <summary>抽選フラグ（＋成立中のボーナス・RT）→ 制御名 の対応表を ReelControl に書き出す。</summary>
         private void WriteControlMap(ReelControl control)
         {
             var flags = new List<string>();

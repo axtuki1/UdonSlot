@@ -112,7 +112,7 @@ namespace AX.UdonSlot.REV1_0.Editor.ReelRule
             GUILayout.Space(4);
         }
 
-        /// <summary>ボーナス内部中のハズレ用の制御（例 NoWin_RedBB）を作る。</summary>
+        /// <summary>ボーナス成立中のハズレ用の制御（例 NoWin_RedBB）を作る。</summary>
         private void AddCarriedBonusControls()
         {
             var bonusTable = MachineBonusTable;
@@ -229,7 +229,7 @@ namespace AX.UdonSlot.REV1_0.Editor.ReelRule
             });
         }
 
-        /// <summary>内部中のボーナスと RT 状態の条件。ボーナス・RT表がある機種だけ。</summary>
+        /// <summary>成立中のボーナスと RT 状態の条件。ボーナス・RT表がある機種だけ。</summary>
         private void DrawControlConditions(DesignControl control)
         {
             var bonusTable = MachineBonusTable;
@@ -246,10 +246,10 @@ namespace AX.UdonSlot.REV1_0.Editor.ReelRule
                     bonusLabels.Add(bonusTable.GetBonusDisplayName(b));
                 }
                 AddMissing(bonusNames, bonusLabels, control.bonus);
-                GUILayout.Label("内部中", GUILayout.Width(40));
+                GUILayout.Label("ボーナス成立中", GUILayout.Width(88));
                 int bonusAt = bonusNames.IndexOf(control.bonus ?? "");
                 int nextBonus = EditorGUILayout.Popup(bonusAt, bonusLabels.ToArray(), GUILayout.Width(120));
-                if (nextBonus != bonusAt) { string value = bonusNames[nextBonus]; Edit("内部中の変更", delegate { control.bonus = value; }); }
+                if (nextBonus != bonusAt) { string value = bonusNames[nextBonus]; Edit("ボーナス成立中の変更", delegate { control.bonus = value; }); }
 
                 if (bonusTable.GetStateCount() > 1)
                 {
@@ -279,7 +279,7 @@ namespace AX.UdonSlot.REV1_0.Editor.ReelRule
         }
 
         /// <summary>
-        /// 名前で選んでいた頃の内部中の制御（例 NoWin_RedBB、作動役を当選役に追加）を、内部中の条件に置き換える。
+        /// 名前で選んでいた頃のボーナス成立中の制御（例 NoWin_RedBB、作動役を当選役に追加）を、ボーナス成立中の条件に置き換える。
         /// </summary>
         private void UpgradeCarriedControls()
         {
@@ -303,7 +303,7 @@ namespace AX.UdonSlot.REV1_0.Editor.ReelRule
                 }
             }
             if (changes.Count == 0) return;
-            Edit("内部中の制御の更新", delegate
+            Edit("ボーナス成立中の制御の更新", delegate
             {
                 foreach (var change in changes)
                 {

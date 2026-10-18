@@ -1056,7 +1056,7 @@ namespace AX.UdonSlot.REV1_0
 
         /// <summary>
         /// ReelControl.flagNamesから制御データを検索するための制御名を返す。
-        /// ReelControlに対応表（機種エディタのベイクで作成）があれば、成立フラグ・持越しボーナス・RT状態から選ぶ。
+        /// ReelControlに対応表（機種エディタのベイクで作成）があれば、成立フラグ・成立中のボーナス・RT状態から選ぶ。
         /// 対応表がなければ controlNameFormat で名前を組み立てる。
         /// 派生クラスでオーバーライドして独自の検索名を返すこともできる。
         /// </summary>
