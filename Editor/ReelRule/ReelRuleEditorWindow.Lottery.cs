@@ -9,7 +9,7 @@ namespace AX.UdonSlot.REV1_0.Editor.ReelRule
     public sealed partial class ReelRuleEditorWindow
     {
         private const float LotHeadH = 22, LotRowH = 36, LotSumH = 22;
-        private const float LotCheckW = 24, LotNameW = 150, LotIdW = 150, LotRolesW = 180, LotSettingW = 96;
+        private const float LotCheckW = 24, LotNameW = 150, LotIdW = 150, LotRolesW = 180, LotControlW = 140, LotSettingW = 96;
         private static readonly string[] BetNames = { "1", "2", "3" };
 
         [SerializeField] private int lotteryTableIndex;
@@ -121,7 +121,7 @@ namespace AX.UdonSlot.REV1_0.Editor.ReelRule
                 for (int b = 0; b < bonusTable.GetBonusCount(); b++)
                     if (!bonusNames.Contains(bonusTable.bonusNames[b])) bonusNames.Add(bonusTable.bonusNames[b]);
             int sumRows = 2 + (bonusSumsOpen ? bonusNames.Count : 0);
-            float leftW = LotCheckW + LotNameW + LotIdW + LotRolesW;
+            float leftW = LotCheckW + LotNameW + LotIdW + LotRolesW + LotControlW;
             float gridH = LotHeadH + rows.Count * LotRowH + sumRows * LotSumH + 2;
             string pickPrefix = table.GetInstanceID() + "/";
 
@@ -135,6 +135,7 @@ namespace AX.UdonSlot.REV1_0.Editor.ReelRule
             GUI.Label(new Rect(cx + 4, left.y + 3, LotNameW, 16), "名前", EditorStyles.miniBoldLabel);
             GUI.Label(new Rect(cx + LotNameW + 4, left.y + 3, LotIdW, 16), "内部名", EditorStyles.miniBoldLabel);
             GUI.Label(new Rect(cx + LotNameW + LotIdW + 4, left.y + 3, LotRolesW, 16), "当選役", EditorStyles.miniBoldLabel);
+            GUI.Label(new Rect(cx + LotNameW + LotIdW + LotRolesW + 4, left.y + 3, LotControlW, 16), "制御", EditorStyles.miniBoldLabel);
             for (int i = 0; i < rows.Count; i++)
             {
                 var row = rows[i];
@@ -174,6 +175,7 @@ namespace AX.UdonSlot.REV1_0.Editor.ReelRule
                     }
                 }
                 if (!e.Remainder) DrawLotteryRoles(rolesRect, table, e, payout);
+                DrawLotteryControl(new Rect(cx + LotNameW + LotIdW + LotRolesW + 4, y + 9, LotControlW - 8, 18), e.Name);
 
                 if (RightClicked(rowRect)) ShowLotteryRowMenu(table, e.Name, row.Sub);
             }
@@ -322,6 +324,50 @@ namespace AX.UdonSlot.REV1_0.Editor.ReelRule
                 string name = BonusEntryName(renamed, child.Bonus);
                 if (model.Find(name) == null) child.Name = name;
             }
+        }
+
+        /// <summary>このフラグで使う制御（ボーナス成立中・RT の条件なし）。クリックで選ぶ。</summary>
+        private void DrawLotteryControl(Rect rect, string flag)
+        {
+            if (asset == null) { GUI.Label(rect, "—", MutedLabel); return; }
+            var used = new List<string>();
+            foreach (var c in Design.controls)
+                if (IsPlainControl(c) && c.lotteryFlags.Contains(flag)) used.Add(c.name);
+            string label = used.Count == 0 ? "—" : (used.Count > 1 ? "⚠ " : "") + string.Join(", ", used.ToArray());
+            if (!GUI.Button(rect, label, EditorStyles.popup)) return;
+            var menu = new GenericMenu();
+            foreach (var c in Design.controls)
+            {
+                if (!IsPlainControl(c)) continue;
+                string name = c.name;
+                menu.AddItem(new GUIContent(name), used.Contains(name), delegate { AssignControl(flag, name); });
+            }
+            menu.AddSeparator("");
+            menu.AddItem(new GUIContent("なし"), used.Count == 0, delegate { AssignControl(flag, null); });
+            menu.AddItem(new GUIContent("新しい制御を作る"), false, delegate
+            {
+                string name = Design.FindControl(flag) == null ? flag : ReelDesign.NumberedName(flag, n => Design.FindControl(n) != null);
+                Edit("制御の追加", delegate { Design.controls.Add(new DesignControl { name = name }); });
+                AssignControl(flag, name);
+            });
+            menu.ShowAsContext();
+        }
+
+        private static bool IsPlainControl(DesignControl c)
+        {
+            return string.IsNullOrEmpty(c.bonus) && string.IsNullOrEmpty(c.state);
+        }
+
+        /// <summary>フラグで使う制御を付け替える。null なら外すだけ。</summary>
+        private void AssignControl(string flag, string control)
+        {
+            Edit("使う制御の変更", delegate
+            {
+                foreach (var c in Design.controls)
+                    if (IsPlainControl(c)) c.lotteryFlags.Remove(flag);
+                var target = control != null ? Design.FindControl(control) : null;
+                if (target != null && !target.lotteryFlags.Contains(flag)) target.lotteryFlags.Add(flag);
+            });
         }
 
         private void DrawLotteryRoles(Rect rect, LotteryTable table, LotteryEntry e, PayoutTable payout)
