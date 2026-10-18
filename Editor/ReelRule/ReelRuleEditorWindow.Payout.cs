@@ -15,7 +15,6 @@ namespace AX.UdonSlot.REV1_0.Editor.ReelRule
         {
             new[] { 0, 1, 2 }, new[] { 0, 2, 1 }, new[] { 1, 0, 2 }, new[] { 1, 2, 0 }, new[] { 2, 0, 1 }, new[] { 2, 1, 0 }
         };
-        private static readonly string[] LineRowNames = { "上段", "中段", "下段" };
         private static readonly string[] TransitionHowNames = { "いつでも", "押し順不正解のときだけ" };
 
         [SerializeField] private string payoutSelected = "";
@@ -380,37 +379,73 @@ namespace AX.UdonSlot.REV1_0.Editor.ReelRule
                 model.Lines.Add(new PayLineRow());
                 changed = true;
             }
+            const float cardW = 116, cardH = 150, gap = 8;
+            float available = Mathf.Max(cardW, position.width - 330);
+            int perRow = Mathf.Max(1, (int)((available + gap) / (cardW + gap)));
+            int rows = (model.Lines.Count + perRow - 1) / perRow;
+            var area = GUILayoutUtility.GetRect(available, Mathf.Max(1, rows) * (cardH + gap) + gap, GUILayout.ExpandWidth(true));
+            int remove = -1;
             for (int i = 0; i < model.Lines.Count; i++)
             {
-                var line = model.Lines[i];
-                using (new EditorGUILayout.HorizontalScope())
-                {
-                    GUILayout.Label((i + 1).ToString(), GUILayout.Width(20));
-                    for (int reel = 0; reel < 3; reel++)
-                    {
-                        GUILayout.Label(ReelLetters[reel], GUILayout.Width(12));
-                        int row = EditorGUILayout.Popup(line.Rows[reel], LineRowNames, GUILayout.Width(56));
-                        if (row != line.Rows[reel]) { line.Rows[reel] = row; changed = true; }
-                    }
-                    GUILayout.Space(12);
-                    GUILayout.Label("BET", GUILayout.Width(26));
-                    for (int b = 0; b < 3; b++)
-                    {
-                        bool on = (line.BetMask & (1 << b)) != 0;
-                        bool next = GUILayout.Toggle(on, BetNames[b], EditorStyles.miniButton, GUILayout.Width(24));
-                        if (next != on) { line.BetMask ^= 1 << b; changed = true; }
-                    }
-                    GUILayout.Space(12);
-                    if (GUILayout.Button("削除", EditorStyles.miniButton, GUILayout.Width(40)))
-                    {
-                        model.Lines.RemoveAt(i);
-                        changed = true;
-                        break;
-                    }
-                    GUILayout.FlexibleSpace();
-                }
+                var card = new Rect(area.x + 4 + (i % perRow) * (cardW + gap), area.y + gap + (i / perRow) * (cardH + gap), cardW, cardH);
+                int result = DrawPayLineCard(card, i, model.Lines[i]);
+                if (result == 1) changed = true;
+                if (result == 2) remove = i;
+            }
+            if (remove >= 0)
+            {
+                model.Lines.RemoveAt(remove);
+                changed = true;
             }
             return changed;
+        }
+
+        /// <summary>有効ライン1本。マスをクリックしてリールごとの段を選ぶ。戻り値 1=変更 2=削除。</summary>
+        private int DrawPayLineCard(Rect card, int index, PayLineRow line)
+        {
+            int result = 0;
+            EditorGUI.DrawRect(card, new Color(0.19f, 0.19f, 0.19f));
+            GUI.Label(new Rect(card.x + 6, card.y + 3, 30, 16), (index + 1).ToString(), EditorStyles.miniBoldLabel);
+            if (GUI.Button(new Rect(card.xMax - 20, card.y + 3, 16, 16), new GUIContent("×", "削除"), EditorStyles.miniLabel)) result = 2;
+
+            const float cell = 26;
+            var grid = new Rect(card.x + (card.width - cell * 3) / 2, card.y + 38, cell * 3, cell * 3);
+            for (int reel = 0; reel < 3; reel++)
+                GUI.Label(new Rect(grid.x + reel * cell, card.y + 20, cell, 16), ReelLetters[reel], CenteredMini);
+            var points = new Vector3[3];
+            for (int reel = 0; reel < 3; reel++)
+                for (int row = 0; row < 3; row++)
+                {
+                    var r = new Rect(grid.x + reel * cell + 1, grid.y + row * cell + 1, cell - 2, cell - 2);
+                    bool on = line.Rows[reel] == row;
+                    EditorGUI.DrawRect(r, on ? AccentColor : new Color(0.13f, 0.13f, 0.13f));
+                    if (on) points[reel] = r.center;
+                    if (Clicked(r, 0) && !on) { line.Rows[reel] = row; result = Math.Max(result, 1); }
+                }
+            if (Event.current.type == EventType.Repaint)
+            {
+                Handles.color = new Color(1f, 1f, 1f, 0.85f);
+                Handles.DrawAAPolyLine(3f, points);
+            }
+
+            float betW = 24, betX = card.x + (card.width - betW * 3) / 2;
+            for (int b = 0; b < 3; b++)
+            {
+                bool on = (line.BetMask & (1 << b)) != 0;
+                bool next = GUI.Toggle(new Rect(betX + b * betW, grid.yMax + 8, betW, 18), on, BetNames[b], EditorStyles.miniButton);
+                if (next != on) { line.BetMask ^= 1 << b; result = Math.Max(result, 1); }
+            }
+            return result;
+        }
+
+        private static GUIStyle centeredMini;
+        private static GUIStyle CenteredMini
+        {
+            get
+            {
+                if (centeredMini == null) centeredMini = new GUIStyle(EditorStyles.miniLabel) { alignment = TextAnchor.MiddleCenter };
+                return centeredMini;
+            }
         }
 
         // ------------------------------------------------------------ 右: 選んだ役
