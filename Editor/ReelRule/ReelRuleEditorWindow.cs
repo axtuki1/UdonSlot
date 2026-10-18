@@ -360,31 +360,34 @@ namespace AX.UdonSlot.REV1_0.Editor.ReelRule
             Poll();
             if (!Ready) return;
             var control = ReelMachineReader.ReelControlOf(machineObject);
-            if (control == null || control.flagNames == null || control.reelControlDataList == null)
-            {
-                EditorUtility.DisplayDialog("ベイク", "機種に ReelControl が設定されていません。", "OK");
-                return;
-            }
             var targets = new List<KeyValuePair<ControlResult, ReelControlData>>();
-            var missing = new List<string>();
+            var created = new List<string>();
             foreach (var result in results)
             {
-                int index = Array.IndexOf(control.flagNames, result.Name);
-                ReelControlData data = index >= 0 && index < control.reelControlDataList.Length ? control.reelControlDataList[index] : null;
-                if (data == null) missing.Add(result.Name);
-                else targets.Add(new KeyValuePair<ControlResult, ReelControlData>(result, data));
+                ReelControlData data = FindControlData(control, result.Name);
+                if (data == null) created.Add(result.Name);
+                targets.Add(new KeyValuePair<ControlResult, ReelControlData>(result, data));
             }
-            if (targets.Count == 0)
-            {
-                EditorUtility.DisplayDialog("ベイク", "ReelControl に一致する内部名がありません。\n" + string.Join("、", missing.ToArray()), "OK");
-                return;
-            }
+            if (targets.Count == 0) return;
             string message = targets.Count + "件の ReelControlData を上書きします。";
-            if (missing.Count > 0) message += "\n\nReelControl に無い内部名（書き込みません）:\n" + string.Join("、", missing.ToArray());
+            if (created.Count > 0) message += "\n\n新規作成:\n" + string.Join("、", created.ToArray());
             long violations = 0;
             foreach (var pair in targets) violations += pair.Key.Stats.ViolationPaths;
             if (violations > 0) message += "\n\n非成立役の入賞: " + violations;
             if (!EditorUtility.DisplayDialog("ベイク", message, "ベイク", "キャンセル")) return;
+
+            Undo.SetCurrentGroupName("リール制御のベイク");
+            int undoGroup = Undo.GetCurrentGroup();
+            if (created.Count > 0)
+            {
+                control = EnsureReelControl(control);
+                for (int i = 0; i < targets.Count; i++)
+                {
+                    if (targets[i].Value != null) continue;
+                    var data = CreateControlData(control, targets[i].Key.Name);
+                    targets[i] = new KeyValuePair<ControlResult, ReelControlData>(targets[i].Key, data);
+                }
+            }
 
             var lengths = new[] { machine.Strips[0].Length, machine.Strips[1].Length, machine.Strips[2].Length };
             var objects = new List<UnityEngine.Object>();
@@ -407,7 +410,55 @@ namespace AX.UdonSlot.REV1_0.Editor.ReelRule
                 PrefabUtility.RecordPrefabInstancePropertyModifications(data);
                 if (data.gameObject.scene.IsValid()) EditorSceneManager.MarkSceneDirty(data.gameObject.scene);
             }
+            Undo.CollapseUndoOperations(undoGroup);
+            Poll();
             EditorUtility.DisplayDialog("ベイク", targets.Count + "件をベイクしました。", "OK");
+        }
+
+        private static ReelControlData FindControlData(ReelControl control, string name)
+        {
+            if (control == null || control.flagNames == null || control.reelControlDataList == null) return null;
+            int index = Array.IndexOf(control.flagNames, name);
+            return index >= 0 && index < control.reelControlDataList.Length ? control.reelControlDataList[index] : null;
+        }
+
+        /// <summary>機種に ReelControl が無ければ、機種と同じ GameObject に追加して参照を設定する。</summary>
+        private ReelControl EnsureReelControl(ReelControl control)
+        {
+            if (control != null) return control;
+            control = UdonSharpEditor.UdonSharpUndo.AddComponent<ReelControl>(machineObject.gameObject);
+            control.flagNames = new string[0];
+            control.reelControlDataList = new ReelControlData[0];
+            var so = new SerializedObject(machineObject);
+            so.FindProperty("reelControl").objectReferenceValue = control;
+            so.ApplyModifiedProperties();
+            return control;
+        }
+
+        /// <summary>機種の子に内部名の GameObject を作って ReelControlData を付け、ReelControl に登録する。</summary>
+        private ReelControlData CreateControlData(ReelControl control, string name)
+        {
+            var go = new GameObject(name);
+            go.transform.SetParent(machineObject.transform, false);
+            Undo.RegisterCreatedObjectUndo(go, "リール制御のベイク");
+            var data = UdonSharpEditor.UdonSharpUndo.AddComponent<ReelControlData>(go);
+
+            Undo.RecordObject(control, "リール制御のベイク");
+            var names = new List<string>(control.flagNames ?? new string[0]);
+            var datas = new List<ReelControlData>(control.reelControlDataList ?? new ReelControlData[0]);
+            while (datas.Count < names.Count) datas.Add(null);
+            int index = names.IndexOf(name);
+            if (index >= 0) datas[index] = data;
+            else
+            {
+                names.Add(name);
+                datas.Add(data);
+            }
+            control.flagNames = names.ToArray();
+            control.reelControlDataList = datas.ToArray();
+            EditorUtility.SetDirty(control);
+            PrefabUtility.RecordPrefabInstancePropertyModifications(control);
+            return data;
         }
 
         // ------------------------------------------------------------ 描画の部品

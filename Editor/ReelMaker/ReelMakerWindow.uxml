@@ -1,0 +1,33 @@
+<ui:UXML xmlns:ui="UnityEngine.UIElements" xmlns:uie="UnityEditor.UIElements" editor-extension-mode="True">
+    <ui:VisualElement style="flex-grow: 1; background-color: rgb(51, 51, 51); padding-left: 12px; padding-right: 12px; padding-top: 12px; padding-bottom: 12px;">
+        <ui:VisualElement style="flex-direction: row; margin-bottom: 10px;">
+            <uie:ObjectField name="Controller" label="機種" style="flex-grow: 1;" />
+            <ui:Button name="Reload" text="再読込" style="width: 110px;" />
+        </ui:VisualElement>
+        <ui:VisualElement style="flex-direction: row; flex-grow: 1; min-height: 0;">
+            <ui:VisualElement name="Reels" style="flex-grow: 1; flex-basis: 0; flex-direction: row; min-width: 420px;" />
+            <ui:ScrollView style="width: 340px; margin-left: 12px; flex-shrink: 0;">
+        <ui:Foldout text="図柄一覧" value="true" style="flex-shrink: 0; margin-top: 8px;">
+            <ui:VisualElement name="CatalogToolbar" style="flex-direction: row; flex-wrap: wrap;" />
+            <ui:VisualElement name="SelectionActions" style="flex-direction: row; margin-bottom: 4px;" />
+            <ui:Label name="CatalogSelection" style="white-space: normal; margin-bottom: 4px; -unity-font-style: bold;" />
+            <ui:ScrollView style="height: 400px; flex-shrink: 0;">
+                <ui:VisualElement name="Catalog" style="flex-direction: column;" />
+            </ui:ScrollView>
+        </ui:Foldout>
+                <ui:Label text="書き出し" style="-unity-font-style: bold; background-color: rgb(43, 43, 43); height: 24px; padding-left: 8px; -unity-text-align: middle-left; margin-top: 8px; margin-bottom: 6px;" />
+                <ui:VisualElement name="Settings" />
+                <ui:Label name="LayoutSummary" style="white-space: normal; margin-top: 8px; margin-bottom: 8px;" />
+                <ui:Foldout text="図柄ごとの設定" value="false">
+                    <ui:VisualElement name="SymbolSettings" />
+                </ui:Foldout>
+                <ui:VisualElement name="Messages" style="margin-top: 8px; margin-bottom: 8px;" />
+                <ui:Button name="PreviewButton" text="プレビュー" style="height: 28px;" />
+                <ui:Button name="Export" text="PNGを書き出す" style="height: 34px; margin-top: 5px; -unity-font-style: bold; background-color: rgb(46, 89, 138);" />
+                <ui:Label name="PreviewStatus" style="white-space: normal; margin-top: 8px;" />
+                <ui:IMGUIContainer name="Preview" style="margin-top: 6px;" />
+            </ui:ScrollView>
+        </ui:VisualElement>
+
+    </ui:VisualElement>
+</ui:UXML>
