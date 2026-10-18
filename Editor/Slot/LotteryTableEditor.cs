@@ -12,9 +12,20 @@ namespace AX.UdonSlot.REV1_0
     {
         private bool[] flagFoldouts = new bool[0];
 
+        private static bool HasBonusEntries(LotteryTable table)
+        {
+            if (table.entryBonusNames == null) return false;
+            foreach (string name in table.entryBonusNames) if (!string.IsNullOrEmpty(name)) return true;
+            return false;
+        }
+
         public override void OnInspectorGUI()
         {
             if (UdonSharpGUI.DrawDefaultUdonSharpBehaviourHeader(target)) return;
+            if (GUILayout.Button("機種エディタで開く")) AX.UdonSlot.REV1_0.Editor.ReelRule.ReelRuleEditorWindow.OpenFor(target);
+            var table = (LotteryTable)target;
+            // 設定やボーナス付きの行は機種エディタでだけ編集する（配列の並びが崩れないように）
+            if (table.GetSettingCount() > 1 || HasBonusEntries(table)) return;
 
             serializedObject.Update();
 

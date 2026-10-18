@@ -3,6 +3,7 @@ using System;
 using UdonSharp;
 using UnityEngine;
 using VRC.SDKBase;
+using VRC.Udon.Common.Interfaces;
 namespace AX.UdonSlot.REV1_0
 {
     /// <summary>
@@ -73,6 +74,59 @@ namespace AX.UdonSlot.REV1_0
         private ReelControl reelControl;
         
         protected bool isAllDynamicControl = false;
+
+        /// <summary>役物とRT状態の定義。未設定ならボーナス・RTの処理を行わない。</summary>
+        [SerializeField]
+        protected BonusTable bonusTable;
+
+        /// <summary>
+        /// 制御名の形式。{flag}=フラグ、{bonus}=成立中のボーナス、{rt}=状態の内部名。
+        /// この名前の制御がなければ {flag} の制御を使う。
+        /// </summary>
+        [SerializeField]
+        protected string controlNameFormat = "{flag}_{bonus}";
+
+        /// <summary>設定（0始まり）。抽選表の設定列を選ぶ。</summary>
+        [UdonSynced]
+        protected int settingIndex = 0;
+
+        /// <summary>成立して作動待ちの役物。なしは-1。</summary>
+        [UdonSynced]
+        protected int pendingBonus = -1;
+
+        /// <summary>作動中の役物。BB・MBは親の役物。なしは-1。</summary>
+        [UdonSynced]
+        protected int activeBonus = -1;
+
+        /// <summary>BB・MBが連続作動させている役物。なしは-1。</summary>
+        [UdonSynced]
+        protected int activeChildBonus = -1;
+
+        /// <summary>作動中の役物の払出枚数・遊技回数・入賞回数。</summary>
+        [UdonSynced]
+        protected int bonusPayoutCount, bonusGameCount, bonusWinCount;
+
+        /// <summary>連続作動中の役物の払出枚数・遊技回数・入賞回数。</summary>
+        [UdonSynced]
+        protected int childPayoutCount, childGameCount, childWinCount;
+
+        /// <summary>現在の状態（RT）。0は基底の状態。</summary>
+        [UdonSynced]
+        protected int stateIndex = 0;
+
+        /// <summary>現在の状態に入ってからの遊技回数。</summary>
+        [UdonSynced]
+        protected int stateGameCount = 0;
+
+        /// <summary>現在の状態に図柄表示で入ったか。図柄表示で入った有限RTは図柄表示で上書きしない。</summary>
+        [UdonSynced]
+        protected bool isStateEnteredBySymbol = false;
+
+        /// <summary>今回の遊技で抽選に使った抽選表。</summary>
+        private LotteryTable drawnLotteryTable;
+
+        /// <summary>今回の遊技中に状態が変わったか。G数はその次の遊技から数える。</summary>
+        private bool isStateEnteredThisGame = false;
         
         /// <summary>
         /// レバーON時にLotteryTableからフラグを抽選し、結果を同期する。
@@ -82,6 +136,7 @@ namespace AX.UdonSlot.REV1_0
         public virtual void GenerateFlag(int bet)
         {
             SetOwner();
+            drawnLotteryTable = GetLotteryTableForDraw();
             if (Utilities.IsValid(nextFlag) && nextFlag.Length > 0)
             {
                 activeFlag = nextFlag;
@@ -89,9 +144,10 @@ namespace AX.UdonSlot.REV1_0
             }
             else
             {
-                activeFlag = Utilities.IsValid(lotteryTable) ? lotteryTable.DrawFlag(bet) : "";
+                activeFlag = Utilities.IsValid(drawnLotteryTable) ? drawnLotteryTable.DrawFlag(bet, settingIndex) : "";
             }
 
+            ResolveDrawnBonus();
             GenerateFlagLogic(bet, activeFlag);
             RequestSerialization();
         }
@@ -252,7 +308,7 @@ namespace AX.UdonSlot.REV1_0
                 reelIndex,
                 currentSymbol,
                 payoutTable,
-                lotteryTable,
+                GetCurrentLotteryTable(),
                 activeFlag,
                 priority,
                 maxSlipCount
@@ -553,6 +609,8 @@ namespace AX.UdonSlot.REV1_0
 
                 for (int pairIndex = 0; pairIndex < payoutTable.GetWinPairCount(); pairIndex++)
                 {
+                    // 移行図柄は引き込みも回避もしない。
+                    if (payoutTable.IsTransition(pairIndex)) continue;
                     bool isWon = IsPayoutTableCandidate(payoutTable, lotteryTable, pairIndex, activeFlag);
                     if (!IsPayoutTableStopOrderPossible(payoutTable, pairIndex, reelIndex, currentStopOrder)) continue;
 
@@ -747,6 +805,8 @@ namespace AX.UdonSlot.REV1_0
             int pairIndex,
             string activeFlag)
         {
+            // 成立中のボーナスの作動役は、毎遊技で引き込む。
+            if (IsPendingBonusStartRole(payoutTable.winPairNames[pairIndex])) return true;
             if (Utilities.IsValid(lotteryTable) && lotteryTable.HasWinningRoleDefinitions())
             {
                 return lotteryTable.IsRoleWon(activeFlag, payoutTable.winPairNames[pairIndex]);
@@ -1001,14 +1061,37 @@ namespace AX.UdonSlot.REV1_0
         /// </summary>
         public virtual string GetReelControlFlagName()
         {
-            return GetActiveFlag();
+            string flag = GetActiveBaseFlag();
+            string format = controlNameFormat;
+            if (string.IsNullOrEmpty(format)) return flag;
+
+            string bonus = GetPendingBonusName();
+            if (bonus.Length == 0 && format.IndexOf("{bonus}") >= 0) return flag;
+
+            string name = format.Replace("{flag}", flag).Replace("{bonus}", bonus).Replace("{rt}", GetStateName());
+            return HasReelControl(name) ? name : flag;
         }
 
         /// <summary>現在成立しているフラグの表示名を返す。</summary>
         public string GetActiveFlagDisplayName()
         {
-            if (!Utilities.IsValid(lotteryTable)) return activeFlag;
-            return lotteryTable.GetFlagDisplayName(activeFlag);
+            LotteryTable table = GetCurrentLotteryTable();
+            if (!Utilities.IsValid(table)) return activeFlag;
+            return table.GetFlagDisplayName(activeFlag);
+        }
+
+        /// <summary>ボーナス付きフラグ（Cherry_RedBB など）の元のフラグ名を返す。</summary>
+        public string GetActiveBaseFlag()
+        {
+            LotteryTable table = GetCurrentLotteryTable();
+            if (!Utilities.IsValid(table)) return activeFlag;
+            return table.GetEntryBaseFlag(activeFlag);
+        }
+
+        private bool HasReelControl(string name)
+        {
+            if (!Utilities.IsValid(reelControl) || reelControl.flagNames == null) return false;
+            return Array.IndexOf(reelControl.flagNames, name) >= 0;
         }
         
 
@@ -1024,6 +1107,289 @@ namespace AX.UdonSlot.REV1_0
         {
             if (!Utilities.IsValid(payoutTable)) return false;
             return payoutTable.ContainsReplay(winningSymbols);
+        }
+
+        // ---- ボーナス・RT ----
+
+        /// <summary>今の状態で抽選に使う抽選表。作動中は役物の抽選表、それ以外は状態の抽選表。</summary>
+        public LotteryTable GetLotteryTableForDraw()
+        {
+            if (Utilities.IsValid(bonusTable))
+            {
+                LotteryTable table = null;
+                if (activeBonus >= 0)
+                {
+                    if (activeChildBonus >= 0) table = bonusTable.GetBonusLotteryTable(activeChildBonus);
+                    if (!Utilities.IsValid(table)) table = bonusTable.GetBonusLotteryTable(activeBonus);
+                }
+                else
+                {
+                    table = bonusTable.GetStateLotteryTable(stateIndex);
+                }
+                if (Utilities.IsValid(table)) return table;
+            }
+
+            return lotteryTable;
+        }
+
+        /// <summary>今回の遊技の抽選表。抽選前や所有者が変わった後は今の状態から決める。</summary>
+        public LotteryTable GetCurrentLotteryTable()
+        {
+            return Utilities.IsValid(drawnLotteryTable) ? drawnLotteryTable : GetLotteryTableForDraw();
+        }
+
+        /// <summary>
+        /// 抽選したフラグにボーナスが付いていれば成立させる。
+        /// 成立中・作動中は重ねて成立しないので、元のフラグとして扱う。
+        /// </summary>
+        private void ResolveDrawnBonus()
+        {
+            if (!Utilities.IsValid(bonusTable) || !Utilities.IsValid(drawnLotteryTable)) return;
+            string bonusName = drawnLotteryTable.GetEntryBonusName(activeFlag);
+            if (bonusName.Length == 0) return;
+
+            int bonus = bonusTable.FindBonus(bonusName);
+            if (bonus < 0 || pendingBonus >= 0 || activeBonus >= 0)
+            {
+                activeFlag = drawnLotteryTable.GetEntryBaseFlag(activeFlag);
+                return;
+            }
+
+            pendingBonus = bonus;
+            int wonState = bonusTable.GetBonusWonState(bonus);
+            if (wonState >= 0) EnterState(wonState, false);
+        }
+
+        private bool IsPendingBonusStartRole(string roleName)
+        {
+            if (pendingBonus < 0 || !Utilities.IsValid(bonusTable) || string.IsNullOrEmpty(roleName)) return false;
+            return bonusTable.GetBonusStartRole(pendingBonus) == roleName;
+        }
+
+        /// <summary>
+        /// 遊技の結果からボーナスの作動・終了と状態の移行を行う。MainBoardが払出の後に呼ぶ。
+        /// 優先順: 作動中の計数 → ボーナス作動 → 図柄表示 → G数。
+        /// </summary>
+        public virtual void UpdateGameState(string[] winningNames, int payout)
+        {
+            if (!Utilities.IsValid(bonusTable)) return;
+            SetOwner();
+
+            if (activeBonus >= 0)
+            {
+                CountBonusGame(winningNames, payout);
+            }
+            else if (pendingBonus >= 0 && ContainsName(winningNames, bonusTable.GetBonusStartRole(pendingBonus)))
+            {
+                StartBonus(pendingBonus);
+            }
+            else if (pendingBonus >= 0 || !TryMoveBySymbol(winningNames))
+            {
+                CountStateGame();
+            }
+
+            isStateEnteredThisGame = false;
+            RequestSerialization();
+        }
+
+        private void StartBonus(int bonus)
+        {
+            pendingBonus = -1;
+            activeBonus = bonus;
+            activeChildBonus = bonusTable.GetBonusChild(bonus);
+            bonusPayoutCount = 0;
+            bonusGameCount = 0;
+            bonusWinCount = 0;
+            ResetChildCount();
+            // ボーナスに入ると、それまでの状態は上書きされる。
+            stateGameCount = 0;
+            isStateEnteredBySymbol = false;
+            NotifySubBoard(nameof(SubBoard.BonusStart), bonusTable.GetBonusName(bonus));
+        }
+
+        private void CountBonusGame(string[] winningNames, int payout)
+        {
+            bool isWin = CountWinningRoles(winningNames) > 0;
+            bonusGameCount++;
+            bonusPayoutCount += payout;
+            if (isWin) bonusWinCount++;
+            if (activeChildBonus >= 0)
+            {
+                childGameCount++;
+                childPayoutCount += payout;
+                if (isWin) childWinCount++;
+            }
+
+            if (IsBonusFinished(activeBonus, bonusPayoutCount, bonusGameCount, bonusWinCount))
+            {
+                EndBonus();
+                return;
+            }
+
+            // 親が続く間は、終わった役物をすぐ再作動する（連続作動）。
+            if (activeChildBonus >= 0 &&
+                IsBonusFinished(activeChildBonus, childPayoutCount, childGameCount, childWinCount))
+            {
+                ResetChildCount();
+            }
+        }
+
+        private bool IsBonusFinished(int bonus, int payoutCount, int gameCount, int winCount)
+        {
+            if (bonusTable.IsSingleGameBonus(bonus) && gameCount >= 1) return true;
+            int endPayout = bonusTable.GetBonusEndPayout(bonus);
+            if (endPayout > 0 && payoutCount > endPayout) return true;
+            int endGames = bonusTable.GetBonusEndGames(bonus);
+            if (endGames > 0 && gameCount >= endGames) return true;
+            int endWins = bonusTable.GetBonusEndWins(bonus);
+            return endWins > 0 && winCount >= endWins;
+        }
+
+        private void EndBonus()
+        {
+            string bonusName = bonusTable.GetBonusName(activeBonus);
+            int endState = bonusTable.GetBonusEndState(activeBonus);
+            activeBonus = -1;
+            activeChildBonus = -1;
+            bonusPayoutCount = 0;
+            bonusGameCount = 0;
+            bonusWinCount = 0;
+            ResetChildCount();
+            EnterState(endState >= 0 ? endState : 0, false);
+            NotifySubBoard(nameof(SubBoard.BonusEnd), bonusName);
+        }
+
+        private void ResetChildCount()
+        {
+            childPayoutCount = 0;
+            childGameCount = 0;
+            childWinCount = 0;
+        }
+
+        /// <summary>図柄表示による移行。移行したらtrue。</summary>
+        private bool TryMoveBySymbol(string[] winningNames)
+        {
+            if (winningNames == null || winningNames.Length == 0) return false;
+            string baseFlag = GetActiveBaseFlag();
+            for (int move = 0; move < bonusTable.GetMoveCount(); move++)
+            {
+                int from = bonusTable.GetMoveFrom(move);
+                if (from >= 0 && from != stateIndex) continue;
+                if (!ContainsName(winningNames, bonusTable.GetMoveRole(move))) continue;
+
+                string onlyFlag = bonusTable.GetMoveOnlyFlag(move);
+                if (onlyFlag.Length > 0 && onlyFlag != baseFlag && onlyFlag != activeFlag) continue;
+
+                int to = bonusTable.GetMoveTo(move);
+                if (to < 0 || to == stateIndex) continue;
+
+                // 図柄表示で入った有限RTは、図柄表示では上書きしない。
+                if (isStateEnteredBySymbol && bonusTable.GetStateGameLimit(stateIndex) > 0) return false;
+
+                EnterState(to, true);
+                return true;
+            }
+
+            return false;
+        }
+
+        /// <summary>有限の状態の遊技回数を数え、終わったら状態0へ戻す。</summary>
+        private void CountStateGame()
+        {
+            if (isStateEnteredThisGame || stateIndex == 0) return;
+            int limit = bonusTable.GetStateGameLimit(stateIndex);
+            if (limit <= 0) return;
+
+            stateGameCount++;
+            if (stateGameCount >= limit) EnterState(0, false);
+        }
+
+        private void EnterState(int state, bool isBySymbol)
+        {
+            bool isChanged = state != stateIndex;
+            stateIndex = state;
+            stateGameCount = 0;
+            isStateEnteredBySymbol = isBySymbol && state != 0;
+            isStateEnteredThisGame = true;
+            if (isChanged) NotifySubBoard(nameof(SubBoard.StateChange), GetStateName());
+        }
+
+        private void NotifySubBoard(string eventName, string value)
+        {
+            if (!Utilities.IsValid(mainBoard) || !Utilities.IsValid(mainBoard.subBoard)) return;
+            mainBoard.subBoard.SendCustomNetworkEvent(NetworkEventTarget.All, eventName, value);
+        }
+
+        /// <summary>移行図柄を除いた入賞役の数。</summary>
+        private int CountWinningRoles(string[] winningNames)
+        {
+            if (winningNames == null) return 0;
+            int count = 0;
+            for (int i = 0; i < winningNames.Length; i++)
+            {
+                if (Utilities.IsValid(payoutTable) && payoutTable.IsTransition(winningNames[i])) continue;
+                count++;
+            }
+
+            return count;
+        }
+
+        private bool ContainsName(string[] names, string name)
+        {
+            if (names == null || string.IsNullOrEmpty(name)) return false;
+            return Array.IndexOf(names, name) >= 0;
+        }
+
+        /// <summary>作動中の規定BET。作動中でない、または未設定なら0。</summary>
+        public int GetRequiredBet()
+        {
+            if (activeBonus < 0 || !Utilities.IsValid(bonusTable)) return 0;
+            int bet = activeChildBonus >= 0 ? bonusTable.GetBonusRequiredBet(activeChildBonus) : 0;
+            return bet > 0 ? bet : bonusTable.GetBonusRequiredBet(activeBonus);
+        }
+
+        public BonusTable GetBonusTable() { return bonusTable; }
+        public bool IsBonusPending() { return pendingBonus >= 0; }
+        public bool IsBonusActive() { return activeBonus >= 0; }
+
+        /// <summary>成立して作動待ちのボーナスの内部名。なければ空文字。</summary>
+        public string GetPendingBonusName()
+        {
+            return Utilities.IsValid(bonusTable) ? bonusTable.GetBonusName(pendingBonus) : "";
+        }
+
+        /// <summary>作動中のボーナスの内部名（BBなら親）。なければ空文字。</summary>
+        public string GetActiveBonusName()
+        {
+            return Utilities.IsValid(bonusTable) ? bonusTable.GetBonusName(activeBonus) : "";
+        }
+
+        /// <summary>連続作動中の役物の内部名（BB中のRBなど）。なければ空文字。</summary>
+        public string GetActiveChildBonusName()
+        {
+            return Utilities.IsValid(bonusTable) ? bonusTable.GetBonusName(activeChildBonus) : "";
+        }
+
+        public int GetBonusPayoutCount() { return bonusPayoutCount; }
+        public int GetBonusGameCount() { return bonusGameCount; }
+        public int GetBonusWinCount() { return bonusWinCount; }
+
+        /// <summary>現在の状態（RT）の内部名。</summary>
+        public string GetStateName()
+        {
+            return Utilities.IsValid(bonusTable) ? bonusTable.GetStateName(stateIndex) : "";
+        }
+
+        public int GetStateIndex() { return stateIndex; }
+        public int GetStateGameCount() { return stateGameCount; }
+        public int GetSettingIndex() { return settingIndex; }
+
+        /// <summary>設定（0始まり）を変える。</summary>
+        public void SetSetting(int setting)
+        {
+            SetOwner();
+            settingIndex = setting < 0 ? 0 : setting;
+            RequestSerialization();
         }
 
         public bool IsOwner()

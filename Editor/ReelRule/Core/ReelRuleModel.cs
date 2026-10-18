@@ -67,6 +67,8 @@ namespace AX.UdonSlot.REV1_0.Editor.ReelRule
         public int[] StopOrder;
         public bool IsBonus;
         public bool IsReplay;
+        /// <summary>移行図柄（払出なし。RTの契機）。</summary>
+        public bool IsTransition;
         public int Payout;
     }
 
@@ -74,7 +76,13 @@ namespace AX.UdonSlot.REV1_0.Editor.ReelRule
     public sealed class LotteryFlag
     {
         public string Name = "";
+        /// <summary>ボーナス付きフラグの元のフラグ名。空は Name。</summary>
+        public string BaseFlag = "";
+        /// <summary>同時に成立するボーナスの内部名。</summary>
+        public string Bonus = "";
         public List<string> Roles = new List<string>();
+
+        public string BaseName { get { return string.IsNullOrEmpty(BaseFlag) ? Name : BaseFlag; } }
     }
 
     /// <summary>3×3の停止形。セルは [段*3+リール]（段は 0=上段）。</summary>

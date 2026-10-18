@@ -90,6 +90,7 @@ namespace AX.UdonSlot.REV1_0.Editor.ReelRule
                 }
             }
             EditorGUILayout.EndScrollView();
+            DrawControlNameFormat();
             using (new EditorGUILayout.HorizontalScope())
             {
                 if (GUILayout.Button("＋ 追加")) { AddControl(); GUIUtility.ExitGUI(); }
@@ -98,10 +99,61 @@ namespace AX.UdonSlot.REV1_0.Editor.ReelRule
             }
             if (GUILayout.Button("抽選表から一括作成"))
             {
-                Edit("抽選表から一括作成", delegate { Design.AddControlsFromLottery(machine); });
+                Edit("抽選表から一括作成", delegate
+                {
+                    Design.AddControlsFromLottery(machine);
+                    AddCarriedBonusControls();
+                });
                 GUIUtility.ExitGUI();
             }
             GUILayout.Space(4);
+        }
+
+        /// <summary>制御名の形式（ReelOutputController.controlNameFormat）。</summary>
+        private void DrawControlNameFormat()
+        {
+            var so = new SerializedObject(machineObject);
+            var format = so.FindProperty("controlNameFormat");
+            if (format == null) return;
+            GUILayout.Space(4);
+            GUILayout.Label("制御名の形式", EditorStyles.miniLabel);
+            string next = EditorGUILayout.DelayedTextField(format.stringValue);
+            using (new EditorGUILayout.HorizontalScope())
+            {
+                foreach (string token in new[] { "{flag}", "{bonus}", "{rt}" })
+                    if (Chip(token, AnyColor, new Color(0.75f, 0.75f, 0.75f))) next = format.stringValue + (token == "{flag}" ? "" : "_") + token;
+                GUILayout.FlexibleSpace();
+            }
+            if (next == format.stringValue) return;
+            format.stringValue = next;
+            so.ApplyModifiedProperties();
+            GUI.FocusControl(null);
+        }
+
+        /// <summary>
+        /// ボーナス成立中のハズレ用の制御（例 NoWin_RedBB）を作る。作動役を当選として扱う。
+        /// ほかのフラグは、同じ名前の制御がなければ元のフラグの制御が使われる。
+        /// </summary>
+        private void AddCarriedBonusControls()
+        {
+            var bonusTable = MachineBonusTable;
+            var main = ReelMachineReader.LotteryTableOf(machineObject);
+            if (bonusTable == null || main == null) return;
+            foreach (var entry in LotteryModel.Load(main).Entries)
+            {
+                if (!entry.Remainder) continue;
+                for (int b = 0; b < bonusTable.GetBonusCount(); b++)
+                {
+                    string role = bonusTable.GetBonusStartRole(b);
+                    if (role.Length == 0) continue;
+                    string name = BonusEntryName(entry.Name, bonusTable.bonusNames[b]);
+                    if (Design.FindControl(name) != null) continue;
+                    var control = new DesignControl { name = name };
+                    control.lotteryFlags.Add(entry.Name);
+                    control.extraRoles.Add(role);
+                    Design.controls.Add(control);
+                }
+            }
         }
 
         private void SelectControl(int index)

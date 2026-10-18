@@ -504,7 +504,7 @@ namespace AX.UdonSlot.REV1_0
             if (!CanBet()) return;
             SetOwner();
             OffControllable();
-            int betAmount = Mathf.Min(maxBet - bet, credit);
+            int betAmount = Mathf.Min(GetMaxBet() - bet, credit);
             lastPayout = 0;
             bet += betAmount;
             credit -= betAmount;
@@ -515,7 +515,14 @@ namespace AX.UdonSlot.REV1_0
 
         private bool CanBet()
         {
-            return isControllable && !isReplay && credit != 0 && bet < maxBet;
+            return isControllable && !isReplay && credit != 0 && bet < GetMaxBet();
+        }
+
+        /// <summary>今の遊技で掛けられる最大BET。ボーナス作動中は規定BET。</summary>
+        public int GetMaxBet()
+        {
+            int requiredBonusBet = Utilities.IsValid(reelOutputController) ? reelOutputController.GetRequiredBet() : 0;
+            return requiredBonusBet > 0 ? requiredBonusBet : maxBet;
         }
 
         public virtual void PushMaxBet()
@@ -538,6 +545,7 @@ namespace AX.UdonSlot.REV1_0
         {
             if (!isControllable || requestGameStart) return;
             if (bet == 0 || bet < requiredBet) return;
+            if (Utilities.IsValid(reelOutputController) && bet < reelOutputController.GetRequiredBet()) return;
             if (isRollingReel1 || isRollingReel2 || isRollingReel3) return;
             SetOwner();
             OffControllable(0.75f);
@@ -771,6 +779,7 @@ namespace AX.UdonSlot.REV1_0
                     shouldReplay = reelOutputController.IsReplay(payoutNames);
                     credit += payoutAmount;
                     lastPayout = payoutAmount;
+                    reelOutputController.UpdateGameState(payoutNames, payoutAmount);
                 }
 
                 // リプレイ時は今回のBETを次ゲームへ持ち越す。

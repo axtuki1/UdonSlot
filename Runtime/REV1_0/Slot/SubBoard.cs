@@ -321,7 +321,8 @@ namespace AX.UdonSlot.REV1_0
         public void BetButtonEffect()
         {
             Material mat = betButton.material;
-            bool isCanBetting = mainBoard.maxBet > 0 && mainBoard.bet < mainBoard.maxBet && mainBoard.isControllable;
+            int maxBet = mainBoard.GetMaxBet();
+            bool isCanBetting = maxBet > 0 && mainBoard.bet < maxBet && mainBoard.isControllable;
             mat.SetColor("_EmissionColor", isCanBetting ? betButtonActiveColor : betButtonInactiveColor);
             BetButtonEffectLogic(betButton, mat, isCanBetting);
         }
@@ -467,6 +468,36 @@ namespace AX.UdonSlot.REV1_0
         {
             if (!IsSubBoardOwner()) Networking.SetOwner(Networking.LocalPlayer, gameObject);
         }
+
+        /// <summary>ボーナスが作動したことを通知する。</summary>
+        [NetworkCallable]
+        public void BonusStart(string bonusName)
+        {
+            BonusStartLogic(bonusName);
+        }
+
+        /// <summary>機種固有のボーナス開始演出を実装する拡張ポイント。引数は役物の内部名。</summary>
+        public virtual void BonusStartLogic(string bonusName) { }
+
+        /// <summary>ボーナスが終了したことを通知する。</summary>
+        [NetworkCallable]
+        public void BonusEnd(string bonusName)
+        {
+            BonusEndLogic(bonusName);
+        }
+
+        /// <summary>機種固有のボーナス終了演出を実装する拡張ポイント。引数は役物の内部名。</summary>
+        public virtual void BonusEndLogic(string bonusName) { }
+
+        /// <summary>状態（RT）が変わったことを通知する。</summary>
+        [NetworkCallable]
+        public void StateChange(string stateName)
+        {
+            StateChangeLogic(stateName);
+        }
+
+        /// <summary>機種固有の状態移行演出を実装する拡張ポイント。引数は移行先の状態の内部名。</summary>
+        public virtual void StateChangeLogic(string stateName) { }
 
         public void NetworkStandby()
         {

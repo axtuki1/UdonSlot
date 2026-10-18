@@ -11,7 +11,9 @@ namespace AX.UdonSlot.REV1_0
         [InspectorName("リプレイ")]
         Replay,
         [InspectorName("ボーナス")]
-        Bonus
+        Bonus,
+        [InspectorName("移行図柄")]
+        Transition
     }
 
     /// <summary>
@@ -59,6 +61,13 @@ namespace AX.UdonSlot.REV1_0
         /// <summary>trueの場合はボーナス役として扱う。</summary>
         [HideInInspector]
         public bool[] isBonuses = new bool[0];
+
+        /// <summary>
+        /// trueの場合は移行図柄（RTの契機にする払出なしの組合せ）として扱う。
+        /// リール制御では引き込みも回避もしない。
+        /// </summary>
+        [HideInInspector]
+        public bool[] isTransitions = new bool[0];
 
         /// <summary>左リールに必要な図柄名。空文字は任意、半角カンマ区切りはOR条件として扱う。</summary>
         [HideInInspector]
@@ -218,7 +227,7 @@ namespace AX.UdonSlot.REV1_0
         public int GetPayout(int pairIndex, int bet)
         {
             if (!IsWinPairValid(pairIndex)) return 0;
-            if (IsReplay(pairIndex)) return 0;
+            if (IsReplay(pairIndex) || IsTransition(pairIndex)) return 0;
 
             // BET 1・2の配当が未設定ならBET 3の配当を使う。
             switch (bet)
@@ -256,6 +265,26 @@ namespace AX.UdonSlot.REV1_0
             if (pairIndex < 0 || pairIndex >= GetWinPairCount()) return false;
             if (isBonuses == null || isBonuses.Length <= pairIndex) return false;
             return isBonuses[pairIndex];
+        }
+
+        /// <summary>指定した成立役が移行図柄として設定されているか確認する。</summary>
+        public bool IsTransition(int pairIndex)
+        {
+            if (pairIndex < 0 || pairIndex >= GetWinPairCount()) return false;
+            if (isTransitions == null || isTransitions.Length <= pairIndex) return false;
+            return isTransitions[pairIndex];
+        }
+
+        /// <summary>内部使用名に対応する成立役が移行図柄か確認する。</summary>
+        public bool IsTransition(string internalName)
+        {
+            if (string.IsNullOrEmpty(internalName)) return false;
+            for (int i = 0; i < GetWinPairCount(); i++)
+            {
+                if (winPairNames[i] == internalName) return IsTransition(i);
+            }
+
+            return false;
         }
 
         /// <summary>内部使用名に対応する成立役がボーナスか確認する。</summary>

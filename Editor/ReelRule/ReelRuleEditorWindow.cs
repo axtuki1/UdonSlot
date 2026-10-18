@@ -10,14 +10,14 @@ using UnityEngine;
 namespace AX.UdonSlot.REV1_0.Editor.ReelRule
 {
     /// <summary>
-    /// リール制御エディタ。①制御（滑り表・出目マップ）と②出目（基本目・リーチ目）を編集し、
-    /// 変更のたびに裏で全経路を再計算する。結果は ReelControlData へベイクする。
+    /// 機種エディタ。①制御（滑り表・出目マップ）②出目（基本目・リーチ目）③抽選表 ④配当表 ⑤ボーナス・RT を編集する。
+    /// リール制御は変更のたびに裏で全経路を再計算し、ReelControlData へベイクする。
     /// </summary>
     public sealed partial class ReelRuleEditorWindow : EditorWindow
     {
         private const string MachinePrefKey = "AX.UdonSlot.ReelRuleEditor.Machine";
         private const string DesignPrefKey = "AX.UdonSlot.ReelRuleEditor.Design";
-        private static readonly string[] ScreenNames = { "制御", "出目" };
+        private static readonly string[] ScreenNames = { "制御", "出目", "抽選表", "配当表", "ボーナス・RT" };
         private static readonly string[] PriorityNames = { "ボーナス優先", "小役優先" };
 
         private ReelOutputController machineObject;
@@ -39,10 +39,10 @@ namespace AX.UdonSlot.REV1_0.Editor.ReelRule
         private string generatedFrom;
         private long elapsedMs;
 
-        [MenuItem("UdonSlot/リール制御エディタ")]
+        [MenuItem("UdonSlot/機種エディタ")]
         public static void Open()
         {
-            GetWindow<ReelRuleEditorWindow>("リール制御エディタ");
+            GetWindow<ReelRuleEditorWindow>("機種エディタ");
         }
 
         private void OnEnable()
@@ -234,17 +234,24 @@ namespace AX.UdonSlot.REV1_0.Editor.ReelRule
             DrawTopBar();
             if (machineError != null) EditorGUILayout.HelpBox(machineError, MessageType.Error);
             foreach (string error in errors) EditorGUILayout.HelpBox(error, MessageType.Error);
-            if (asset == null || machine == null) return;
+            if (machineObject == null) return;
 
-            ClampSelection();
             using (new EditorGUILayout.HorizontalScope())
             {
                 GUILayout.Space(6);
-                int next = GUILayout.Toolbar(screen, ScreenNames, GUILayout.Width(200), GUILayout.Height(22));
+                int next = GUILayout.Toolbar(screen, ScreenNames, GUILayout.Width(460), GUILayout.Height(22));
                 if (next != screen) { screen = next; GUI.FocusControl(null); }
                 GUILayout.FlexibleSpace();
             }
             GUILayout.Space(4);
+            switch (screen)
+            {
+                case 2: DrawLotteryScreen(); return;
+                case 3: DrawPayoutScreen(); return;
+                case 4: DrawBonusScreen(); return;
+            }
+            if (asset == null || machine == null) return;
+            ClampSelection();
             if (screen == 0) DrawControlScreen();
             else DrawShapeScreen();
         }
@@ -285,9 +292,16 @@ namespace AX.UdonSlot.REV1_0.Editor.ReelRule
                     int shown = Design.maxSlip >= 0 ? Design.maxSlip : machine != null ? machine.MaxSlip : 4;
                     int slip = EditorGUILayout.IntPopup(shown, new[] { "0", "1", "2", "3", "4" }, new[] { 0, 1, 2, 3, 4 }, EditorStyles.toolbarPopup, GUILayout.Width(40));
                     if (slip != shown) Edit("最大滑りの変更", delegate { Design.maxSlip = slip; });
+
+                    GUILayout.Space(8);
+                    GUILayout.Label("規格", GUILayout.Width(28));
+                    int regulation = GUILayout.Toolbar((int)Design.regulation, RegulationLimits.Names, EditorStyles.toolbarButton, GUILayout.Width(110));
+                    if (regulation != (int)Design.regulation) Edit("規格の変更", delegate { Design.regulation = (Regulation)regulation; });
                 }
 
                 GUILayout.FlexibleSpace();
+                if (GUILayout.Button("リール配列", EditorStyles.toolbarButton, GUILayout.Width(64))) { ReelMaker.ReelMaker.Open(); GUIUtility.ExitGUI(); }
+                DrawNoticeButton();
                 if (asset != null && machine != null)
                 {
                     if (job != null) GUILayout.Label("計算中…", EditorStyles.miniLabel);

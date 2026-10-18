@@ -41,6 +41,7 @@ namespace AX.UdonSlot.REV1_0.Editor.ReelRule
                     Name = payout.winPairNames[i],
                     IsBonus = payout.IsBonus(i),
                     IsReplay = payout.IsReplay(i),
+                    IsTransition = payout.IsTransition(i),
                     Payout = payout.payouts[i]
                 };
                 for (int r = 0; r < 3; r++) role.Symbols[r] = SplitSymbols(payout.GetSymbol(i, r));
@@ -49,12 +50,24 @@ namespace AX.UdonSlot.REV1_0.Editor.ReelRule
                 m.Roles.Add(role);
             }
 
+            foreach (var table in LotteryTablesOf(machine)) ReadFlags(m, table, payout);
+            return m;
+        }
+
+        /// <summary>抽選表のフラグを Machine に足す。先に読んだ抽選表に同じ名前があれば足さない。</summary>
+        private static void ReadFlags(Machine m, LotteryTable lottery, PayoutTable payout)
+        {
             var lso = new SerializedObject(lottery);
             var names = lso.FindProperty("winpairNames");
             bool hasRoles = lottery.HasWinningRoleDefinitions();
             for (int f = 0; f < names.arraySize; f++)
             {
-                var flag = new LotteryFlag { Name = names.GetArrayElementAtIndex(f).stringValue };
+                var flag = new LotteryFlag
+                {
+                    Name = names.GetArrayElementAtIndex(f).stringValue,
+                    BaseFlag = Element(lottery.entryBaseFlags, f),
+                    Bonus = Element(lottery.entryBonusNames, f)
+                };
                 if (hasRoles)
                 {
                     if (lottery.winningRoleStartIndexes != null && lottery.winningRoleCounts != null &&
@@ -74,7 +87,38 @@ namespace AX.UdonSlot.REV1_0.Editor.ReelRule
                 }
                 if (m.FindFlag(flag.Name) == null) m.Flags.Add(flag);
             }
-            return m;
+        }
+
+        private static string Element(string[] array, int index)
+        {
+            return array != null && index < array.Length && array[index] != null ? array[index] : "";
+        }
+
+        /// <summary>機種で使う抽選表。通常の抽選表、状態ごと、役物ごとの順で重複なし。</summary>
+        public static List<LotteryTable> LotteryTablesOf(ReelOutputController machine)
+        {
+            var list = new List<LotteryTable>();
+            var main = LotteryTableOf(machine);
+            if (main != null) list.Add(main);
+            var bonus = BonusTableOf(machine);
+            if (bonus != null)
+            {
+                if (bonus.stateLotteryTables != null)
+                    foreach (var t in bonus.stateLotteryTables) if (t != null && !list.Contains(t)) list.Add(t);
+                if (bonus.bonusLotteryTables != null)
+                    foreach (var t in bonus.bonusLotteryTables) if (t != null && !list.Contains(t)) list.Add(t);
+            }
+            return list;
+        }
+
+        public static PayoutTable PayoutTableOf(ReelOutputController machine)
+        {
+            return new SerializedObject(machine).FindProperty("payoutTable").objectReferenceValue as PayoutTable;
+        }
+
+        public static BonusTable BonusTableOf(ReelOutputController machine)
+        {
+            return new SerializedObject(machine).FindProperty("bonusTable").objectReferenceValue as BonusTable;
         }
 
         private static string[] SplitSymbols(string text)
@@ -99,9 +143,9 @@ namespace AX.UdonSlot.REV1_0.Editor.ReelRule
                 sb.Append(role.Name).Append('=');
                 foreach (var symbols in role.Symbols) sb.Append(string.Join("/", symbols)).Append(',');
                 if (role.StopOrder != null) sb.Append(string.Join("", role.StopOrder));
-                sb.Append(role.IsBonus ? 'B' : '-').Append(role.IsReplay ? 'R' : '-').Append(role.Payout).Append('|');
+                sb.Append(role.IsBonus ? 'B' : '-').Append(role.IsReplay ? 'R' : '-').Append(role.IsTransition ? 'T' : '-').Append(role.Payout).Append('|');
             }
-            foreach (var flag in m.Flags) sb.Append(flag.Name).Append('=').Append(string.Join(",", flag.Roles)).Append('|');
+            foreach (var flag in m.Flags) sb.Append(flag.Name).Append('/').Append(flag.BaseFlag).Append('=').Append(string.Join(",", flag.Roles)).Append('|');
             sb.Append(m.MaxSlip).Append(m.BonusFirst);
             return sb.ToString();
         }

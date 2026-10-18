@@ -82,6 +82,38 @@ namespace AX.UdonSlot.REV1_0
         public string[] winningRoleNames = new string[0];
 
         /// <summary>
+        /// 設定の名前。要素数が設定の数になる。空は設定1つ。
+        /// 1つめの設定の比率は既存のBET別配列を使う。
+        /// </summary>
+        [HideInInspector]
+        public string[] settingNames = new string[0];
+
+        /// <summary>2つめ以降の設定のBET 1比率。[(設定 - 1) × フラグ数 + フラグ]。</summary>
+        [HideInInspector]
+        public float[] settingRatiosBet1 = new float[0];
+
+        /// <summary>2つめ以降の設定のBET 2比率。</summary>
+        [HideInInspector]
+        public float[] settingRatiosBet2 = new float[0];
+
+        /// <summary>2つめ以降の設定のBET 3比率。</summary>
+        [HideInInspector]
+        public float[] settingRatiosBet3 = new float[0];
+
+        /// <summary>
+        /// フラグと同時に成立するボーナスの内部名（BonusTable）。空はボーナスなし。
+        /// </summary>
+        [HideInInspector]
+        public string[] entryBonusNames = new string[0];
+
+        /// <summary>
+        /// ボーナス付きフラグの元のフラグ名（制御名の {flag}）。空はフラグ名そのもの。
+        /// 例: Cherry_RedBB の元は Cherry。
+        /// </summary>
+        [HideInInspector]
+        public string[] entryBaseFlags = new string[0];
+
+        /// <summary>
         /// 設定された抽選方式に従って、抽選結果のフラグを1つ選ぶ。
         /// </summary>
         /// <returns>
@@ -99,29 +131,36 @@ namespace AX.UdonSlot.REV1_0
         /// </summary>
         public string DrawFlag(int bet)
         {
+            return DrawFlag(bet, 0);
+        }
+
+        /// <summary>指定されたBET数と設定（0始まり）の抽選比率で、フラグを1つ選ぶ。</summary>
+        public string DrawFlag(int bet, int setting)
+        {
             if (winpairNames == null) return "";
 
-            float[] probabilityRatios = GetProbabilityRatios(bet);
-            if (probabilityRatios == null) return GetRemainderFlagName();
-
             int entryCount = winpairNames.Length;
+            if (setting < 0 || setting >= GetSettingCount()) setting = 0;
+            int offset = setting == 0 ? 0 : (setting - 1) * entryCount;
+            float[] probabilityRatios = GetProbabilityRatios(bet, setting);
+            if (probabilityRatios == null) return GetRemainderFlagName();
 
             int remainderFlagIndex = GetRemainderFlagIndex(entryCount);
             if (remainderFlagIndex >= 0)
             {
-                return DrawFlagFromFixedRange(entryCount, remainderFlagIndex, probabilityRatios);
+                return DrawFlagFromFixedRange(entryCount, remainderFlagIndex, probabilityRatios, offset);
             }
 
-            return DrawFlagFromRelativeRatios(entryCount, probabilityRatios);
+            return DrawFlagFromRelativeRatios(entryCount, probabilityRatios, offset);
         }
 
         /// <summary>ハズレ指定がない既存データを、各値の相対比率で抽選する。</summary>
-        private string DrawFlagFromRelativeRatios(int entryCount, float[] probabilityRatios)
+        private string DrawFlagFromRelativeRatios(int entryCount, float[] probabilityRatios, int offset)
         {
             float totalWeight = 0f;
             for (int i = 0; i < entryCount; i++)
             {
-                float ratio = GetProbabilityRatio(probabilityRatios, i);
+                float ratio = GetProbabilityRatio(probabilityRatios, offset + i);
                 if (ratio > 0f) totalWeight += ratio;
             }
 
@@ -132,7 +171,7 @@ namespace AX.UdonSlot.REV1_0
             string lastPositiveFlag = "";
             for (int i = 0; i < entryCount; i++)
             {
-                float weight = GetProbabilityRatio(probabilityRatios, i);
+                float weight = GetProbabilityRatio(probabilityRatios, offset + i);
                 if (weight <= 0f) continue;
 
                 lastPositiveFlag = winpairNames[i];
@@ -150,7 +189,8 @@ namespace AX.UdonSlot.REV1_0
         private string DrawFlagFromFixedRange(
             int entryCount,
             int remainderFlagIndex,
-            float[] probabilityRatios)
+            float[] probabilityRatios,
+            int offset)
         {
             float denominator = maximumProbabilityDenominator;
             if (denominator <= 0f) return "";
@@ -162,7 +202,7 @@ namespace AX.UdonSlot.REV1_0
             {
                 if (i == remainderFlagIndex) continue;
 
-                float ratio = GetProbabilityRatio(probabilityRatios, i);
+                float ratio = GetProbabilityRatio(probabilityRatios, offset + i);
                 if (ratio <= 0f) continue;
 
                 float remainingRange = denominator - assignedEnd;
@@ -176,9 +216,24 @@ namespace AX.UdonSlot.REV1_0
             return winpairNames[remainderFlagIndex];
         }
 
-        /// <summary>BET数に対応する抽選比率配列を返す。</summary>
-        private float[] GetProbabilityRatios(int bet)
+        /// <summary>BET数と設定に対応する抽選比率配列を返す。</summary>
+        private float[] GetProbabilityRatios(int bet, int setting)
         {
+            if (setting > 0)
+            {
+                switch (bet)
+                {
+                    case 1:
+                        return settingRatiosBet1;
+                    case 2:
+                        return settingRatiosBet2;
+                    case 3:
+                        return settingRatiosBet3;
+                    default:
+                        return null;
+                }
+            }
+
             switch (bet)
             {
                 case 1:
@@ -237,6 +292,55 @@ namespace AX.UdonSlot.REV1_0
             }
 
             return internalName;
+        }
+
+        /// <summary>設定の数。1以上。</summary>
+        public int GetSettingCount()
+        {
+            return settingNames == null || settingNames.Length == 0 ? 1 : settingNames.Length;
+        }
+
+        /// <summary>設定の名前。未設定なら1始まりの番号。</summary>
+        public string GetSettingName(int setting)
+        {
+            if (settingNames == null || setting < 0 || setting >= settingNames.Length ||
+                string.IsNullOrEmpty(settingNames[setting])) return (setting + 1).ToString();
+            return settingNames[setting];
+        }
+
+        /// <summary>フラグと同時に成立するボーナスの内部名。なければ空文字。</summary>
+        public string GetEntryBonusName(string flagName)
+        {
+            int index = FindEntry(flagName);
+            if (index < 0 || entryBonusNames == null || index >= entryBonusNames.Length) return "";
+            string name = entryBonusNames[index];
+            return name == null ? "" : name;
+        }
+
+        /// <summary>ボーナス付きフラグの元のフラグ名。なければフラグ名そのもの。</summary>
+        public string GetEntryBaseFlag(string flagName)
+        {
+            int index = FindEntry(flagName);
+            if (index < 0 || entryBaseFlags == null || index >= entryBaseFlags.Length ||
+                string.IsNullOrEmpty(entryBaseFlags[index])) return flagName;
+            return entryBaseFlags[index];
+        }
+
+        /// <summary>フラグの内部使用名が登録されているか確認する。</summary>
+        public bool HasFlag(string flagName)
+        {
+            return FindEntry(flagName) >= 0;
+        }
+
+        private int FindEntry(string flagName)
+        {
+            if (string.IsNullOrEmpty(flagName) || winpairNames == null) return -1;
+            for (int i = 0; i < winpairNames.Length; i++)
+            {
+                if (winpairNames[i] == flagName) return i;
+            }
+
+            return -1;
         }
 
         /// <summary>

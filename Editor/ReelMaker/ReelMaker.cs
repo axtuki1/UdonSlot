@@ -50,6 +50,11 @@ namespace AX.UdonSlot.REV1_0.Editor.ReelMaker
         private bool ready;
 
         [MenuItem("UdonSlot/ReelMaker")]
+        public static void Open()
+        {
+            ShowWindow();
+        }
+
         private static void ShowWindow()
         {
             var window = GetWindow<ReelMaker>();

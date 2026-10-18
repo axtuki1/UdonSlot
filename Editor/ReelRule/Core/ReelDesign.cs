@@ -7,6 +7,45 @@ namespace AX.UdonSlot.REV1_0.Editor.ReelRule
 
     public enum ControlPriority { BonusFirst, SmallFirst }
 
+    /// <summary>規格（号機）。役物の上限値の確認と初期値に使う。</summary>
+    public enum Regulation { Gen6, Gen5 }
+
+    /// <summary>規格ごとの役物の上限値。</summary>
+    public static class RegulationLimits
+    {
+        public static readonly string[] Names = { "6号機", "5号機" };
+
+        /// <summary>BBの終了枚数の上限（この枚数以下で定めた枚数を超えたら終了）。</summary>
+        public static int BigPayout(Regulation r) { return r == Regulation.Gen5 ? 465 : 285; }
+
+        /// <summary>MBの終了枚数の上限。</summary>
+        public static int MiddlePayout(Regulation r) { return r == Regulation.Gen5 ? 253 : 153; }
+
+        public const int RegularWins = 8;
+        public const int RegularGames = 12;
+    }
+
+    /// <summary>移行図柄の出し方。</summary>
+    [Serializable]
+    public sealed class DesignTransition
+    {
+        /// <summary>配当表の役名（種別が移行図柄のもの）。</summary>
+        public string role = "";
+        /// <summary>出してよいフラグ。空ならどの制御でも引き込みも回避もしない。</summary>
+        public List<string> flags = new List<string>();
+        /// <summary>true なら押し順不正解のときだけ（記録用。制御では小役の後に狙う）。</summary>
+        public bool wrongOrderOnly;
+    }
+
+    /// <summary>フロー図のノード位置。</summary>
+    [Serializable]
+    public sealed class FlowNodePosition
+    {
+        public string key = "";
+        public float x;
+        public float y;
+    }
+
     /// <summary>リール制御の設計一式（出目と制御）。</summary>
     [Serializable]
     public sealed class ReelDesign
@@ -16,6 +55,15 @@ namespace AX.UdonSlot.REV1_0.Editor.ReelRule
         public int maxSlip = -1;
         public List<DesignShape> shapes = new List<DesignShape>();
         public List<DesignControl> controls = new List<DesignControl>();
+        public Regulation regulation = Regulation.Gen6;
+        public List<DesignTransition> transitions = new List<DesignTransition>();
+        public List<FlowNodePosition> flowNodes = new List<FlowNodePosition>();
+
+        public DesignTransition FindTransition(string role)
+        {
+            foreach (var t in transitions) if (t.role == role) return t;
+            return null;
+        }
 
         /// <summary>抽選表の全フラグから、同名の制御を作る。既にある名前は作らない。</summary>
         public int AddControlsFromLottery(Machine machine)
@@ -287,6 +335,29 @@ namespace AX.UdonSlot.REV1_0.Editor.ReelRule
                     if (flag != null) foreach (string role in flag.Roles) if (!won.Contains(role)) won.Add(role);
                 }
                 foreach (string role in d.extraRoles) if (!won.Contains(role)) won.Add(role);
+
+                // 移行図柄: 出してよいフラグの制御では小役の後に狙い、ほかの制御では出さない。
+                // フラグの指定がなければ、どの制御でも引き込みも回避もしない。
+                var transitionPulls = new List<Goal>();
+                foreach (var role in machine.Roles)
+                {
+                    if (!role.IsTransition || won.Contains(role.Name)) continue;
+                    var t = design.FindTransition(role.Name);
+                    if (t == null || t.flags.Count == 0)
+                    {
+                        rule.ExtraRoles.Add(role.Name);
+                        continue;
+                    }
+                    bool allowed = false;
+                    foreach (string flagName in d.lotteryFlags)
+                    {
+                        var flag = machine.FindFlag(flagName);
+                        if (t.flags.Contains(flagName) || (flag != null && t.flags.Contains(flag.BaseName))) allowed = true;
+                    }
+                    if (!allowed) continue;
+                    rule.ExtraRoles.Add(role.Name);
+                    transitionPulls.Add(new Goal { Kind = GoalKind.Pull, Target = role.Name });
+                }
                 bool bonusFirst = design.priority == ControlPriority.BonusFirst;
                 var bonusPulls = new List<Goal>();
                 var smallPulls = new List<Goal>();
@@ -327,6 +398,7 @@ namespace AX.UdonSlot.REV1_0.Editor.ReelRule
                 foreach (var pull in smallPulls)
                     rule.Goals.Add(basicTarget ? new Goal { Kind = GoalKind.AvoidRole, Target = pull.Target } : pull);
                 if (!bonusFirst) rule.Goals.AddRange(bonusPulls);
+                rule.Goals.AddRange(transitionPulls);
                 foreach (var shape in design.shapes)
                     if (shape.Exclusive && shape.AllowedIn(d.name)) rule.Allowed.Add(shape.name);
 
