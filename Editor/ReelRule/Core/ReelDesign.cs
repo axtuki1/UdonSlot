@@ -5,7 +5,7 @@ namespace AX.UdonSlot.REV1_0.Editor.ReelRule
 {
     // エディタで編集する設計データ。Unity のシリアライズに乗るよう、公開フィールドと List だけで組む。
 
-    public enum ControlPriority { BonusFirst, SmallFirst }
+    public enum ControlPriority { BonusFirst, SmallFirst, NoWinOnly }
 
     /// <summary>規格（号機）。役物の上限値の確認と初期値に使う。</summary>
     public enum Regulation { Gen6, Gen5 }
@@ -63,6 +63,52 @@ namespace AX.UdonSlot.REV1_0.Editor.ReelRule
         {
             foreach (var t in transitions) if (t.role == role) return t;
             return null;
+        }
+
+        /// <summary>
+        /// ボーナス成立中の制御を自動で作る。元の制御と同じ設定で、作動役の引き込みを制御方式の順に足す。
+        /// ハズレ時のみのときはハズレのフラグだけ。同じ条件の制御を手で作っていれば、そのフラグは作らない。
+        /// </summary>
+        public static List<DesignControl> AutoBonusControls(ReelDesign design, Machine machine)
+        {
+            var list = new List<DesignControl>();
+            if (machine == null || machine.BonusStartRoles.Count == 0) return list;
+            var taken = new HashSet<string>();
+            foreach (var c in design.controls) taken.Add(c.name);
+            foreach (var pair in machine.BonusStartRoles)
+            {
+                if (string.IsNullOrEmpty(pair.Value)) continue;
+                foreach (var d in design.controls)
+                {
+                    if (!string.IsNullOrEmpty(d.bonus)) continue;
+                    var flags = new List<string>();
+                    foreach (string flagName in d.lotteryFlags)
+                    {
+                        var flag = machine.FindFlag(flagName);
+                        if (flag == null || !string.IsNullOrEmpty(flag.Bonus)) continue;
+                        if (design.priority == ControlPriority.NoWinOnly && flag.Roles.Count > 0) continue;
+                        if (HasManualBonusControl(design, flagName, pair.Key, d.state)) continue;
+                        flags.Add(flagName);
+                    }
+                    if (flags.Count == 0) continue;
+                    var copy = d.Copy();
+                    copy.source = d.name;
+                    copy.bonus = pair.Key;
+                    copy.lotteryFlags = flags;
+                    copy.name = d.name + "_" + pair.Key;
+                    for (int n = 2; taken.Contains(copy.name); n++) copy.name = d.name + "_" + pair.Key + "_" + n;
+                    taken.Add(copy.name);
+                    list.Add(copy);
+                }
+            }
+            return list;
+        }
+
+        private static bool HasManualBonusControl(ReelDesign design, string flag, string bonus, string state)
+        {
+            foreach (var c in design.controls)
+                if (c.bonus == bonus && (c.state ?? "") == (state ?? "") && c.lotteryFlags.Contains(flag)) return true;
+            return false;
         }
 
         /// <summary>抽選表の全フラグから、同名の制御を作る。既にある名前は作らない。</summary>
@@ -217,6 +263,10 @@ namespace AX.UdonSlot.REV1_0.Editor.ReelRule
         public string bonus = "";
         /// <summary>RT 状態の内部名。空ならどの状態でも使う。</summary>
         public string state = "";
+        /// <summary>自動で作ったボーナス成立中の制御の元の制御名。出目の許可・禁止は元の制御に合わせる。</summary>
+        [NonSerialized] public string source;
+
+        public string ShapeOwner { get { return string.IsNullOrEmpty(source) ? name : source; } }
         /// <summary>狙う出目の名前（上ほど優先）。</summary>
         public List<string> targets = new List<string>();
         public List<DesignOverride> overrides = new List<DesignOverride>();
@@ -320,7 +370,9 @@ namespace AX.UdonSlot.REV1_0.Editor.ReelRule
             }
 
             var controlNames = new HashSet<string>();
-            foreach (var d in design.controls)
+            var allControls = new List<DesignControl>(design.controls);
+            allControls.AddRange(ReelDesign.AutoBonusControls(design, machine));
+            foreach (var d in allControls)
             {
                 if (string.IsNullOrEmpty(d.name)) { errors.Add(new RuleError(0, "内部名のない制御があります")); continue; }
                 if (!controlNames.Add(d.name)) { errors.Add(new RuleError(0, "内部名が重複しています: " + d.name)); continue; }
@@ -392,7 +444,7 @@ namespace AX.UdonSlot.REV1_0.Editor.ReelRule
                         errors.Add(new RuleError(0, "禁止目「" + target + "」は狙えません（制御 " + d.name + "）"));
                         continue;
                     }
-                    if (shape.reach && !shape.allowedControls.Contains(d.name))
+                    if (shape.reach && !shape.allowedControls.Contains(d.ShapeOwner))
                     {
                         errors.Add(new RuleError(0, "リーチ目「" + target + "」は制御 " + d.name + " で出てよい設定になっていません"));
                         continue;
@@ -413,7 +465,7 @@ namespace AX.UdonSlot.REV1_0.Editor.ReelRule
                 if (!bonusFirst) rule.Goals.AddRange(bonusPulls);
                 rule.Goals.AddRange(transitionPulls);
                 foreach (var shape in design.shapes)
-                    if (shape.Exclusive && shape.AllowedIn(d.name)) rule.Allowed.Add(shape.name);
+                    if (shape.Exclusive && shape.AllowedIn(d.ShapeOwner)) rule.Allowed.Add(shape.name);
 
                 foreach (var o in d.overrides)
                 {
