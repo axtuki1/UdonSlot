@@ -73,7 +73,7 @@ namespace AX.UdonSlot.REV1_0.Editor.ReelRule
             }
         }
 
-        private static readonly float[] PayoutColumns = { 130, 110, 86, 84, 84, 84, 50, 50, 50, 70, 110 };
+        private static readonly float[] PayoutColumns = { 130, 110, 86, 128, 128, 128, 50, 50, 50, 70, 110 };
         private static readonly string[] PayoutHeads = { "名前", "内部名", "種別", "左", "中", "右", "BET1", "BET2", "BET3", "停止順", "RT" };
 
         private bool DrawPayoutGrid(PayoutModel model)
@@ -93,11 +93,11 @@ namespace AX.UdonSlot.REV1_0.Editor.ReelRule
             for (int i = 0; i < model.Rows.Count; i++)
             {
                 var r = model.Rows[i];
-                var rect = GUILayoutUtility.GetRect(width, 24, GUILayout.ExpandWidth(true));
+                var rect = GUILayoutUtility.GetRect(width, 34, GUILayout.ExpandWidth(true));
                 if (r.Name == payoutSelected) EditorGUI.DrawRect(rect, new Color(0.18f, 0.26f, 0.35f));
                 else if (i % 2 == 1) EditorGUI.DrawRect(rect, new Color(0.18f, 0.18f, 0.18f));
                 x = rect.x;
-                float y = rect.y + 3;
+                float y = rect.y + 8;
                 Func<int, Rect> cell = c => { float left = rect.x; for (int k = 0; k < c; k++) left += PayoutColumns[k]; return new Rect(left + 3, y, PayoutColumns[c] - 6, 18); };
 
                 string display = EditorGUI.DelayedTextField(cell(0), r.Label);
@@ -114,8 +114,14 @@ namespace AX.UdonSlot.REV1_0.Editor.ReelRule
                 if (type != (int)r.Type) { r.Type = (PayoutRoleType)type; changed = true; }
                 for (int reel = 0; reel < 3; reel++)
                 {
-                    string symbol = EditorGUI.DelayedTextField(cell(3 + reel), r.Symbols[reel]);
-                    if (symbol != r.Symbols[reel]) { r.Symbols[reel] = symbol; changed = true; }
+                    var c = cell(3 + reel);
+                    var symbolRect = new Rect(c.x, rect.y + 3, c.width, rect.height - 6);
+                    DrawPayoutSymbols(symbolRect, r.Symbols[reel]);
+                    if (Clicked(symbolRect, 0))
+                    {
+                        payoutSelected = r.Name;
+                        PopupWindow.Show(symbolRect, new SymbolPickerPopup(this, r.Name, reel));
+                    }
                 }
                 bool paid = r.Type == PayoutRoleType.SmallRole || r.Type == PayoutRoleType.Bonus;
                 for (int b = 0; b < 3; b++)
@@ -159,6 +165,144 @@ namespace AX.UdonSlot.REV1_0.Editor.ReelRule
             }
             return changed;
         }
+
+        private static List<string> SplitSymbols(string value)
+        {
+            var list = new List<string>();
+            if (string.IsNullOrEmpty(value)) return list;
+            foreach (string part in value.Split(','))
+            {
+                string symbol = part.Trim();
+                if (symbol.Length > 0 && !list.Contains(symbol)) list.Add(symbol);
+            }
+            return list;
+        }
+
+        /// <summary>配当表のセル。図柄を画像で並べ、入りきらない分は「+N」。空は ANY。</summary>
+        private void DrawPayoutSymbols(Rect rect, string value)
+        {
+            var list = SplitSymbols(value);
+            EditorGUI.DrawRect(rect, new Color(0.13f, 0.13f, 0.13f));
+            if (list.Count == 0)
+            {
+                GUI.Label(rect, "ANY", CenteredStyle);
+                return;
+            }
+            const float gap = 2;
+            float h = rect.height - 4, w = Mathf.Round(h * 1.5f);
+            int fit = Mathf.Max(1, (int)((rect.width - 4 + gap) / (w + gap)));
+            int shown = list.Count > fit ? fit - 1 : list.Count;
+            float x = rect.x + 2;
+            for (int i = 0; i < shown; i++, x += w + gap) DrawSymbol(new Rect(x, rect.y + 2, w, h), list[i]);
+            if (list.Count > shown)
+            {
+                string more = "+" + (list.Count - shown);
+                var size = ChipSize(more);
+                DrawChip(new Rect(x, rect.y + (rect.height - 16) / 2, size.x, 16), more, MutedBack, MutedText);
+            }
+        }
+
+        /// <summary>図柄をクリックで選ぶ（複数可）。何も選ばなければ ANY。</summary>
+        private sealed class SymbolPickerPopup : PopupWindowContent
+        {
+            private const float W = 72, H = 46, Gap = 4;
+            private const int PerRow = 5;
+            private readonly ReelRuleEditorWindow window;
+            private readonly string role;
+            private readonly int reel;
+
+            public SymbolPickerPopup(ReelRuleEditorWindow window, string role, int reel)
+            {
+                this.window = window;
+                this.role = role;
+                this.reel = reel;
+            }
+
+            private List<string> Palette()
+            {
+                var list = new List<string>(window.PayoutPalette());
+                var row = window.CurrentPayoutRow(role);
+                if (row != null) foreach (string s in SplitSymbols(row.Symbols[reel])) if (!list.Contains(s)) list.Add(s);
+                return list;
+            }
+
+            public override Vector2 GetWindowSize()
+            {
+                int count = Palette().Count + 1;
+                int rows = (count + PerRow - 1) / PerRow;
+                return new Vector2(PerRow * (W + Gap) + Gap, rows * (H + Gap) + Gap);
+            }
+
+            public override void OnGUI(Rect rect)
+            {
+                var row = window.CurrentPayoutRow(role);
+                if (row == null) { editorWindow.Close(); return; }
+                var selected = SplitSymbols(row.Symbols[reel]);
+                var palette = Palette();
+                for (int i = 0; i <= palette.Count; i++)
+                {
+                    var cell = new Rect(Gap + (i % PerRow) * (W + Gap), Gap + (i / PerRow) * (H + Gap), W, H);
+                    if (i == palette.Count)
+                    {
+                        EditorGUI.DrawRect(cell, AnyColor);
+                        GUI.Label(cell, "ANY", CenteredStyle);
+                        if (selected.Count == 0) Outline(cell, AccentColor, 2);
+                        if (Clicked(cell, 0) && selected.Count > 0) Set(new List<string>());
+                        continue;
+                    }
+                    string symbol = palette[i];
+                    window.DrawSymbol(new Rect(cell.x + 2, cell.y + 2, cell.width - 4, cell.height - 4), symbol);
+                    if (selected.Contains(symbol)) Outline(cell, AccentColor, 2);
+                    if (Clicked(cell, 0))
+                    {
+                        if (!selected.Remove(symbol)) selected.Add(symbol);
+                        Set(selected);
+                    }
+                }
+                if (Event.current.type == EventType.MouseMove) editorWindow.Repaint();
+            }
+
+            private void Set(List<string> list)
+            {
+                // 並びは図柄一覧の順にそろえる
+                var palette = Palette();
+                list.Sort((a, b) => palette.IndexOf(a).CompareTo(palette.IndexOf(b)));
+                string value = string.Join(",", list.ToArray());
+                window.EditPayout("図柄の変更", m =>
+                {
+                    var target = m.Find(role);
+                    if (target != null) target.Symbols[reel] = value;
+                });
+                editorWindow.Repaint();
+            }
+        }
+
+        private PayoutRow CurrentPayoutRow(string role)
+        {
+            var table = MachinePayoutTable;
+            return table != null ? PayoutModel.Load(table).Find(role) : null;
+        }
+
+        /// <summary>選べる図柄（リール配列に出てくる順）。</summary>
+        private List<string> PayoutPalette()
+        {
+            if (symbols.Count > 0) return symbols;
+            if (paletteFallback == null)
+            {
+                paletteFallback = new List<string>();
+                try
+                {
+                    var read = ReelMachineReader.Read(machineObject);
+                    for (int r = 0; r < 3; r++)
+                        foreach (string s in read.Strips[r])
+                            if (!paletteFallback.Contains(s)) paletteFallback.Add(s);
+                }
+                catch (Exception) { }
+            }
+            return paletteFallback;
+        }
+
+        [NonSerialized] private List<string> paletteFallback;
 
         private static void Swap<T>(List<T> list, int index, int direction)
         {

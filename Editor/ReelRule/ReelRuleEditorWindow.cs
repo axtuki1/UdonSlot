@@ -671,7 +671,7 @@ namespace AX.UdonSlot.REV1_0.Editor.ReelRule
         /// <summary>図柄名で描く（リールテクスチャ上の最初の出現位置を使う）。</summary>
         private void DrawSymbol(Rect rect, string symbol)
         {
-            if (asset.reelTexture != null)
+            if (asset != null && asset.reelTexture != null && machine != null)
                 for (int r = 0; r < 3; r++)
                 {
                     int index = Array.IndexOf(machine.Strips[r], symbol);
