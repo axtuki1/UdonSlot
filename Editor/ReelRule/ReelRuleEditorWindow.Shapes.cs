@@ -463,13 +463,14 @@ namespace AX.UdonSlot.REV1_0.Editor.ReelRule
                 var list = shape.forbidden ? shape.bannedControls : shape.allowedControls;
                 PanelHeader(shape.forbidden ? "出さない制御（内部名）" : "出てよい制御（内部名）");
                 int columns = 2;
-                for (int i = 0; i < Design.controls.Count; i += columns)
+                var shown = Design.controls.FindAll(c => machine == null || !Design.IsUnusedCell(c, machine));
+                for (int i = 0; i < shown.Count; i += columns)
                 {
                     using (new EditorGUILayout.HorizontalScope())
                     {
-                        for (int j = i; j < i + columns && j < Design.controls.Count; j++)
+                        for (int j = i; j < i + columns && j < shown.Count; j++)
                         {
-                            string name = Design.controls[j].name;
+                            string name = shown[j].name;
                             bool on = list.Contains(name);
                             bool next = EditorGUILayout.ToggleLeft(name, on, GUILayout.Width(150));
                             if (next != on)

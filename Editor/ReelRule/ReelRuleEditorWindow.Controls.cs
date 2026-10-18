@@ -96,9 +96,11 @@ namespace AX.UdonSlot.REV1_0.Editor.ReelRule
         }
 
         /// <summary>割り当て表のマスがすべてそろうように制御を作る。旧形式の制御はマスへ移す。</summary>
+        [NonSerialized] private bool holdCells;
+
         private void PrepareCells()
         {
-            if (machine == null || asset == null) return;
+            if (machine == null || asset == null || holdCells) return;
             var flags = GridFlags();
             var bonuses = new List<string>();
             foreach (var pair in GridBonuses()) bonuses.Add(pair.Key);
@@ -129,13 +131,55 @@ namespace AX.UdonSlot.REV1_0.Editor.ReelRule
                         var cell = normal.Copy();
                         cell.bonus = bonus;
                         cell.state = "";
-                        cell.pullBonus = false;
+                        cell.pullBonus = true;
                         cell.lotteryFlags.Clear();
                         cell.name = FreeCellName(flag, bonus);
                         Design.controls.Add(cell);
                         foreach (var shape in Design.shapes) shape.CopyControl(normal.name, cell.name);
                     }
                 }
+            });
+        }
+
+        /// <summary>
+        /// フラグ名・ボーナス名の変更をマスへ反映する。マスの名前と出目の制御リストも付け替える。
+        /// 変えないほうは null。
+        /// </summary>
+        private void RenameCells(string oldFlag, string newFlag, string oldBonus, string newBonus)
+        {
+            if (asset == null) return;
+            // 変更後の名前のマスがもうあれば、付け替えない（重複を作らない）。
+            foreach (var c in Design.controls)
+                if (c.IsCell && ((newFlag != null && c.flag == newFlag) || (newBonus != null && c.bonus == newBonus))) return;
+            Edit("内部名の変更", delegate
+            {
+                var moved = new List<DesignControl>();
+                foreach (var c in Design.controls)
+                {
+                    if (!c.IsCell) continue;
+                    bool flagHit = oldFlag != null && c.flag == oldFlag;
+                    bool bonusHit = oldBonus != null && c.bonus == oldBonus;
+                    if (!flagHit && !bonusHit) continue;
+                    if (flagHit) c.flag = newFlag;
+                    if (bonusHit) c.bonus = newBonus;
+                    // 名前の入れ替えがぶつからないよう、いったん仮の名前にする
+                    string old = c.name;
+                    c.name = "\u0001" + old;
+                    foreach (var shape in Design.shapes) shape.RenameControl(old, c.name);
+                    moved.Add(c);
+                }
+                foreach (var c in moved)
+                {
+                    string temp = c.name;
+                    c.name = FreeCellName(c.flag, c.bonus);
+                    foreach (var shape in Design.shapes) shape.RenameControl(temp, c.name);
+                }
+                if (oldFlag != null)
+                    foreach (var t in Design.transitions)
+                    {
+                        int i = t.flags.IndexOf(oldFlag);
+                        if (i >= 0) t.flags[i] = newFlag;
+                    }
             });
         }
 
@@ -162,19 +206,22 @@ namespace AX.UdonSlot.REV1_0.Editor.ReelRule
         /// <summary>旧形式の制御が入るマス（フラグ, ボーナス）。決められなければ null。</summary>
         private string[] LegacyCellOf(DesignControl c, List<string> flags, List<string> bonuses)
         {
-            string flag = null, bonus = c.bonus ?? "";
+            // RT状態つきの制御はマスに入らない。
+            if (!string.IsNullOrEmpty(c.state)) return null;
+            string flag = null, bonus = c.bonus ?? "", rowBonus = null;
+            bool plain = false;
             foreach (string name in c.lotteryFlags)
             {
                 var f = machine.FindFlag(name);
                 if (f == null) continue;
-                if (!string.IsNullOrEmpty(f.Bonus))
-                {
-                    if (flag == null) { flag = f.BaseName; if (bonus.Length == 0) bonus = f.Bonus; }
-                    continue;
-                }
-                flag = f.Name;
-                break;
+                // 元のフラグが違うフラグをまとめた制御は、どのマスとも決められない。
+                if (flag != null && flag != f.BaseName) return null;
+                flag = f.BaseName;
+                if (string.IsNullOrEmpty(f.Bonus)) plain = true;
+                else if (rowBonus == null) rowBonus = f.Bonus;
             }
+            // ボーナス付きの行（Cherry_RedBB など）だけの制御は、そのボーナス成立中のマス。
+            if (!plain && rowBonus != null && bonus.Length == 0) bonus = rowBonus;
             if (flag == null)
                 foreach (string f in flags)
                 {

@@ -33,5 +33,11 @@ public static partial class Program
         Check("cell: nowin+BB lines up BB", Rate(nowinBB, "BB") > 0.1);
         Check("cell: bell+BB (no pull) never lines up BB", Rate(bellBB, "BB") == 0);
         Check("cell: bell+BB no violations", bellBB.Stats.ViolationPaths == 0 && nowinBB.Stats.ViolationPaths == 0);
+
+        // 小役優先では小役のあるフラグの成立中マスを使わない（生成しない）。ハズレのマスは使う。
+        d.priority = ControlPriority.SmallFirst;
+        Check("cell: small-first unused", d.IsUnusedCell(d.FindCell("ベル", "BB"), m) && !d.IsUnusedCell(d.FindCell("ハズレ", "BB"), m) && !d.IsUnusedCell(d.FindCell("ベル", ""), m));
+        var small = Generate(m, d);
+        Check("cell: small-first skips unused", !small.Exists(r => r.Name == "ベル_BB") && small.Exists(r => r.Name == "ハズレ_BB"));
     }
 }

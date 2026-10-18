@@ -343,9 +343,10 @@ namespace AX.UdonSlot.REV1_0.Editor.ReelRule
                 OpenLotteryTable(first ?? ReelMachineReader.LotteryTableOf(machineObject));
         }
 
-        /// <summary>役物の内部名の変更を抽選表へ反映する。</summary>
+        /// <summary>役物の内部名の変更を抽選表と制御のマスへ反映する。</summary>
         private void RenameBonus(string old, string renamed)
         {
+            RenameCells(null, null, old, renamed);
             foreach (var table in ReelMachineReader.LotteryTablesOf(machineObject))
             {
                 var m = LotteryModel.Load(table);

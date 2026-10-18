@@ -75,6 +75,7 @@ namespace AX.UdonSlot.REV1_0.Editor.ReelRule
             var payout = MachinePayoutTable;
             var bonusTable = MachineBonusTable;
             string saveLabel = null;
+            string renamedFrom = null, renamedTo = null;
             int settingCount = model.SettingCount;
 
             using (new EditorGUILayout.HorizontalScope())
@@ -169,6 +170,11 @@ namespace AX.UdonSlot.REV1_0.Editor.ReelRule
                     string renamed = EditorGUI.DelayedTextField(idRect, e.Name);
                     if (renamed != e.Name && renamed.Length > 0 && model.Find(renamed) == null)
                     {
+                        if (!e.IsBonusRow && !FlagInOtherTables(table, e.Name))
+                        {
+                            renamedFrom = e.Name;
+                            renamedTo = renamed;
+                        }
                         RenameLotteryEntry(model, e, renamed);
                         saveLabel = "内部名の変更";
                     }
@@ -266,6 +272,32 @@ namespace AX.UdonSlot.REV1_0.Editor.ReelRule
                 model.Save(saveLabel);
                 Changed();
             }
+            if (renamedFrom != null)
+            {
+                RenameFlagEverywhere(renamedFrom, renamedTo);
+                Poll();
+            }
+        }
+
+        /// <summary>機種のほかの抽選表にも同じ名前のフラグがあるか（あればマスはそのまま使う）。</summary>
+        private bool FlagInOtherTables(LotteryTable table, string flag)
+        {
+            foreach (var other in ReelMachineReader.LotteryTablesOf(machineObject))
+                if (other != table && LotteryModel.Load(other).Find(flag) != null) return true;
+            return false;
+        }
+
+        /// <summary>フラグの内部名の変更を、制御のマス・移行図柄・図柄表示の移行へ反映する。</summary>
+        private void RenameFlagEverywhere(string old, string renamed)
+        {
+            RenameCells(old, renamed, null, null);
+            var bonusTable = MachineBonusTable;
+            if (bonusTable == null) return;
+            var bonusModel = BonusModel.Load(bonusTable);
+            bool hit = false;
+            foreach (var move in bonusModel.Moves)
+                if (move.OnlyFlag == old) { move.OnlyFlag = renamed; hit = true; }
+            if (hit) bonusModel.Save("フラグ名の変更");
         }
 
         private void DrawSumRow(float y, int settingCount, LotteryModel model, int bet, Predicate<LotteryEntry> include, Color color)

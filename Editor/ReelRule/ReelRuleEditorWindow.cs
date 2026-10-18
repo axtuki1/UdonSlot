@@ -70,6 +70,8 @@ namespace AX.UdonSlot.REV1_0.Editor.ReelRule
 
         private void OnUndoRedo()
         {
+            // 元に戻した直後にマスを作り直すと、それ以上戻せなくなる。次の編集までは作らない。
+            holdCells = true;
             Changed();
             Repaint();
         }
@@ -268,6 +270,7 @@ namespace AX.UdonSlot.REV1_0.Editor.ReelRule
                 asset = (ReelDesignAsset)EditorGUILayout.ObjectField(asset, typeof(ReelDesignAsset), false, GUILayout.Width(200));
                 if (EditorGUI.EndChangeCheck())
                 {
+                    holdCells = false;
                     SavePrefs();
                     requested = null;
                     Changed();
@@ -325,6 +328,7 @@ namespace AX.UdonSlot.REV1_0.Editor.ReelRule
         private void Edit(string label, Action change)
         {
             if (asset == null) return;
+            holdCells = false;
             Undo.RecordObject(asset, label);
             change();
             EditorUtility.SetDirty(asset);
@@ -437,17 +441,18 @@ namespace AX.UdonSlot.REV1_0.Editor.ReelRule
             var bonuses = new List<string>();
             var states = new List<string>();
             var names = new List<string>();
+            // マスを先に書く（同じ条件の旧形式の制御より優先される）。
             foreach (var c in Design.controls)
             {
-                if (c.IsCell)
-                {
-                    if (Design.IsUnusedCell(c, machine)) continue;
-                    flags.Add(c.flag);
-                    bonuses.Add(c.bonus ?? "");
-                    states.Add("");
-                    names.Add(c.name);
-                    continue;
-                }
+                if (!c.IsCell || Design.IsUnusedCell(c, machine)) continue;
+                flags.Add(c.flag);
+                bonuses.Add(c.bonus ?? "");
+                states.Add("");
+                names.Add(c.name);
+            }
+            foreach (var c in Design.controls)
+            {
+                if (c.IsCell) continue;
                 foreach (string flag in c.lotteryFlags)
                 {
                     flags.Add(flag);

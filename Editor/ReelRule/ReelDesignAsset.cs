@@ -2,7 +2,7 @@ using UnityEngine;
 
 namespace AX.UdonSlot.REV1_0.Editor.ReelRule
 {
-    /// <summary>リール制御エディタの設計データ（出目と制御）を保存するアセット。</summary>
+    /// <summary>機種エディタの設計データ（出目と制御）を保存するアセット。</summary>
     [CreateAssetMenu(menuName = "UdonSlot/リール制御設計", fileName = "ReelDesign")]
     public sealed class ReelDesignAsset : ScriptableObject
     {

@@ -152,7 +152,7 @@ namespace AX.UdonSlot.REV1_0.Editor.ReelRule
                 if (role.StopOrder != null) sb.Append(string.Join("", role.StopOrder));
                 sb.Append(role.IsBonus ? 'B' : '-').Append(role.IsReplay ? 'R' : '-').Append(role.IsTransition ? 'T' : '-').Append(role.Payout).Append('|');
             }
-            foreach (var flag in m.Flags) sb.Append(flag.Name).Append('/').Append(flag.BaseFlag).Append('=').Append(string.Join(",", flag.Roles)).Append('|');
+            foreach (var flag in m.Flags) sb.Append(flag.Name).Append('/').Append(flag.BaseFlag).Append('/').Append(flag.Bonus).Append('=').Append(string.Join(",", flag.Roles)).Append('|');
             foreach (var pair in m.BonusStartRoles) sb.Append(pair.Key).Append('>').Append(pair.Value).Append('|');
             sb.Append(m.MaxSlip).Append(m.BonusFirst);
             return sb.ToString();
