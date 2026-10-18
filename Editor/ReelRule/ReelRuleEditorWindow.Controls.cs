@@ -33,6 +33,11 @@ namespace AX.UdonSlot.REV1_0.Editor.ReelRule
             {
                 using (new EditorGUILayout.VerticalScope(GUILayout.Width(AssignGridWidth()))) DrawAssignGrid();
                 var control = SelectedControl;
+                if (control != null && machine != null && Design.IsUnusedCell(control, machine))
+                {
+                    var normal = Design.FindCell(control.flag, "");
+                    if (normal != null) { SelectControl(Design.controls.IndexOf(normal)); control = normal; }
+                }
                 if (control == null) return;
                 using (new EditorGUILayout.VerticalScope(GUILayout.ExpandWidth(true))) DrawControlCenter(control);
                 using (new EditorGUILayout.VerticalScope(GUILayout.Width(330)))
@@ -49,7 +54,7 @@ namespace AX.UdonSlot.REV1_0.Editor.ReelRule
 
         // ------------------------------------------------------------ 左: 割り当て表（フラグ × 成立中のボーナス）
 
-        private const float AssignFlagW = 110, AssignCellW = 66, AssignRowH = 26;
+        private const float AssignRowH = 26, AssignSubH = 22;
 
         /// <summary>割り当て表の行。ボーナス付きの行（Cherry_RedBB など）は含めない。</summary>
         private List<string> GridFlags()
@@ -75,7 +80,7 @@ namespace AX.UdonSlot.REV1_0.Editor.ReelRule
 
         private float AssignGridWidth()
         {
-            return Mathf.Max(230, AssignFlagW + AssignCellW * (1 + GridBonuses().Count) + 18);
+            return 230;
         }
 
         private string BonusLabel(string bonus)
@@ -104,7 +109,7 @@ namespace AX.UdonSlot.REV1_0.Editor.ReelRule
             foreach (string flag in flags)
             {
                 if (Design.FindCell(flag, "") == null) missing = true;
-                foreach (string bonus in bonuses) if (Design.FindCell(flag, bonus) == null) missing = true;
+                foreach (string bonus in bonuses) if (Design.FindCell(flag, bonus) == null && !SkipCell(flag, bonus)) missing = true;
             }
             if (!legacy && !missing) return;
             Edit("割り当て表の作成", delegate
@@ -120,7 +125,7 @@ namespace AX.UdonSlot.REV1_0.Editor.ReelRule
                     }
                     foreach (string bonus in bonuses)
                     {
-                        if (Design.FindCell(flag, bonus) != null) continue;
+                        if (Design.FindCell(flag, bonus) != null || SkipCell(flag, bonus)) continue;
                         var cell = normal.Copy();
                         cell.bonus = bonus;
                         cell.state = "";
@@ -132,6 +137,12 @@ namespace AX.UdonSlot.REV1_0.Editor.ReelRule
                     }
                 }
             });
+        }
+
+        /// <summary>小役優先で、小役のあるフラグのボーナス成立中（使わないマス）。</summary>
+        private bool SkipCell(string flag, string bonus)
+        {
+            return Design.priority == ControlPriority.SmallFirst && ReelDesign.HasSmallRoles(flag, machine);
         }
 
         /// <summary>マスの制御名。旧形式の制御が同じ名前を使っていれば、旧形式のほうを改名する。</summary>
@@ -210,38 +221,62 @@ namespace AX.UdonSlot.REV1_0.Editor.ReelRule
             }
         }
 
+        [SerializeField] private List<string> openFlags = new List<string>();
+
         private void DrawAssignGrid()
         {
             PanelHeader("割り当て");
             var flags = GridFlags();
             var bonuses = GridBonuses();
-            controlListScroll = EditorGUILayout.BeginScrollView(controlListScroll);
-            var head = GUILayoutUtility.GetRect(10, 20, GUILayout.ExpandWidth(true));
-            GUI.Label(new Rect(head.x + 6, head.y + 2, AssignFlagW - 6, 16), "フラグ", EditorStyles.miniBoldLabel);
-            GUI.Label(new Rect(head.x + AssignFlagW, head.y + 2, AssignCellW, 16), "通常", CenteredMini);
-            for (int b = 0; b < bonuses.Count; b++)
-                GUI.Label(new Rect(head.x + AssignFlagW + AssignCellW * (b + 1), head.y + 2, AssignCellW, 16), bonuses[b].Value + "中", CenteredMini);
             var selected = SelectedControl;
+            controlListScroll = EditorGUILayout.BeginScrollView(controlListScroll);
             foreach (string flag in flags)
             {
+                var normal = Design.FindCell(flag, "");
+                bool open = openFlags.Contains(flag);
                 var row = GUILayoutUtility.GetRect(10, AssignRowH, GUILayout.ExpandWidth(true));
+                if (normal != null && normal == selected) EditorGUI.DrawRect(row, SelectedColor);
                 HLine(row.x, row.yMax - 1, row.width);
-                GUI.Label(new Rect(row.x + 6, row.y + 5, AssignFlagW - 8, 16), flag);
-                for (int col = 0; col <= bonuses.Count; col++)
+                if (bonuses.Count > 0)
                 {
-                    string bonus = col == 0 ? "" : bonuses[col - 1].Key;
-                    var cell = Design.FindCell(flag, bonus);
-                    var rect = new Rect(row.x + AssignFlagW + AssignCellW * col + 2, row.y + 3, AssignCellW - 4, AssignRowH - 6);
-                    DrawAssignCell(rect, cell, col == 0);
+                    var fold = new Rect(row.x + 4, row.y + 5, 16, 16);
+                    GUI.Label(fold, open ? "▾" : "▸");
+                    if (Clicked(new Rect(row.x, row.y, 22, row.height), 0))
+                    {
+                        if (open) openFlags.Remove(flag); else openFlags.Add(flag);
+                        Repaint();
+                    }
+                }
+                GUI.Label(new Rect(row.x + 22, row.y + 4, row.width - 26, 18), (HasViolation(normal) ? "⚠ " : "") + flag, EditorStyles.boldLabel);
+                if (normal != null && Clicked(row, 0)) SelectControl(Design.controls.IndexOf(normal));
+                if (!open) continue;
+                foreach (var pair in bonuses)
+                {
+                    if (SkipCell(flag, pair.Key))
+                    {
+                        var none = GUILayoutUtility.GetRect(10, AssignSubH, GUILayout.ExpandWidth(true));
+                        EditorGUI.DrawRect(none, SubRowColor);
+                        GUI.Label(new Rect(none.x + 30, none.y + 3, none.width - 110, 16), pair.Value + "中", MutedLabel);
+                        GUI.Label(new Rect(none.xMax - 74, none.y + 3, 68, 16), "-", CenteredMini);
+                        continue;
+                    }
+                    var cell = Design.FindCell(flag, pair.Key);
                     if (cell == null) continue;
-                    if (cell == selected) Outline(rect, AccentColor, 2);
-                    if (Clicked(rect, 0)) SelectControl(Design.controls.IndexOf(cell));
-                    else if (col > 0 && Clicked(rect, 1))
+                    var sub = GUILayoutUtility.GetRect(10, AssignSubH, GUILayout.ExpandWidth(true));
+                    EditorGUI.DrawRect(sub, cell == selected ? SelectedColor : SubRowColor);
+                    GUI.Label(new Rect(sub.x + 30, sub.y + 3, sub.width - 110, 16), (HasViolation(cell) ? "⚠ " : "") + pair.Value + "中");
+                    var state = new Rect(sub.xMax - 74, sub.y + 3, 68, 16);
+                    EditorGUI.DrawRect(state, cell.pullBonus ? BonusRoleBack : AnyColor);
+                    var style = new GUIStyle(CenteredMini);
+                    style.normal.textColor = cell.pullBonus ? BonusRoleText : MutedText;
+                    GUI.Label(state, cell.pullBonus ? "揃える" : "揃えない", style);
+                    if (Clicked(sub, 0)) SelectControl(Design.controls.IndexOf(cell));
+                    else if (Clicked(sub, 1))
                     {
                         var target = cell;
-                        var normal = Design.FindCell(flag, "");
+                        var source = normal;
                         var menu = new GenericMenu();
-                        menu.AddItem(new GUIContent("通常の内容をコピー"), false, delegate { CopyCellFrom(normal, target); });
+                        menu.AddItem(new GUIContent("通常の内容をコピー"), false, delegate { CopyCellFrom(source, target); });
                         menu.ShowAsContext();
                     }
                 }
@@ -270,18 +305,11 @@ namespace AX.UdonSlot.REV1_0.Editor.ReelRule
             EditorGUILayout.EndScrollView();
         }
 
-        private void DrawAssignCell(Rect rect, DesignControl cell, bool normal)
+        private bool HasViolation(DesignControl cell)
         {
-            if (cell == null) { EditorGUI.DrawRect(rect, AnyColor); return; }
+            if (cell == null) return false;
             var result = ResultOf(cell.name);
-            bool violation = result != null && result.Stats != null && result.Stats.ViolationPaths > 0;
-            string text = normal ? "通常" : cell.pullBonus ? "揃える" : "揃えない";
-            Color back = normal ? MutedBack : cell.pullBonus ? BonusRoleBack : AnyColor;
-            Color fore = normal ? MutedText : cell.pullBonus ? BonusRoleText : MutedText;
-            EditorGUI.DrawRect(rect, back);
-            var style = new GUIStyle(CenteredMini);
-            style.normal.textColor = fore;
-            GUI.Label(rect, (violation ? "⚠ " : "") + text, style);
+            return result != null && result.Stats != null && result.Stats.ViolationPaths > 0;
         }
 
         private void CopyCellFrom(DesignControl source, DesignControl target)

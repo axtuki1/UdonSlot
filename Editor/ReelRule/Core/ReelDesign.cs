@@ -102,6 +102,21 @@ namespace AX.UdonSlot.REV1_0.Editor.ReelRule
             return list;
         }
 
+        /// <summary>
+        /// 小役優先では小役のあるフラグでボーナスを揃えないので、そのボーナス成立中のマスは使わない（通常の制御になる）。
+        /// </summary>
+        public bool IsUnusedCell(DesignControl c, Machine machine)
+        {
+            if (!c.IsCell || string.IsNullOrEmpty(c.bonus) || priority != ControlPriority.SmallFirst) return false;
+            return HasSmallRoles(c.flag, machine);
+        }
+
+        public static bool HasSmallRoles(string flag, Machine machine)
+        {
+            var f = machine.FindFlag(flag);
+            return f != null && f.Roles.Count > 0;
+        }
+
         /// <summary>この制御で当選として扱う成立中のボーナス。揃えない列では空。</summary>
         public static string WonBonusOf(DesignControl c)
         {
@@ -371,6 +386,7 @@ namespace AX.UdonSlot.REV1_0.Editor.ReelRule
             {
                 if (string.IsNullOrEmpty(d.name)) { errors.Add(new RuleError(0, "内部名のない制御があります")); continue; }
                 if (!controlNames.Add(d.name)) { errors.Add(new RuleError(0, "内部名が重複しています: " + d.name)); continue; }
+                if (design.IsUnusedCell(d, machine)) continue;
                 var flagsOfControl = ReelDesign.LotteryFlagsOf(d, machine);
                 if (d.IsCell && flagsOfControl.Count == 0)
                 {

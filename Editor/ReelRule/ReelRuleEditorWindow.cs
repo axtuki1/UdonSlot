@@ -441,6 +441,7 @@ namespace AX.UdonSlot.REV1_0.Editor.ReelRule
             {
                 if (c.IsCell)
                 {
+                    if (Design.IsUnusedCell(c, machine)) continue;
                     flags.Add(c.flag);
                     bonuses.Add(c.bonus ?? "");
                     states.Add("");

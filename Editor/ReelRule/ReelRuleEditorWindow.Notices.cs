@@ -44,7 +44,7 @@ namespace AX.UdonSlot.REV1_0.Editor.ReelRule
             if (asset != null && machine != null) CollectMapNotices(list);
             if (asset != null && registeredNames != null)
                 foreach (var c in Design.controls)
-                    if (!IsRegistered(c.name))
+                    if (!IsRegistered(c.name) && !(machine != null && Design.IsUnusedCell(c, machine)))
                         list.Add(new Notice { Text = c.name + " はベイク時に作成されます", Screen = 0, Control = c.name });
             return list;
         }
@@ -61,7 +61,7 @@ namespace AX.UdonSlot.REV1_0.Editor.ReelRule
         private bool HasControlFor(string role)
         {
             foreach (var c in Design.controls)
-                if (WonRolesOf(c).Contains(role)) return true;
+                if (!Design.IsUnusedCell(c, machine) && WonRolesOf(c).Contains(role)) return true;
             return false;
         }
 
