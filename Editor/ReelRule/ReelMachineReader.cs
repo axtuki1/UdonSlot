@@ -51,6 +51,13 @@ namespace AX.UdonSlot.REV1_0.Editor.ReelRule
             }
 
             foreach (var table in LotteryTablesOf(machine)) ReadFlags(m, table, payout);
+            var bonusTable = BonusTableOf(machine);
+            if (bonusTable != null)
+                for (int b = 0; b < bonusTable.GetBonusCount(); b++)
+                {
+                    string name = bonusTable.GetBonusName(b);
+                    if (name.Length > 0 && !m.BonusStartRoles.ContainsKey(name)) m.BonusStartRoles[name] = bonusTable.GetBonusStartRole(b);
+                }
             return m;
         }
 
@@ -146,6 +153,7 @@ namespace AX.UdonSlot.REV1_0.Editor.ReelRule
                 sb.Append(role.IsBonus ? 'B' : '-').Append(role.IsReplay ? 'R' : '-').Append(role.IsTransition ? 'T' : '-').Append(role.Payout).Append('|');
             }
             foreach (var flag in m.Flags) sb.Append(flag.Name).Append('/').Append(flag.BaseFlag).Append('=').Append(string.Join(",", flag.Roles)).Append('|');
+            foreach (var pair in m.BonusStartRoles) sb.Append(pair.Key).Append('>').Append(pair.Value).Append('|');
             sb.Append(m.MaxSlip).Append(m.BonusFirst);
             return sb.ToString();
         }

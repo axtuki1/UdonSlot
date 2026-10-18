@@ -1055,12 +1055,22 @@ namespace AX.UdonSlot.REV1_0
         }
 
         /// <summary>
-        /// ReelControl.flagNamesから制御データを検索するためのフラグ名を返す。
-        /// 既定では成立フラグの内部使用名を使用する。
-        /// 派生クラスでオーバーライドし、GetActiveFlag() + "_" + bonusFlagなどの検索名を指定できる。
+        /// ReelControl.flagNamesから制御データを検索するための制御名を返す。
+        /// ReelControlに対応表（機種エディタのベイクで作成）があれば、成立フラグ・持越しボーナス・RT状態から選ぶ。
+        /// 対応表がなければ controlNameFormat で名前を組み立てる。
+        /// 派生クラスでオーバーライドして独自の検索名を返すこともできる。
         /// </summary>
         public virtual string GetReelControlFlagName()
         {
+            if (Utilities.IsValid(reelControl) && reelControl.HasMap())
+            {
+                string bonusName = GetPendingBonusName();
+                string state = GetStateName();
+                string mapped = reelControl.FindControlName(activeFlag, bonusName, state);
+                if (mapped.Length == 0) mapped = reelControl.FindControlName(GetActiveBaseFlag(), bonusName, state);
+                return mapped.Length > 0 ? mapped : activeFlag;
+            }
+
             string flag = GetActiveBaseFlag();
             string format = controlNameFormat;
             if (string.IsNullOrEmpty(format)) return flag;

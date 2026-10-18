@@ -41,11 +41,36 @@ namespace AX.UdonSlot.REV1_0.Editor.ReelRule
                 foreach (var r in results)
                     if (r.Stats != null && r.Stats.ViolationPaths > 0)
                         list.Add(new Notice { Warning = true, Text = r.Name + ": 非成立役の入賞 " + r.Stats.ViolationPaths, Screen = 0, Control = r.Name });
+            if (asset != null && machine != null) CollectMapNotices(list);
             if (asset != null && registeredNames != null)
                 foreach (var c in Design.controls)
                     if (!IsRegistered(c.name))
                         list.Add(new Notice { Text = c.name + " はベイク時に作成されます", Screen = 0, Control = c.name });
             return list;
+        }
+
+        /// <summary>抽選フラグ → 制御 の対応の抜けと重複。</summary>
+        private void CollectMapNotices(List<Notice> list)
+        {
+            var keys = new Dictionary<string, string>();
+            var plain = new HashSet<string>();
+            foreach (var c in Design.controls)
+                foreach (string flag in c.lotteryFlags)
+                {
+                    string bonus = c.bonus ?? "", state = c.state ?? "";
+                    if (bonus.Length == 0 && state.Length == 0) plain.Add(flag);
+                    string key = flag + "\n" + bonus + "\n" + state;
+                    string other;
+                    if (keys.TryGetValue(key, out other))
+                    {
+                        string condition = (bonus.Length > 0 ? "・持越し " + bonus : "") + (state.Length > 0 ? "・" + state : "");
+                        list.Add(new Notice { Warning = true, Text = flag + condition + " の制御が重複しています（" + other + "、" + c.name + "）", Screen = 0, Control = c.name });
+                    }
+                    else keys[key] = c.name;
+                }
+            foreach (var flag in machine.Flags)
+                if (!plain.Contains(flag.Name))
+                    list.Add(new Notice { Warning = true, Text = flag.Name + " を使う制御がありません", Screen = 0 });
         }
 
         /// <summary>この役を当選として扱う制御があるか。</summary>

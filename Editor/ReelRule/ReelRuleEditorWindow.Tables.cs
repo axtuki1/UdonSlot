@@ -85,15 +85,10 @@ namespace AX.UdonSlot.REV1_0.Editor.ReelRule
             return payout != null ? payout.GetWinPairDisplayName(role) : role;
         }
 
-        /// <summary>ボーナス付きフラグの内部名。制御名の形式から作る（例 Cherry_RedBB）。</summary>
-        private string BonusEntryName(string baseFlag, string bonus)
+        /// <summary>ボーナス付きフラグの内部名（例 Cherry_RedBB）。</summary>
+        private static string BonusEntryName(string baseFlag, string bonus)
         {
-            var property = new SerializedObject(machineObject).FindProperty("controlNameFormat");
-            string format = property != null ? property.stringValue : "";
-            if (string.IsNullOrEmpty(format) || format.IndexOf("{bonus}", StringComparison.Ordinal) < 0) format = "{flag}_{bonus}";
-            string name = format.Replace("{flag}", baseFlag).Replace("{bonus}", bonus).Replace("{rt}", "");
-            while (name.Contains("__")) name = name.Replace("__", "_");
-            return name.Trim('_');
+            return baseFlag + "_" + bonus;
         }
 
         /// <summary>機種の子に抽選表を作る。</summary>

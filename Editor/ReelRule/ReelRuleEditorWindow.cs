@@ -424,9 +424,34 @@ namespace AX.UdonSlot.REV1_0.Editor.ReelRule
                 PrefabUtility.RecordPrefabInstancePropertyModifications(data);
                 if (data.gameObject.scene.IsValid()) EditorSceneManager.MarkSceneDirty(data.gameObject.scene);
             }
+            WriteControlMap(EnsureReelControl(control));
             Undo.CollapseUndoOperations(undoGroup);
             Poll();
             EditorUtility.DisplayDialog("ベイク", targets.Count + "件をベイクしました。", "OK");
+        }
+
+        /// <summary>抽選フラグ（＋持越しボーナス・RT）→ 制御名 の対応表を ReelControl に書き出す。</summary>
+        private void WriteControlMap(ReelControl control)
+        {
+            var flags = new List<string>();
+            var bonuses = new List<string>();
+            var states = new List<string>();
+            var names = new List<string>();
+            foreach (var c in Design.controls)
+                foreach (string flag in c.lotteryFlags)
+                {
+                    flags.Add(flag);
+                    bonuses.Add(c.bonus ?? "");
+                    states.Add(c.state ?? "");
+                    names.Add(c.name);
+                }
+            Undo.RecordObject(control, "リール制御のベイク");
+            control.mapFlags = flags.ToArray();
+            control.mapBonuses = bonuses.ToArray();
+            control.mapStates = states.ToArray();
+            control.mapControls = names.ToArray();
+            EditorUtility.SetDirty(control);
+            PrefabUtility.RecordPrefabInstancePropertyModifications(control);
         }
 
         private static ReelControlData FindControlData(ReelControl control, string name)

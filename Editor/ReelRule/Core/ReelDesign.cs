@@ -205,7 +205,7 @@ namespace AX.UdonSlot.REV1_0.Editor.ReelRule
         }
     }
 
-    /// <summary>制御1件。name は ReelOutputController.GetReelControlFlagName() が返す検索名。</summary>
+    /// <summary>制御1件。抽選フラグ（＋持越しボーナス・RT）からこの制御が選ばれる。対応はベイクで ReelControl に書き出す。</summary>
     [Serializable]
     public sealed class DesignControl
     {
@@ -213,6 +213,10 @@ namespace AX.UdonSlot.REV1_0.Editor.ReelRule
         public List<string> lotteryFlags = new List<string>();
         /// <summary>抽選表のフラグ以外に当選として扱う役（持越し中のボーナスなど）。</summary>
         public List<string> extraRoles = new List<string>();
+        /// <summary>持越し中のボーナスの内部名。空ならボーナスの有無を問わない。</summary>
+        public string bonus = "";
+        /// <summary>RT 状態の内部名。空ならどの状態でも使う。</summary>
+        public string state = "";
         /// <summary>狙う出目の名前（上ほど優先）。</summary>
         public List<string> targets = new List<string>();
         public List<DesignOverride> overrides = new List<DesignOverride>();
@@ -224,6 +228,8 @@ namespace AX.UdonSlot.REV1_0.Editor.ReelRule
                 name = name,
                 lotteryFlags = new List<string>(lotteryFlags),
                 extraRoles = new List<string>(extraRoles),
+                bonus = bonus,
+                state = state,
                 targets = new List<string>(targets)
             };
             foreach (var o in overrides) copy.overrides.Add(o.Copy());
@@ -326,6 +332,13 @@ namespace AX.UdonSlot.REV1_0.Editor.ReelRule
                     Explicit = true
                 };
                 rule.ExtraRoles.AddRange(d.extraRoles);
+                if (!string.IsNullOrEmpty(d.bonus))
+                {
+                    string startRole;
+                    if (!machine.BonusStartRoles.TryGetValue(d.bonus, out startRole))
+                        errors.Add(new RuleError(0, "制御 " + d.name + " の持越しボーナス「" + d.bonus + "」がありません"));
+                    else if (startRole.Length > 0 && !rule.ExtraRoles.Contains(startRole)) rule.ExtraRoles.Add(startRole);
+                }
 
                 // 優先順: [ボーナス（ボーナス優先時）] → 狙う出目 → 狙わない基本目を避ける → 小役 → [ボーナス（小役優先時）]
                 var won = new List<string>();
@@ -334,7 +347,7 @@ namespace AX.UdonSlot.REV1_0.Editor.ReelRule
                     var flag = machine.FindFlag(flagName);
                     if (flag != null) foreach (string role in flag.Roles) if (!won.Contains(role)) won.Add(role);
                 }
-                foreach (string role in d.extraRoles) if (!won.Contains(role)) won.Add(role);
+                foreach (string role in rule.ExtraRoles) if (!won.Contains(role)) won.Add(role);
 
                 // 移行図柄: 出してよいフラグの制御では小役の後に狙い、ほかの制御では出さない。
                 // フラグの指定がなければ、どの制御でも引き込みも回避もしない。

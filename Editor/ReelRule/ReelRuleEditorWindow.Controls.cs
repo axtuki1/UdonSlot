@@ -28,6 +28,7 @@ namespace AX.UdonSlot.REV1_0.Editor.ReelRule
 
         private void DrawControlScreen()
         {
+            UpgradeCarriedControls();
             using (new EditorGUILayout.HorizontalScope())
             {
                 using (new EditorGUILayout.VerticalScope(GUILayout.Width(230))) DrawControlList();
@@ -57,6 +58,9 @@ namespace AX.UdonSlot.REV1_0.Editor.ReelRule
                 if (flag != null) foreach (string role in flag.Roles) if (!won.Contains(role)) won.Add(role);
             }
             foreach (string role in control.extraRoles) if (!won.Contains(role)) won.Add(role);
+            string start;
+            if (!string.IsNullOrEmpty(control.bonus) && machine.BonusStartRoles.TryGetValue(control.bonus, out start) && start.Length > 0 && !won.Contains(start))
+                won.Add(start);
             return won;
         }
 
@@ -90,7 +94,6 @@ namespace AX.UdonSlot.REV1_0.Editor.ReelRule
                 }
             }
             EditorGUILayout.EndScrollView();
-            DrawControlNameFormat();
             using (new EditorGUILayout.HorizontalScope())
             {
                 if (GUILayout.Button("＋ 追加")) { AddControl(); GUIUtility.ExitGUI(); }
@@ -109,31 +112,7 @@ namespace AX.UdonSlot.REV1_0.Editor.ReelRule
             GUILayout.Space(4);
         }
 
-        /// <summary>制御名の形式（ReelOutputController.controlNameFormat）。</summary>
-        private void DrawControlNameFormat()
-        {
-            var so = new SerializedObject(machineObject);
-            var format = so.FindProperty("controlNameFormat");
-            if (format == null) return;
-            GUILayout.Space(4);
-            GUILayout.Label("制御名の形式", EditorStyles.miniLabel);
-            string next = EditorGUILayout.DelayedTextField(format.stringValue);
-            using (new EditorGUILayout.HorizontalScope())
-            {
-                foreach (string token in new[] { "{flag}", "{bonus}", "{rt}" })
-                    if (Chip(token, AnyColor, new Color(0.75f, 0.75f, 0.75f))) next = format.stringValue + (token == "{flag}" ? "" : "_") + token;
-                GUILayout.FlexibleSpace();
-            }
-            if (next == format.stringValue) return;
-            format.stringValue = next;
-            so.ApplyModifiedProperties();
-            GUI.FocusControl(null);
-        }
-
-        /// <summary>
-        /// ボーナス成立中のハズレ用の制御（例 NoWin_RedBB）を作る。作動役を当選として扱う。
-        /// ほかのフラグは、同じ名前の制御がなければ元のフラグの制御が使われる。
-        /// </summary>
+        /// <summary>ボーナス持越し中のハズレ用の制御（例 NoWin_RedBB）を作る。</summary>
         private void AddCarriedBonusControls()
         {
             var bonusTable = MachineBonusTable;
@@ -150,7 +129,7 @@ namespace AX.UdonSlot.REV1_0.Editor.ReelRule
                     if (Design.FindControl(name) != null) continue;
                     var control = new DesignControl { name = name };
                     control.lotteryFlags.Add(entry.Name);
-                    control.extraRoles.Add(role);
+                    control.bonus = bonusTable.bonusNames[b];
                     Design.controls.Add(control);
                 }
             }
@@ -219,14 +198,10 @@ namespace AX.UdonSlot.REV1_0.Editor.ReelRule
                 GUILayout.Label("当選役", GUILayout.Width(40));
                 foreach (string role in WonRolesOf(control)) Chip(role, new Color(0.14f, 0.29f, 0.19f), new Color(0.62f, 0.88f, 0.69f));
                 GUILayout.Space(4);
-                var lottery = ReelMachineReader.LotteryTableOf(machineObject);
-                if (lottery != null && Link("抽選表で編集"))
-                {
-                    Selection.activeObject = lottery;
-                    EditorGUIUtility.PingObject(lottery);
-                }
+                if (Link("抽選表で編集")) { screen = 2; GUI.FocusControl(null); }
                 GUILayout.FlexibleSpace();
             }
+            DrawControlConditions(control);
             GUILayout.Space(6);
             using (new EditorGUILayout.HorizontalScope())
             {
@@ -251,6 +226,93 @@ namespace AX.UdonSlot.REV1_0.Editor.ReelRule
             {
                 control.name = renamed;
                 foreach (var shape in Design.shapes) shape.RenameControl(old, renamed);
+            });
+        }
+
+        /// <summary>持越しボーナスと RT 状態の条件。ボーナス・RT表がある機種だけ。</summary>
+        private void DrawControlConditions(DesignControl control)
+        {
+            var bonusTable = MachineBonusTable;
+            if (bonusTable == null) return;
+            GUILayout.Space(4);
+            using (new EditorGUILayout.HorizontalScope())
+            {
+                var bonusNames = new List<string> { "" };
+                var bonusLabels = new List<string> { "なし" };
+                for (int b = 0; b < bonusTable.GetBonusCount(); b++)
+                {
+                    if (bonusTable.GetBonusStartRole(b).Length == 0) continue;
+                    bonusNames.Add(bonusTable.GetBonusName(b));
+                    bonusLabels.Add(bonusTable.GetBonusDisplayName(b));
+                }
+                AddMissing(bonusNames, bonusLabels, control.bonus);
+                GUILayout.Label("持越し", GUILayout.Width(40));
+                int bonusAt = bonusNames.IndexOf(control.bonus ?? "");
+                int nextBonus = EditorGUILayout.Popup(bonusAt, bonusLabels.ToArray(), GUILayout.Width(120));
+                if (nextBonus != bonusAt) { string value = bonusNames[nextBonus]; Edit("持越しの変更", delegate { control.bonus = value; }); }
+
+                if (bonusTable.GetStateCount() > 1)
+                {
+                    var stateNames = new List<string> { "" };
+                    var stateLabels = new List<string> { "すべて" };
+                    for (int st = 0; st < bonusTable.GetStateCount(); st++)
+                    {
+                        stateNames.Add(bonusTable.GetStateName(st));
+                        stateLabels.Add(bonusTable.GetStateDisplayName(st));
+                    }
+                    AddMissing(stateNames, stateLabels, control.state);
+                    GUILayout.Space(16);
+                    GUILayout.Label("RT", GUILayout.Width(22));
+                    int stateAt = stateNames.IndexOf(control.state ?? "");
+                    int nextState = EditorGUILayout.Popup(stateAt, stateLabels.ToArray(), GUILayout.Width(120));
+                    if (nextState != stateAt) { string value = stateNames[nextState]; Edit("RTの変更", delegate { control.state = value; }); }
+                }
+                GUILayout.FlexibleSpace();
+            }
+        }
+
+        private static void AddMissing(List<string> names, List<string> labels, string value)
+        {
+            if (string.IsNullOrEmpty(value) || names.Contains(value)) return;
+            names.Add(value);
+            labels.Add("⚠ " + value);
+        }
+
+        /// <summary>
+        /// 名前で選んでいた頃の持越し制御（例 NoWin_RedBB、作動役を当選役に追加）を、持越しの条件に置き換える。
+        /// </summary>
+        private void UpgradeCarriedControls()
+        {
+            var bonusTable = MachineBonusTable;
+            var main = machineObject != null ? ReelMachineReader.LotteryTableOf(machineObject) : null;
+            if (bonusTable == null || main == null || asset == null) return;
+            var model = LotteryModel.Load(main);
+            var changes = new List<KeyValuePair<DesignControl, KeyValuePair<string, string>>>();
+            foreach (var c in Design.controls)
+            {
+                if (!string.IsNullOrEmpty(c.bonus)) continue;
+                foreach (var entry in model.Entries)
+                {
+                    if (!entry.Remainder) continue;
+                    for (int b = 0; b < bonusTable.GetBonusCount(); b++)
+                    {
+                        string start = bonusTable.GetBonusStartRole(b);
+                        if (start.Length == 0 || c.name != BonusEntryName(entry.Name, bonusTable.GetBonusName(b)) || !c.extraRoles.Contains(start)) continue;
+                        changes.Add(new KeyValuePair<DesignControl, KeyValuePair<string, string>>(c, new KeyValuePair<string, string>(entry.Name, bonusTable.GetBonusName(b))));
+                    }
+                }
+            }
+            if (changes.Count == 0) return;
+            Edit("持越し制御の更新", delegate
+            {
+                foreach (var change in changes)
+                {
+                    var c = change.Key;
+                    string flag = change.Value.Key, bonus = change.Value.Value;
+                    c.bonus = bonus;
+                    if (!c.lotteryFlags.Contains(flag)) c.lotteryFlags.Insert(0, flag);
+                    c.extraRoles.Remove(bonusTable.GetBonusStartRole(bonusTable.FindBonus(bonus)));
+                }
             });
         }
 
