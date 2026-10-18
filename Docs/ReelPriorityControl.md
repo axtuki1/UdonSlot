@@ -6,18 +6,13 @@
 
 ## ReelControlの検索用フラグ名
 
-`ControllReel`は`GetReelControlFlagName()`の戻り値を`ReelControl.flagNames`から検索します。既定では`GetActiveFlag()`を返すため、既存の対応表をそのまま使用できます。
+`ControllReel`は`GetReelControlFlagName()`の戻り値を`ReelControl.flagNames`から検索します。
 
-成立フラグとボーナス状態の組み合わせで制御を切り替える場合は、派生クラスで次のようにオーバーライドします（`bonusFlag`は派生クラスで保持する文字列です）。
+- 機種エディタでベイクした`ReelControl`には割り当て表（フラグ × 成立中のボーナス → 制御名）が入っています。このときは、抽選したフラグ（ボーナス付きの行なら元のフラグ）と成立中のボーナスから制御名を決めます。成立中の行がなければボーナスなしの行を使います。
+- 割り当て表がない場合は`controlNameFormat`（既定`{flag}_{bonus}`。`{rt}`でRT状態の内部名）で名前を組み立て、その名前の制御がなければフラグ名を使います。
+- 派生クラスで`GetReelControlFlagName()`をオーバーライドすると、独自の検索名を返せます。
 
-```csharp
-public override string GetReelControlFlagName()
-{
-    return GetActiveFlag() + "_" + bonusFlag;
-}
-```
-
-戻り値と一致する名前（例: `REPLAY_BIG`）を`ReelControl.flagNames`に登録してください。この検索名はテーブル選択だけに使用し、成立フラグや自動滑り制御の抽選結果は変更しません。対応する制御データが見つからない場合は、従来どおり`DynamicControl`を使用します。
+この検索名はテーブル選択だけに使用し、成立フラグや自動滑り制御の抽選結果は変更しません。対応する制御データが見つからない場合は、従来どおり`DynamicControl`を使用します。
 
 ## 出目を見ながらテーブルを編集する
 

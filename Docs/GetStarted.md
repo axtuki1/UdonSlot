@@ -2,7 +2,7 @@
 
 この文書では、UdonSlotで新しいスロットを作り始めるための最小構成を説明します。
 
-まずは `MainBoard`、`SubBoard`、`ReelOutputController` を継承し、告知やボーナス状態を含まない基本遊技を動かします。演出、特殊制御、ボーナス、サンド連携などは、基本遊技が通ってから追加すると確認しやすくなります。
+まずは `MainBoard`、`SubBoard`、`ReelOutputController` を継承し、ボーナスや告知を含まない基本遊技を動かします。出目の作り込み、ボーナス、演出、サンド連携などは、基本遊技が通ってから追加すると確認しやすくなります。
 
 ## 1. リビジョンを選ぶ
 
@@ -20,40 +20,36 @@ using AX.UdonSlot.REV1_0;
 
 `ReelData.symbols` には、リールの図柄名を物理配列順に登録します。図柄名は `PayoutTable` の図柄組み合わせと完全一致で比較されます。
 
-`ReelArray` を使う場合は、Projectビューで `Create > UdonSlot > ReelArray` と `Create > UdonSlot > ReelPicture` からアセットを作成できます。`ReelData` のInspectorに `ReelArray` を指定し、`ReelArrayからデータを生成` を押すと、`ReelPicture.pictureName` から `symbols` を生成できます。
+リール配列とリールテクスチャは `UdonSlot > ReelMaker` で作れます。`ReelArray` を使う場合は、Projectビューで `Create > UdonSlot > ReelArray` と `Create > UdonSlot > ReelPicture` からアセットを作成できます。`ReelData` のInspectorに `ReelArray` を指定し、`ReelArrayからデータを生成` を押すと、`ReelPicture.pictureName` から `symbols` を生成できます。
 
-## 3. 抽選表を作る
+## 3. 抽選表と配当表を作る
 
-スロット本体とは別のGameObjectを作成し、`LotteryTable` を追加します。
+スロット本体とは別のGameObjectに `LotteryTable` と `PayoutTable` を追加し、`ReelOutputController` 派生（手順5）の `lotteryTable`・`payoutTable` に設定します。中身は `UdonSlot > 機種エディタ` の③抽選表・④配当表で編集します（Inspectorでも編集できます）。
 
-最低限、次のフラグを登録します。
+最低限、次のフラグと役を登録します。
 
-| 表示名 | 内部使用名 | ハズレ（余り） | 当選役 |
+| フラグ（内部名） | ハズレ（余り） | 当選役 |
+| --- | --- | --- |
+| NoWin | 有効 | なし |
+| Bell | 無効 | Bell |
+| Replay | 無効 | Replay |
+
+| 役（内部名） | 種別 | 図柄の組合せ | 払出 |
 | --- | --- | --- | --- |
-| ハズレ | None | 有効 | なし |
-| ベル | Bell | 無効 | Bell |
-| リプレイ | Replay | 無効 | Replay |
+| Bell | 小役 | `Bell` / `Bell` / `Bell` | 任意 |
+| Replay | リプレイ | `Replay` / `Replay` / `Replay` | なし |
 
-`最大確率分母` は、固定抽選領域の大きさです。たとえば `65536` にすると、抽選比率 `4096` は `4096 / 65536` として扱われます。
+- `最大確率分母` は固定抽選領域の大きさです。`65536` なら、抽選比率 `4096` は `4096 / 65536` です。
+- ハズレ（余り）のフラグには、他フラグの合計を差し引いた残りが自動で入ります。
+- 内部名は同期値やコード上の判定に使います。表示名を変えても挙動が変わらないよう、`Bell`、`Replay` のようなASCII名にしてください。
+- 抽選表の当選役名は、配当表の役の内部名と完全一致で照合します。
+- 有効ラインはBETごとに登録します。
 
-BET 1、BET 2、BET 3の抽選比率をそれぞれ設定します。ハズレフラグは比率を直接入力せず、他フラグの合計を差し引いた残りが自動的に割り当てられます。
+## 4. ボーナス・RTを作る（必要なら）
 
-内部使用名は同期値やコード上の判定に使います。あとから表示名を変えても挙動が変わらないよう、内部使用名は `Bell`、`Replay` のようなASCII名にしておくと扱いやすくなります。
+機種エディタの⑤ボーナス・RTで「ボーナス・RT表を作成」を押すと、`BonusTable` が作られ機種に設定されます。役物（BB・RBなど）と作動役、終了条件、RTを登録し、③抽選表でフラグの下にボーナス付きの行（例 `Cherry_RedBB`）を追加すると、そのフラグと同時にボーナスが成立します。
 
-## 4. 配当表を作る
-
-別のGameObjectを作成し、`PayoutTable` を追加します。
-
-`成立役` には、抽選表の当選役から参照する役を登録します。
-
-| 表示名 | 内部使用名 | 図柄組み合わせ | 払出 |
-| --- | --- | --- | --- |
-| ベル | Bell | 左 `Bell` / 中 `Bell` / 右 `Bell` | 任意 |
-| リプレイ | Replay | 左 `Replay` / 中 `Replay` / 右 `Replay` | リプレイとして扱う |
-
-図柄組み合わせの空文字はANYとして扱われます。停止順を成立条件に含めない場合は、`停止順不問` を有効にします。
-
-`有効ライン` には、BET数ごとに使うラインを登録します。各リールの表示段は `上段`、`中段`、`下段` から選びます。
+成立・作動・RTの管理は基底の `ReelOutputController` が行うので、機種側のコードは不要です。演出は `SubBoard` の `BonusStartLogic`・`BonusEndLogic`・`StateChangeLogic` に書きます。
 
 ## 5. 機種用クラスを作る
 
@@ -61,7 +57,7 @@ BET 1、BET 2、BET 3の抽選比率をそれぞれ設定します。ハズレ�
 
 - `MainBoard` 派生: BET、レバー、リール開始/停止、ゲーム終了に機種固有処理を追加します。
 - `SubBoard` 派生: 音、ランプ、映像、告知などのサブ側演出を追加します。
-- `ReelOutputController` 派生: 必要に応じて抽選後処理や機種固有の滑り制御を実装します。PayoutTableによる自動滑り、成立役判定、払出、リプレイ判定は基底に実装されています。
+- `ReelOutputController` 派生: 必要に応じて抽選後処理を実装します。抽選、自動滑り、ベイクした制御の選択、成立役判定、払出、リプレイ判定、ボーナス・RTは基底に実装されています。
 
 `LotteryTable` と `PayoutTable` を使う最小の `ReelOutputController` 派生は、次のように作れます。
 
@@ -95,11 +91,12 @@ namespace AX.UdonSlot.REV1_0
 - `mainBoard`: 対象の `MainBoard`
 - `lotteryTable`: 作成した `LotteryTable`
 - `payoutTable`: 作成した `PayoutTable`
-- `rolePriority`: `SmallRoleFirst` または `BonusFirst`
-- `priority`: `Payout` または `CombinationCount`
+- `bonusTable`: ボーナス・RTを使う場合の `BonusTable`
+- `rolePriority`: `SmallRoleFirst` または `BonusFirst`（ベイクした制御が無いときの自動滑りで使います）
+- `priority`: `Payout` または `CombinationCount`（同上）
 - `maxSlipCount`: 最大滑りコマ数。通常は `4`
 
-通常役の自動滑りは基底だけで動作します。特定フラグや押し順だけ専用の停止テーブルにしたい場合は、あとから `ReelControl` と `ReelControlData` を追加します。
+通常役の自動滑りは基底だけで動作します。出目の出し分けやリーチ目を作るときは、機種エディタの①制御・②出目で設定して「ベイク」します。`ReelControl` と `ReelControlData` はベイク時に自動で作られます（詳しくは `Docs/ReelRule.md`）。
 
 ## 7. 入力を置く
 
@@ -145,11 +142,11 @@ Unity上で次の流れを確認します。
 
 基本遊技が動いたら、必要に応じて派生クラスを作成します。
 
-- 抽選後に状態を追加したい: `ReelOutputController.GenerateFlagLogic(int, string)` を使います。
+- 抽選後に処理を追加したい: `ReelOutputController.GenerateFlagLogic(int, string)` を使います。
 - 抽選そのものを置き換えたい: `GenerateFlag` をオーバーライドします。
 - 入力、回転開始、停止、ゲーム終了に処理を足したい: `MainBoard` の各Logicメソッドを使います。
 - 音、ランプ、映像などの演出を足したい: `SubBoard` を継承します。
 
 `Runtime/<REV>/Example/BasicReelOutputController.cs` は、基底機能だけを使う最小の空派生です。配布用の機種では、必要な機種固有処理だけを持つ派生クラスを作成してください。
 
-基礎遊技の詳細は `Docs/BasicSlotFlow.md`、自動滑り制御の詳細は `Docs/ReelPriorityControl.md`、各クラスの役割は `Docs/ClassRoles.md` を参照してください。
+機種エディタは `Docs/ReelRule.md`、基礎遊技の詳細は `Docs/BasicSlotFlow.md`、自動滑り制御の詳細は `Docs/ReelPriorityControl.md`、各クラスの役割は `Docs/ClassRoles.md` を参照してください。

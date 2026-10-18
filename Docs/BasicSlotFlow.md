@@ -1,17 +1,18 @@
 # Basic Slot Flow
 
-`MainBoard`、`SubBoard`、`ReelOutputController`を継承すると、告知やボーナス状態遷移を含まない基礎遊技を構成できます。
+`MainBoard`、`SubBoard`、`ReelOutputController`を継承すると、基礎遊技を構成できます。ボーナス・RTは`BonusTable`を設定すると基底が扱います（`Docs/ReelRule.md`の「⑤ ボーナス・RT」）。
 
 ## Flow
 
 1. BETまたはMaxBETでクレジットをBETへ移します。
 2. レバー入力で`LotteryTable`からフラグを抽選します。
 3. MainBoardが3リールを回転させます。
-4. 各停止ボタンの入力時に、明示テーブルまたはPayoutTableの優先制御で滑りコマ数を決定します。
+4. 各停止ボタンの入力時に、ベイクした制御テーブル（ReelControlData）またはPayoutTableの優先制御で滑りコマ数を決定します。
 5. 全リール停止後、PayoutTableと有効ラインから成立役を判定します。
 6. 成立役の配当合計をクレジットへ加算します。
+7. `BonusTable`があれば、ボーナスの作動・終了とRTの移行を行います（`UpdateGameState`）。
 
-告知、演出、ボーナス状態、持越しなどはこの基礎フローに含めません。リプレイ成立時のBET再装填とロックは基礎フローに含み、機種固有の再遊技音や表示はMainBoard、SubBoard派生クラスで追加します。
+告知や演出はこの基礎フローに含めません。リプレイ成立時のBET再装填とロックは基礎フローに含み、機種固有の再遊技音や表示はMainBoard、SubBoard派生クラスで追加します。
 
 ## Components
 
@@ -27,6 +28,7 @@
 - `reelDatas`: 左、中、右のReelDataを設定します。
 - `mainBoard`: 対象MainBoardを設定します。
 - `lotteryTable`: フラグ抽選表を設定します。
+- `bonusTable`: ボーナス・RTを使う場合に設定します。
 - `payoutTable`: 成立役・配当・有効ライン表を設定します。
 - `rolePriority`: 小役優先またはボーナス優先を選択します。
 - `priority`: 枚数優先または個数優先を選択します。
@@ -122,4 +124,4 @@ LotteryTableへ当選役を1件以上追加すると、すべてのフラグと�
 - `SubBoard`の各Logicメソッド: 告知、ランプ、映像、サウンドなどの演出。
 - `SubBoard.ReplayBetLogic(int)`: 全プレイヤーへ通知される再遊技音・表示用の拡張ポイント。
 
-ボーナスを実装する場合は、ReelOutputControllerを継承してボーナスフラグや持越し状態を同期します。共通の小役抽選後に処理を追加する場合は`GenerateFlagLogic`を使用し、抽選そのものを置き換える場合だけ`GenerateFlag`をオーバーライドします。
+ボーナス・RTは`BonusTable`で定義し、成立・作動・終了・RT移行は基底が同期します。演出は`SubBoard`の`BonusStartLogic`・`BonusEndLogic`・`StateChangeLogic`で追加します。共通の抽選後に処理を追加する場合は`GenerateFlagLogic`を使用し、抽選そのものを置き換える場合だけ`GenerateFlag`をオーバーライドします。

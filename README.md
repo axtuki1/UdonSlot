@@ -16,9 +16,9 @@ Current version: `1.0.0`
 - `Runtime/<REV>/Slot/Serialize`: リール配列、図柄、滑り定義の ScriptableObject
 - `Runtime/<REV>/Sand`: カード、カード挿入口、サンド本体などの貸出機用部品
 - `Runtime/<REV>/DataLamp`: データランプ用部品
-- `Editor/Slot`: リールデータ、滑りテーブル、配当テーブルなどのスロット本体向けインスペクタ拡張
+- `Editor/Slot`: リールデータ、滑りテーブル、抽選表、配当表、ボーナス表などのインスペクタ拡張
 - `Editor/ReelMaker`: リール配列と図柄画像からリールテクスチャを作る ReelMaker（`UdonSlot > ReelMaker`）
-- `Editor/ReelRule`: リール制御エディタ（`UdonSlot > リール制御エディタ`）
+- `Editor/ReelRule`: 機種エディタ（`UdonSlot > 機種エディタ`）。抽選表・配当表・ボーナス/RT・リール制御をまとめて編集し、滑りテーブルを生成する
 - `Samples~/BasicSlot`: 基本的な機種実装サンプル
 
 ## Namespace
@@ -30,8 +30,9 @@ Current version: `1.0.0`
 - 新しいスロットを作り始める手順は `Docs/GetStarted.md` にまとめています。
 - 各クラスの役割は `Docs/ClassRoles.md` にまとめています。
 - 枚数優先・個数優先の自動リール制御は `Docs/ReelPriorityControl.md` にまとめています。
-- 出目の出し分けから滑りテーブルを生成する「リール制御エディタ」は `Docs/ReelRule.md` にまとめています。
+- 機種エディタ（出目の出し分けから滑りテーブルを生成、抽選表・配当表・ボーナス/RTの編集）は `Docs/ReelRule.md` にまとめています。
 - 基礎遊技フローの構成とInspector設定は `Docs/BasicSlotFlow.md` にまとめています。
+- リール上下照明シェーダーは `Docs/ReelLighting.md` にまとめています。
 
 ## Version History
 

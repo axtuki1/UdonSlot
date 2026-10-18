@@ -8,15 +8,16 @@ UdonSlot package 内の各クラスの役割メモです。
 
 - `MainBoard`: スロット遊技状態の中心。クレジット、BET、リプレイBET再装填と返却ロック、レバー、リール回転/停止、停止精度、押し順、払い出しなどを同期管理するメイン基板。
 - `SubBoard`: メイン基板の状態を受けて、演出、音、停止ボタン発光、リプレイ再装填通知などのサブ側処理を動かす基底。
-- `ReelOutputController`: LotteryTableによる共通フラグ抽選と同期、PayoutTableによる標準成立役判定・BET別払出・リプレイ判定、リール制御を担う基底。小役優先・ボーナス優先と、枚数優先・個数優先を独立して指定できる。
+- `ReelOutputController`: LotteryTableによる共通フラグ抽選と同期、PayoutTableによる標準成立役判定・BET別払出・リプレイ判定、リール制御、BonusTableによるボーナス成立・作動・終了とRT移行を担う基底。
 
 ### Reel/Data
 
 - `ReelData`: 各リールの図柄配列データ。
-- `ReelControl`: フラグ名と `ReelControlData` の対応を保持するリール制御テーブルの入口。
+- `ReelControl`: 制御名と `ReelControlData` の対応、および機種エディタが書き出す割り当て表（フラグ × 成立中のボーナス → 制御名）を保持するリール制御テーブルの入口。
 - `ReelControlData`: 押し順パターンごとの滑りテーブル。
-- `LotteryTable`: 最大確率分母、フラグの表示名と内部使用名、BET 1〜3別の抽選比率、余りを受け取るハズレ、フラグごとの複数の当選役を保持する抽選テーブル。規定BETの判定は行わない。
-- `PayoutTable`: 成立役の表示名と内部使用名、小役・リプレイ・ボーナスの役種別、ANY・カンマ区切りOR対応の図柄、BET別払出枚数、停止順条件、BET別の有効ラインを保持するInspector編集可能な配当表。
+- `LotteryTable`: 最大確率分母、フラグの表示名と内部使用名、BET 1〜3別の抽選比率、余りを受け取るハズレ、フラグごとの複数の当選役を保持する抽選テーブル。ボーナス付きの行（例 `Cherry_RedBB`）で、フラグと同時にボーナスを成立させる。設定ごとの比率を持つ。
+- `PayoutTable`: 成立役の表示名と内部使用名、小役・リプレイ・ボーナス・移行図柄の役種別、ANY・カンマ区切りOR対応の図柄、BET別払出枚数、停止順条件、BET別の有効ラインを保持するInspector編集可能な配当表。
+- `BonusTable`: 役物（SB・RB・CB・BB・MB）の作動役・作動中の抽選表・終了条件・規定BETと、RT状態・図柄表示による移行を定義する表。状態の保持は `ReelOutputController` が行う。
 - `WinPair`: 成立役の図柄組み合わせ定義。
 - `Serialize/ReelArray`: リール配列を定義する ScriptableObject。
 - `Serialize/ReelPicture`: 図柄名と図柄画像を定義する ScriptableObject。
@@ -69,10 +70,23 @@ UdonSlot package 内の各クラスの役割メモです。
 
 - `UdonHashLib`: `PlayHistory2QR` の HMAC/ハッシュ処理で利用する外部ライブラリ。配置は元のまま維持する。
 
+## Editor/ReelRule
+
+- `ReelRuleEditorWindow`: 機種エディタ（`UdonSlot > 機種エディタ`）。制御・出目・抽選表・配当表・ボーナス/RTを編集し、滑りテーブルを生成してベイクする。
+- `ReelDesignAsset`: 出目と制御の設計を保存するアセット。
+- `ReelMachineReader`: シーンの機種から配列・配当表・抽選表・ボーナス表を読む。
+- `RtFlowWindow`: RTの移行を図で表示する。
+- `Core`: 滑りテーブルを生成する Unity 非依存のエンジン。
+
+## Editor/ReelMaker
+
+- `ReelMaker`: リール配列と図柄画像からリールテクスチャを作る（`UdonSlot > ReelMaker`）。
+
 ## Editor/Slot
 
 - `LotteryTableEditor`: `LotteryTable` の固定分母、表示名、内部使用名、BET別抽選比率、ハズレ、複数の当選役を編集し、BET別の実確率を表示する Inspector。
 - `PayoutTableEditor`: `PayoutTable` の成立役表示名・内部使用名、リプレイ属性、BET別払出枚数、停止順、BET別有効ラインを行単位で編集・検証する Inspector。
+- `BonusTableEditor`: `BonusTable` の Inspector。
 - `ReelControllDataEditor`: `ReelControlData` の滑りテーブル編集用 Inspector。
 - `ReelDataEditor`: `ReelArray` から `ReelData` を生成する補助 Inspector。
 - `WinPairEditor`: `WinPair` の図柄組み合わせ編集用 Inspector。
