@@ -49,28 +49,12 @@ namespace AX.UdonSlot.REV1_0.Editor.ReelRule
             return list;
         }
 
-        /// <summary>抽選フラグ → 制御 の対応の抜けと重複。</summary>
+        /// <summary>割り当て表に入っていない制御。</summary>
         private void CollectMapNotices(List<Notice> list)
         {
-            var keys = new Dictionary<string, string>();
-            var plain = new HashSet<string>();
             foreach (var c in Design.controls)
-                foreach (string flag in c.lotteryFlags)
-                {
-                    string bonus = c.bonus ?? "", state = c.state ?? "";
-                    if (bonus.Length == 0 && state.Length == 0) plain.Add(flag);
-                    string key = flag + "\n" + bonus + "\n" + state;
-                    string other;
-                    if (keys.TryGetValue(key, out other))
-                    {
-                        string condition = (bonus.Length > 0 ? "・ボーナス成立中 " + bonus : "") + (state.Length > 0 ? "・" + state : "");
-                        list.Add(new Notice { Warning = true, Text = flag + condition + " の制御が重複しています（" + other + "、" + c.name + "）", Screen = 0, Control = c.name });
-                    }
-                    else keys[key] = c.name;
-                }
-            foreach (var flag in machine.Flags)
-                if (!plain.Contains(flag.Name))
-                    list.Add(new Notice { Warning = true, Text = flag.Name + " を使う制御がありません", Screen = 0 });
+                if (!c.IsCell)
+                    list.Add(new Notice { Warning = true, Text = c.name + " は割り当て表に入っていません", Screen = 0, Control = c.name });
         }
 
         /// <summary>この役を当選として扱う制御があるか。</summary>

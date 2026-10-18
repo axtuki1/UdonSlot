@@ -23,15 +23,15 @@ namespace AX.UdonSlot.REV1_0.Editor.ReelRule
 
         private DesignControl SelectedControl
         {
-            get { return Design.controls.Count == 0 ? null : Design.controls[controlIndex]; }
+            get { return Design.controls.Count == 0 ? null : Design.controls[Mathf.Clamp(controlIndex, 0, Design.controls.Count - 1)]; }
         }
 
         private void DrawControlScreen()
         {
-            UpgradeCarriedControls();
+            PrepareCells();
             using (new EditorGUILayout.HorizontalScope())
             {
-                using (new EditorGUILayout.VerticalScope(GUILayout.Width(230))) DrawControlList();
+                using (new EditorGUILayout.VerticalScope(GUILayout.Width(AssignGridWidth()))) DrawAssignGrid();
                 var control = SelectedControl;
                 if (control == null) return;
                 using (new EditorGUILayout.VerticalScope(GUILayout.ExpandWidth(true))) DrawControlCenter(control);
@@ -47,19 +47,271 @@ namespace AX.UdonSlot.REV1_0.Editor.ReelRule
             }
         }
 
-        // ------------------------------------------------------------ 左: 制御一覧
+        // ------------------------------------------------------------ 左: 割り当て表（フラグ × 成立中のボーナス）
+
+        private const float AssignFlagW = 110, AssignCellW = 66, AssignRowH = 26;
+
+        /// <summary>割り当て表の行。ボーナス付きの行（Cherry_RedBB など）は含めない。</summary>
+        private List<string> GridFlags()
+        {
+            var list = new List<string>();
+            if (machine == null) return list;
+            foreach (var f in machine.Flags)
+                if (string.IsNullOrEmpty(f.Bonus) && !list.Contains(f.Name)) list.Add(f.Name);
+            return list;
+        }
+
+        /// <summary>割り当て表の列（作動役のあるボーナス）。Key=内部名、Value=表示名。</summary>
+        private List<KeyValuePair<string, string>> GridBonuses()
+        {
+            var list = new List<KeyValuePair<string, string>>();
+            var bonusTable = MachineBonusTable;
+            if (bonusTable == null) return list;
+            for (int b = 0; b < bonusTable.GetBonusCount(); b++)
+                if (bonusTable.GetBonusStartRole(b).Length > 0)
+                    list.Add(new KeyValuePair<string, string>(bonusTable.GetBonusName(b), bonusTable.GetBonusDisplayName(b)));
+            return list;
+        }
+
+        private float AssignGridWidth()
+        {
+            return Mathf.Max(230, AssignFlagW + AssignCellW * (1 + GridBonuses().Count) + 18);
+        }
+
+        private string BonusLabel(string bonus)
+        {
+            foreach (var pair in GridBonuses()) if (pair.Key == bonus) return pair.Value;
+            return bonus;
+        }
+
+        private string ControlLabel(DesignControl c)
+        {
+            if (!c.IsCell) return c.name;
+            return string.IsNullOrEmpty(c.bonus) ? c.flag : c.flag + " × " + BonusLabel(c.bonus) + " 成立中";
+        }
+
+        /// <summary>割り当て表のマスがすべてそろうように制御を作る。旧形式の制御はマスへ移す。</summary>
+        private void PrepareCells()
+        {
+            if (machine == null || asset == null) return;
+            var flags = GridFlags();
+            var bonuses = new List<string>();
+            foreach (var pair in GridBonuses()) bonuses.Add(pair.Key);
+            bool legacy = false;
+            foreach (var c in Design.controls)
+                if (!c.IsCell && LegacyCellOf(c, flags, bonuses) != null) legacy = true;
+            bool missing = false;
+            foreach (string flag in flags)
+            {
+                if (Design.FindCell(flag, "") == null) missing = true;
+                foreach (string bonus in bonuses) if (Design.FindCell(flag, bonus) == null) missing = true;
+            }
+            if (!legacy && !missing) return;
+            Edit("割り当て表の作成", delegate
+            {
+                if (legacy) MigrateControls(flags, bonuses);
+                foreach (string flag in flags)
+                {
+                    var normal = Design.FindCell(flag, "");
+                    if (normal == null)
+                    {
+                        normal = new DesignControl { flag = flag, name = FreeCellName(flag, "") };
+                        Design.controls.Add(normal);
+                    }
+                    foreach (string bonus in bonuses)
+                    {
+                        if (Design.FindCell(flag, bonus) != null) continue;
+                        var cell = normal.Copy();
+                        cell.bonus = bonus;
+                        cell.state = "";
+                        cell.pullBonus = false;
+                        cell.lotteryFlags.Clear();
+                        cell.name = FreeCellName(flag, bonus);
+                        Design.controls.Add(cell);
+                        foreach (var shape in Design.shapes) shape.CopyControl(normal.name, cell.name);
+                    }
+                }
+            });
+        }
+
+        /// <summary>マスの制御名。旧形式の制御が同じ名前を使っていれば、旧形式のほうを改名する。</summary>
+        private string FreeCellName(string flag, string bonus)
+        {
+            string name = DesignControl.CellName(flag, bonus);
+            var other = Design.FindControl(name);
+            if (other != null && !other.IsCell)
+            {
+                string renamed = ReelDesign.NumberedName(name, n => Design.FindControl(n) != null);
+                foreach (var shape in Design.shapes) shape.RenameControl(name, renamed);
+                other.name = renamed;
+            }
+            return name;
+        }
+
+        /// <summary>旧形式の制御が入るマス（フラグ, ボーナス）。決められなければ null。</summary>
+        private string[] LegacyCellOf(DesignControl c, List<string> flags, List<string> bonuses)
+        {
+            string flag = null, bonus = c.bonus ?? "";
+            foreach (string name in c.lotteryFlags)
+            {
+                var f = machine.FindFlag(name);
+                if (f == null) continue;
+                if (!string.IsNullOrEmpty(f.Bonus))
+                {
+                    if (flag == null) { flag = f.BaseName; if (bonus.Length == 0) bonus = f.Bonus; }
+                    continue;
+                }
+                flag = f.Name;
+                break;
+            }
+            if (flag == null)
+                foreach (string f in flags)
+                {
+                    if (c.name == f) { flag = f; break; }
+                    foreach (string b in bonuses)
+                        if (c.name == f + "_" + b) { flag = f; bonus = b; }
+                }
+            if (flag == null || !flags.Contains(flag) || (bonus.Length > 0 && !bonuses.Contains(bonus))) return null;
+            if (Design.FindCell(flag, bonus) != null) return null;
+            return new[] { flag, bonus };
+        }
+
+        /// <summary>旧形式（抽選フラグ・ボーナス成立中の欄）の制御をマスの制御にする。</summary>
+        private void MigrateControls(List<string> flags, List<string> bonuses)
+        {
+            var moved = new List<KeyValuePair<DesignControl, string>>();
+            foreach (var c in Design.controls)
+            {
+                if (c.IsCell) continue;
+                var cell = LegacyCellOf(c, flags, bonuses);
+                if (cell == null) continue;
+                string old = c.name;
+                // ボーナス成立中の欄を設定していた制御（NoWin_RedBB など）は揃える。
+                // ボーナス付きのフラグだけの制御（Cherry_RedBB など）は、元の小役の制御と同じく揃えない。
+                bool explicitBonus = !string.IsNullOrEmpty(c.bonus);
+                c.flag = cell[0];
+                c.bonus = cell[1];
+                c.state = "";
+                c.pullBonus = explicitBonus;
+                c.lotteryFlags.Clear();
+                string start;
+                if (c.bonus.Length > 0 && machine.BonusStartRoles.TryGetValue(c.bonus, out start)) c.extraRoles.Remove(start);
+                // 名前の入れ替えがぶつからないよう、いったん仮の名前にする
+                c.name = "\u0001" + old;
+                foreach (var shape in Design.shapes) shape.RenameControl(old, c.name);
+                moved.Add(new KeyValuePair<DesignControl, string>(c, old));
+            }
+            foreach (var pair in moved)
+            {
+                string temp = pair.Key.name;
+                string name = FreeCellName(pair.Key.flag, pair.Key.bonus);
+                pair.Key.name = name;
+                foreach (var shape in Design.shapes) shape.RenameControl(temp, name);
+            }
+        }
+
+        private void DrawAssignGrid()
+        {
+            PanelHeader("割り当て");
+            var flags = GridFlags();
+            var bonuses = GridBonuses();
+            controlListScroll = EditorGUILayout.BeginScrollView(controlListScroll);
+            var head = GUILayoutUtility.GetRect(10, 20, GUILayout.ExpandWidth(true));
+            GUI.Label(new Rect(head.x + 6, head.y + 2, AssignFlagW - 6, 16), "フラグ", EditorStyles.miniBoldLabel);
+            GUI.Label(new Rect(head.x + AssignFlagW, head.y + 2, AssignCellW, 16), "通常", CenteredMini);
+            for (int b = 0; b < bonuses.Count; b++)
+                GUI.Label(new Rect(head.x + AssignFlagW + AssignCellW * (b + 1), head.y + 2, AssignCellW, 16), bonuses[b].Value + "中", CenteredMini);
+            var selected = SelectedControl;
+            foreach (string flag in flags)
+            {
+                var row = GUILayoutUtility.GetRect(10, AssignRowH, GUILayout.ExpandWidth(true));
+                HLine(row.x, row.yMax - 1, row.width);
+                GUI.Label(new Rect(row.x + 6, row.y + 5, AssignFlagW - 8, 16), flag);
+                for (int col = 0; col <= bonuses.Count; col++)
+                {
+                    string bonus = col == 0 ? "" : bonuses[col - 1].Key;
+                    var cell = Design.FindCell(flag, bonus);
+                    var rect = new Rect(row.x + AssignFlagW + AssignCellW * col + 2, row.y + 3, AssignCellW - 4, AssignRowH - 6);
+                    DrawAssignCell(rect, cell, col == 0);
+                    if (cell == null) continue;
+                    if (cell == selected) Outline(rect, AccentColor, 2);
+                    if (Clicked(rect, 0)) SelectControl(Design.controls.IndexOf(cell));
+                    else if (col > 0 && Clicked(rect, 1))
+                    {
+                        var target = cell;
+                        var normal = Design.FindCell(flag, "");
+                        var menu = new GenericMenu();
+                        menu.AddItem(new GUIContent("通常の内容をコピー"), false, delegate { CopyCellFrom(normal, target); });
+                        menu.ShowAsContext();
+                    }
+                }
+            }
+            // 割り当て表に入らない旧形式の制御
+            var others = Design.controls.FindAll(c => !c.IsCell);
+            if (others.Count > 0)
+            {
+                GUILayout.Space(8);
+                GUILayout.Label("その他の制御", MutedLabel);
+                foreach (var c in others)
+                {
+                    var rect = GUILayoutUtility.GetRect(10, 20, GUILayout.ExpandWidth(true));
+                    if (c == selected) EditorGUI.DrawRect(rect, SelectedColor);
+                    GUI.Label(new Rect(rect.x + 8, rect.y + 2, rect.width - 12, 16), c.name);
+                    int index = Design.controls.IndexOf(c);
+                    if (Clicked(rect, 0)) SelectControl(index);
+                    else if (Clicked(rect, 1))
+                    {
+                        var menu = new GenericMenu();
+                        menu.AddItem(new GUIContent("削除"), false, delegate { DeleteControl(index); });
+                        menu.ShowAsContext();
+                    }
+                }
+            }
+            EditorGUILayout.EndScrollView();
+        }
+
+        private void DrawAssignCell(Rect rect, DesignControl cell, bool normal)
+        {
+            if (cell == null) { EditorGUI.DrawRect(rect, AnyColor); return; }
+            var result = ResultOf(cell.name);
+            bool violation = result != null && result.Stats != null && result.Stats.ViolationPaths > 0;
+            string text = normal ? "通常" : cell.pullBonus ? "揃える" : "揃えない";
+            Color back = normal ? MutedBack : cell.pullBonus ? BonusRoleBack : AnyColor;
+            Color fore = normal ? MutedText : cell.pullBonus ? BonusRoleText : MutedText;
+            EditorGUI.DrawRect(rect, back);
+            var style = new GUIStyle(CenteredMini);
+            style.normal.textColor = fore;
+            GUI.Label(rect, (violation ? "⚠ " : "") + text, style);
+        }
+
+        private void CopyCellFrom(DesignControl source, DesignControl target)
+        {
+            if (source == null || target == null) return;
+            Edit("通常の内容をコピー", delegate
+            {
+                target.targets = new List<string>(source.targets);
+                target.overrides.Clear();
+                foreach (var o in source.overrides) target.overrides.Add(o.Copy());
+                foreach (var shape in Design.shapes)
+                {
+                    shape.RemoveControl(target.name);
+                    shape.CopyControl(source.name, target.name);
+                }
+            });
+        }
 
         private List<string> WonRolesOf(DesignControl control)
         {
             var won = new List<string>();
-            foreach (string flagName in control.lotteryFlags)
+            if (machine == null) return won;
+            foreach (string flagName in ReelDesign.LotteryFlagsOf(control, machine))
             {
                 var flag = machine.FindFlag(flagName);
                 if (flag != null) foreach (string role in flag.Roles) if (!won.Contains(role)) won.Add(role);
             }
             foreach (string role in control.extraRoles) if (!won.Contains(role)) won.Add(role);
-            string start;
-            if (!string.IsNullOrEmpty(control.bonus) && machine.BonusStartRoles.TryGetValue(control.bonus, out start) && start.Length > 0 && !won.Contains(start))
+            string start, bonus = ReelDesign.WonBonusOf(control);
+            if (bonus.Length > 0 && machine.BonusStartRoles.TryGetValue(bonus, out start) && start.Length > 0 && !won.Contains(start))
                 won.Add(start);
             return won;
         }
@@ -69,105 +321,14 @@ namespace AX.UdonSlot.REV1_0.Editor.ReelRule
             return registeredNames == null || Array.IndexOf(registeredNames, name) >= 0;
         }
 
-        private void DrawControlList()
-        {
-            PanelHeader("制御");
-            controlListScroll = EditorGUILayout.BeginScrollView(controlListScroll);
-            for (int i = 0; i < Design.controls.Count; i++)
-            {
-                var control = Design.controls[i];
-                var rect = GUILayoutUtility.GetRect(10, 34, GUILayout.ExpandWidth(true));
-                if (i == controlIndex) EditorGUI.DrawRect(rect, SelectedColor);
-                string name = (IsRegistered(control.name) ? "" : "⚠ ") + control.name;
-                GUI.Label(new Rect(rect.x + 8, rect.y + 2, rect.width - 12, 16), name, EditorStyles.boldLabel);
-                var won = WonRolesOf(control);
-                GUI.Label(new Rect(rect.x + 8, rect.y + 17, rect.width - 12, 14), won.Count == 0 ? "当選なし" : "当選: " + string.Join(", ", won.ToArray()), EditorStyles.miniLabel);
-                int index = i;
-                if (Clicked(rect, 0)) { SelectControl(index); }
-                else if (Clicked(rect, 1))
-                {
-                    SelectControl(index);
-                    var menu = new GenericMenu();
-                    menu.AddItem(new GUIContent("複製"), false, delegate { DuplicateControl(index); });
-                    menu.AddItem(new GUIContent("削除"), false, delegate { DeleteControl(index); });
-                    menu.ShowAsContext();
-                }
-            }
-            EditorGUILayout.EndScrollView();
-            using (new EditorGUILayout.HorizontalScope())
-            {
-                if (GUILayout.Button("＋ 追加")) { AddControl(); GUIUtility.ExitGUI(); }
-                using (new EditorGUI.DisabledScope(SelectedControl == null))
-                    if (GUILayout.Button("複製")) DuplicateControl(controlIndex);
-            }
-            if (GUILayout.Button("抽選表から一括作成"))
-            {
-                Edit("抽選表から一括作成", delegate
-                {
-                    Design.AddControlsFromLottery(machine);
-                    AddCarriedBonusControls();
-                });
-                GUIUtility.ExitGUI();
-            }
-            GUILayout.Space(4);
-        }
-
-        /// <summary>ボーナス成立中のハズレ用の制御（例 NoWin_RedBB）を作る。</summary>
-        private void AddCarriedBonusControls()
-        {
-            var bonusTable = MachineBonusTable;
-            var main = ReelMachineReader.LotteryTableOf(machineObject);
-            if (bonusTable == null || main == null) return;
-            foreach (var entry in LotteryModel.Load(main).Entries)
-            {
-                if (!entry.Remainder) continue;
-                for (int b = 0; b < bonusTable.GetBonusCount(); b++)
-                {
-                    string role = bonusTable.GetBonusStartRole(b);
-                    if (role.Length == 0) continue;
-                    string name = BonusEntryName(entry.Name, bonusTable.bonusNames[b]);
-                    if (Design.FindControl(name) != null) continue;
-                    var control = new DesignControl { name = name };
-                    control.lotteryFlags.Add(entry.Name);
-                    control.bonus = bonusTable.bonusNames[b];
-                    Design.controls.Add(control);
-                }
-            }
-        }
-
         private void SelectControl(int index)
         {
-            if (index == controlIndex) return;
+            if (index < 0 || index == controlIndex) return;
             controlIndex = index;
             mapCache = null;
+            firstStop = secondStop = -1;
             GUI.FocusControl(null);
             Repaint();
-        }
-
-        private bool ControlNameTaken(string name)
-        {
-            return Design.FindControl(name) != null;
-        }
-
-        private void AddControl()
-        {
-            Edit("制御の追加", delegate
-            {
-                Design.controls.Add(new DesignControl { name = ReelDesign.NumberedName("Control", ControlNameTaken) });
-                controlIndex = Design.controls.Count - 1;
-            });
-        }
-
-        private void DuplicateControl(int index)
-        {
-            Edit("制御の複製", delegate
-            {
-                var copy = Design.controls[index].Copy();
-                copy.name = ReelDesign.NumberedName(Design.controls[index].name, ControlNameTaken);
-                Design.controls.Insert(index + 1, copy);
-                foreach (var shape in Design.shapes) shape.CopyControl(Design.controls[index].name, copy.name);
-                controlIndex = index + 1;
-            });
         }
 
         private void DeleteControl(int index)
@@ -186,22 +347,20 @@ namespace AX.UdonSlot.REV1_0.Editor.ReelRule
 
         private void DrawControlCenter(DesignControl control)
         {
-            PanelHeader("制御：" + control.name);
+            PanelHeader("制御：" + ControlLabel(control));
             using (new EditorGUILayout.HorizontalScope())
             {
-                GUILayout.Label("内部名", GUILayout.Width(40));
-                string renamed = EditorGUILayout.DelayedTextField(control.name, GUILayout.Width(180));
-                if (renamed != control.name) RenameControl(control, renamed);
-                GUILayout.Space(16);
-                DrawLotteryFlags(control);
-                GUILayout.Space(16);
                 GUILayout.Label("当選役", GUILayout.Width(40));
                 foreach (string role in WonRolesOf(control)) Chip(role, new Color(0.14f, 0.29f, 0.19f), new Color(0.62f, 0.88f, 0.69f));
                 GUILayout.Space(4);
                 if (Link("抽選表で編集")) { screen = 2; GUI.FocusControl(null); }
                 GUILayout.FlexibleSpace();
+                if (control.IsCell && !string.IsNullOrEmpty(control.bonus))
+                {
+                    bool pull = GUILayout.Toggle(control.pullBonus, "ボーナスを揃える", GUILayout.ExpandWidth(false));
+                    if (pull != control.pullBonus) Edit("ボーナスを揃えるの変更", delegate { control.pullBonus = pull; });
+                }
             }
-            DrawControlConditions(control);
             GUILayout.Space(6);
             using (new EditorGUILayout.HorizontalScope())
             {
@@ -215,153 +374,6 @@ namespace AX.UdonSlot.REV1_0.Editor.ReelRule
             if (result == null || engine == null) return;
             if (view == 0) DrawSlipTables(control, result);
             else DrawMap(control, result);
-        }
-
-        private void RenameControl(DesignControl control, string renamed)
-        {
-            renamed = renamed.Trim();
-            if (renamed.Length == 0 || renamed == control.name || ControlNameTaken(renamed)) return;
-            string old = control.name;
-            Edit("内部名の変更", delegate
-            {
-                control.name = renamed;
-                foreach (var shape in Design.shapes) shape.RenameControl(old, renamed);
-            });
-        }
-
-        /// <summary>成立中のボーナスと RT 状態の条件。ボーナス・RT表がある機種だけ。</summary>
-        private void DrawControlConditions(DesignControl control)
-        {
-            var bonusTable = MachineBonusTable;
-            if (bonusTable == null) return;
-            GUILayout.Space(4);
-            using (new EditorGUILayout.HorizontalScope())
-            {
-                var bonusNames = new List<string> { "" };
-                var bonusLabels = new List<string> { "なし" };
-                for (int b = 0; b < bonusTable.GetBonusCount(); b++)
-                {
-                    if (bonusTable.GetBonusStartRole(b).Length == 0) continue;
-                    bonusNames.Add(bonusTable.GetBonusName(b));
-                    bonusLabels.Add(bonusTable.GetBonusDisplayName(b));
-                }
-                AddMissing(bonusNames, bonusLabels, control.bonus);
-                GUILayout.Label("ボーナス成立中", GUILayout.Width(88));
-                int bonusAt = bonusNames.IndexOf(control.bonus ?? "");
-                int nextBonus = EditorGUILayout.Popup(bonusAt, bonusLabels.ToArray(), GUILayout.Width(120));
-                if (nextBonus != bonusAt) { string value = bonusNames[nextBonus]; Edit("ボーナス成立中の変更", delegate { control.bonus = value; }); }
-
-                if (bonusTable.GetStateCount() > 1)
-                {
-                    var stateNames = new List<string> { "" };
-                    var stateLabels = new List<string> { "すべて" };
-                    for (int st = 0; st < bonusTable.GetStateCount(); st++)
-                    {
-                        stateNames.Add(bonusTable.GetStateName(st));
-                        stateLabels.Add(bonusTable.GetStateDisplayName(st));
-                    }
-                    AddMissing(stateNames, stateLabels, control.state);
-                    GUILayout.Space(16);
-                    GUILayout.Label("RT", GUILayout.Width(22));
-                    int stateAt = stateNames.IndexOf(control.state ?? "");
-                    int nextState = EditorGUILayout.Popup(stateAt, stateLabels.ToArray(), GUILayout.Width(120));
-                    if (nextState != stateAt) { string value = stateNames[nextState]; Edit("RTの変更", delegate { control.state = value; }); }
-                }
-                GUILayout.FlexibleSpace();
-            }
-        }
-
-        private static void AddMissing(List<string> names, List<string> labels, string value)
-        {
-            if (string.IsNullOrEmpty(value) || names.Contains(value)) return;
-            names.Add(value);
-            labels.Add("⚠ " + value);
-        }
-
-        /// <summary>
-        /// 名前で選んでいた頃のボーナス成立中の制御（例 NoWin_RedBB、作動役を当選役に追加）を、ボーナス成立中の条件に置き換える。
-        /// </summary>
-        private void UpgradeCarriedControls()
-        {
-            var bonusTable = MachineBonusTable;
-            var main = machineObject != null ? ReelMachineReader.LotteryTableOf(machineObject) : null;
-            if (bonusTable == null || main == null || asset == null) return;
-            var model = LotteryModel.Load(main);
-            var changes = new List<KeyValuePair<DesignControl, KeyValuePair<string, string>>>();
-            foreach (var c in Design.controls)
-            {
-                if (!string.IsNullOrEmpty(c.bonus)) continue;
-                foreach (var entry in model.Entries)
-                {
-                    if (!entry.Remainder) continue;
-                    for (int b = 0; b < bonusTable.GetBonusCount(); b++)
-                    {
-                        string start = bonusTable.GetBonusStartRole(b);
-                        if (start.Length == 0 || c.name != BonusEntryName(entry.Name, bonusTable.GetBonusName(b)) || !c.extraRoles.Contains(start)) continue;
-                        changes.Add(new KeyValuePair<DesignControl, KeyValuePair<string, string>>(c, new KeyValuePair<string, string>(entry.Name, bonusTable.GetBonusName(b))));
-                    }
-                }
-            }
-            if (changes.Count == 0) return;
-            Edit("ボーナス成立中の制御の更新", delegate
-            {
-                foreach (var change in changes)
-                {
-                    var c = change.Key;
-                    string flag = change.Value.Key, bonus = change.Value.Value;
-                    c.bonus = bonus;
-                    if (!c.lotteryFlags.Contains(flag)) c.lotteryFlags.Insert(0, flag);
-                    c.extraRoles.Remove(bonusTable.GetBonusStartRole(bonusTable.FindBonus(bonus)));
-                }
-            });
-        }
-
-        private void DrawLotteryFlags(DesignControl control)
-        {
-            GUILayout.Label("抽選フラグ", GUILayout.Width(56));
-            var flagBack = new Color(0.12f, 0.23f, 0.36f);
-            var flagFore = new Color(0.65f, 0.80f, 0.96f);
-            foreach (string flag in control.lotteryFlags.ToArray())
-            {
-                string name = flag;
-                if (Chip(machine.FindFlag(name) == null ? "⚠ " + name : name, flagBack, flagFore))
-                {
-                    var menu = new GenericMenu();
-                    menu.AddItem(new GUIContent("外す"), false, delegate { Edit("抽選フラグを外す", delegate { control.lotteryFlags.Remove(name); }); });
-                    menu.ShowAsContext();
-                }
-                GUILayout.Space(3);
-            }
-            foreach (string role in control.extraRoles.ToArray())
-            {
-                string name = role;
-                if (Chip(machine.FindRole(name) == null ? "⚠ " + name : name, flagBack, flagFore))
-                {
-                    var menu = new GenericMenu();
-                    menu.AddItem(new GUIContent("外す"), false, delegate { Edit("抽選フラグを外す", delegate { control.extraRoles.Remove(name); }); });
-                    menu.ShowAsContext();
-                }
-                GUILayout.Space(3);
-            }
-            if (GUILayout.Button("＋", EditorStyles.miniButton, GUILayout.Width(24)))
-            {
-                var menu = new GenericMenu();
-                foreach (var flag in machine.Flags)
-                {
-                    string name = flag.Name;
-                    if (control.lotteryFlags.Contains(name)) continue;
-                    menu.AddItem(new GUIContent(name), false, delegate { Edit("抽選フラグを追加", delegate { control.lotteryFlags.Add(name); }); });
-                }
-                bool separated = false;
-                foreach (var role in machine.Roles)
-                {
-                    string name = role.Name;
-                    if (!role.IsBonus || control.extraRoles.Contains(name) || machine.FindFlag(name) != null) continue;
-                    if (!separated) { menu.AddSeparator(""); separated = true; }
-                    menu.AddItem(new GUIContent(name), false, delegate { Edit("抽選フラグを追加", delegate { control.extraRoles.Add(name); }); });
-                }
-                menu.ShowAsContext();
-            }
         }
 
         // ------------------------------------------------------------ 滑り表

@@ -438,6 +438,15 @@ namespace AX.UdonSlot.REV1_0.Editor.ReelRule
             var states = new List<string>();
             var names = new List<string>();
             foreach (var c in Design.controls)
+            {
+                if (c.IsCell)
+                {
+                    flags.Add(c.flag);
+                    bonuses.Add(c.bonus ?? "");
+                    states.Add("");
+                    names.Add(c.name);
+                    continue;
+                }
                 foreach (string flag in c.lotteryFlags)
                 {
                     flags.Add(flag);
@@ -445,6 +454,7 @@ namespace AX.UdonSlot.REV1_0.Editor.ReelRule
                     states.Add(c.state ?? "");
                     names.Add(c.name);
                 }
+            }
             Undo.RecordObject(control, "リール制御のベイク");
             control.mapFlags = flags.ToArray();
             control.mapBonuses = bonuses.ToArray();

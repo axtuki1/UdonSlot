@@ -35,6 +35,7 @@ public static partial class Program
         UnavoidableChecks();
         ForbiddenChecks(machine);
         RealMachineChecks();
+        CellChecks();
         if (args.Length > 0) File.WriteAllText(args[0], ReelRuleReport.Markdown(results, 15));
         Console.WriteLine(checks + " checks, " + failures + " failures, " + watch.ElapsedMilliseconds + " ms");
         return failures == 0 ? 0 : 1;

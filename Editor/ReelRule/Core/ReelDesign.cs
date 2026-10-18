@@ -80,6 +80,35 @@ namespace AX.UdonSlot.REV1_0.Editor.ReelRule
             return added;
         }
 
+        public DesignControl FindCell(string flag, string bonus)
+        {
+            foreach (var c in controls)
+                if (c.flag == flag && (c.bonus ?? "") == (bonus ?? "")) return c;
+            return null;
+        }
+
+        /// <summary>
+        /// マスの制御が当選として扱う抽選フラグ。行のフラグと、ボーナスを揃える列ならそのボーナス付きの行（例 Cherry_RedBB）。
+        /// 旧形式の制御は lotteryFlags。
+        /// </summary>
+        public static List<string> LotteryFlagsOf(DesignControl c, Machine machine)
+        {
+            if (!c.IsCell) return c.lotteryFlags;
+            var list = new List<string>();
+            if (machine.FindFlag(c.flag) != null) list.Add(c.flag);
+            if (!string.IsNullOrEmpty(c.bonus) && c.pullBonus)
+                foreach (var f in machine.Flags)
+                    if (f.BaseFlag == c.flag && f.Bonus == c.bonus && !list.Contains(f.Name)) list.Add(f.Name);
+            return list;
+        }
+
+        /// <summary>この制御で当選として扱う成立中のボーナス。揃えない列では空。</summary>
+        public static string WonBonusOf(DesignControl c)
+        {
+            if (string.IsNullOrEmpty(c.bonus)) return "";
+            return !c.IsCell || c.pullBonus ? c.bonus : "";
+        }
+
         public DesignControl FindControl(string name)
         {
             foreach (var c in controls) if (c.name == name) return c;
@@ -205,11 +234,19 @@ namespace AX.UdonSlot.REV1_0.Editor.ReelRule
         }
     }
 
-    /// <summary>制御1件。抽選フラグ（＋成立中のボーナス・RT）からこの制御が選ばれる。対応はベイクで ReelControl に書き出す。</summary>
+    /// <summary>
+    /// 制御1件。割り当て表のマス（フラグ × 成立中のボーナス）1つにつき1つ。
+    /// flag が空の制御は旧形式（lotteryFlags で当選役を決める）。
+    /// </summary>
     [Serializable]
     public sealed class DesignControl
     {
+        /// <summary>制御名（ReelControlData の名前）。マスの制御では CellName で自動で決まる。</summary>
         public string name = "";
+        /// <summary>割り当て表の行（ボーナス付きでない抽選フラグ）。</summary>
+        public string flag = "";
+        /// <summary>ボーナスの列で、成立中のボーナスを揃えるか。オフなら通常と同じく当選として扱わない。</summary>
+        public bool pullBonus = true;
         public List<string> lotteryFlags = new List<string>();
         /// <summary>抽選表のフラグ以外に当選として扱う役（成立中のボーナスなど）。</summary>
         public List<string> extraRoles = new List<string>();
@@ -228,12 +265,22 @@ namespace AX.UdonSlot.REV1_0.Editor.ReelRule
                 name = name,
                 lotteryFlags = new List<string>(lotteryFlags),
                 extraRoles = new List<string>(extraRoles),
+                flag = flag,
+                pullBonus = pullBonus,
                 bonus = bonus,
                 state = state,
                 targets = new List<string>(targets)
             };
             foreach (var o in overrides) copy.overrides.Add(o.Copy());
             return copy;
+        }
+
+        public bool IsCell { get { return !string.IsNullOrEmpty(flag); } }
+
+        /// <summary>マスの制御名。通常は フラグ名、ボーナスの列は フラグ名_ボーナス名。</summary>
+        public static string CellName(string flag, string bonus)
+        {
+            return string.IsNullOrEmpty(bonus) ? flag : flag + "_" + bonus;
         }
 
         public DesignOverride FindOverride(int pattern, int[] prior, int press)
@@ -324,25 +371,32 @@ namespace AX.UdonSlot.REV1_0.Editor.ReelRule
             {
                 if (string.IsNullOrEmpty(d.name)) { errors.Add(new RuleError(0, "内部名のない制御があります")); continue; }
                 if (!controlNames.Add(d.name)) { errors.Add(new RuleError(0, "内部名が重複しています: " + d.name)); continue; }
+                var flagsOfControl = ReelDesign.LotteryFlagsOf(d, machine);
+                if (d.IsCell && flagsOfControl.Count == 0)
+                {
+                    errors.Add(new RuleError(0, "抽選表にフラグ「" + d.flag + "」がありません（制御 " + d.name + "）"));
+                    continue;
+                }
                 var rule = new ControlRule
                 {
                     Name = d.name,
-                    LotteryFlags = new List<string>(d.lotteryFlags),
+                    LotteryFlags = new List<string>(flagsOfControl),
                     NoImplicitPull = true,
                     Explicit = true
                 };
                 rule.ExtraRoles.AddRange(d.extraRoles);
-                if (!string.IsNullOrEmpty(d.bonus))
+                string wonBonus = ReelDesign.WonBonusOf(d);
+                if (wonBonus.Length > 0)
                 {
                     string startRole;
-                    if (!machine.BonusStartRoles.TryGetValue(d.bonus, out startRole))
-                        errors.Add(new RuleError(0, "制御 " + d.name + " の成立中のボーナス「" + d.bonus + "」がありません"));
+                    if (!machine.BonusStartRoles.TryGetValue(wonBonus, out startRole))
+                        errors.Add(new RuleError(0, "制御 " + d.name + " の成立中のボーナス「" + wonBonus + "」がありません"));
                     else if (startRole.Length > 0 && !rule.ExtraRoles.Contains(startRole)) rule.ExtraRoles.Add(startRole);
                 }
 
                 // 優先順: [ボーナス（ボーナス優先時）] → 狙う出目 → 狙わない基本目を避ける → 小役 → [ボーナス（小役優先時）]
                 var won = new List<string>();
-                foreach (string flagName in d.lotteryFlags)
+                foreach (string flagName in flagsOfControl)
                 {
                     var flag = machine.FindFlag(flagName);
                     if (flag != null) foreach (string role in flag.Roles) if (!won.Contains(role)) won.Add(role);
@@ -362,7 +416,7 @@ namespace AX.UdonSlot.REV1_0.Editor.ReelRule
                         continue;
                     }
                     bool allowed = false;
-                    foreach (string flagName in d.lotteryFlags)
+                    foreach (string flagName in flagsOfControl)
                     {
                         var flag = machine.FindFlag(flagName);
                         if (t.flags.Contains(flagName) || (flag != null && t.flags.Contains(flag.BaseName))) allowed = true;

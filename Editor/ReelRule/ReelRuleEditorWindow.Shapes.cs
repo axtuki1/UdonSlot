@@ -98,7 +98,7 @@ namespace AX.UdonSlot.REV1_0.Editor.ReelRule
         {
             var flags = new List<string>();
             foreach (var control in Design.controls)
-                foreach (string flag in control.lotteryFlags)
+                foreach (string flag in FlagsOf(control))
                     if (!flags.Contains(flag)) flags.Add(flag);
             using (new EditorGUILayout.HorizontalScope())
             {
@@ -114,6 +114,11 @@ namespace AX.UdonSlot.REV1_0.Editor.ReelRule
             GUILayout.Space(2);
         }
 
+        private static List<string> FlagsOf(DesignControl control)
+        {
+            return control.IsCell ? new List<string> { control.flag } : control.lotteryFlags;
+        }
+
         /// <summary>種類とフラグの絞り込みに合うか。フラグは、そのフラグを持つ制御で狙う／出てよい／出さない出目。</summary>
         private bool ShapeVisible(DesignShape shape)
         {
@@ -121,7 +126,7 @@ namespace AX.UdonSlot.REV1_0.Editor.ReelRule
             if (string.IsNullOrEmpty(shapeFlagFilter)) return true;
             foreach (var control in Design.controls)
             {
-                if (!control.lotteryFlags.Contains(shapeFlagFilter)) continue;
+                if (!FlagsOf(control).Contains(shapeFlagFilter)) continue;
                 if (shape.forbidden ? shape.bannedControls.Contains(control.name)
                     : shape.reach ? shape.allowedControls.Contains(control.name) || control.targets.Contains(shape.name)
                     : control.targets.Contains(shape.name)) return true;
