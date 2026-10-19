@@ -567,6 +567,9 @@ namespace AX.UdonSlot.REV1_0
             firstLeverOnTime = Networking.GetServerTimeInMilliseconds();
             // 疑似遊技中は再抽選せず、現在のフラグを維持する。
             if (!isMockPlay) reelOutputController.GenerateFlag(bet);
+            // 同期変数より先にイベントが届いても、全員が今回のフラグを読めるように引数で渡す。
+            subBoard.SendCustomNetworkEvent(NetworkEventTarget.All, nameof(subBoard.LeverOn),
+                Utilities.IsValid(reelOutputController) ? reelOutputController.GetActiveBaseFlag() : "");
             if (!LeverOnLogic()) return;
             subBoard.Wait();
             RequestGameStart();
@@ -776,6 +779,10 @@ namespace AX.UdonSlot.REV1_0
         public void GameEnd()
         {
             GameEndLogic();
+            // SubBoardへ配る結果。同期変数より先にイベントが届いても、全員が同じ結果を読めるようにする。
+            string gameFlag = "";
+            string[] gameWinningNames = new string[0];
+            int gamePayout = 0;
             if (isMockPlay)
             {
                 isReplay = false;
@@ -794,6 +801,9 @@ namespace AX.UdonSlot.REV1_0
                     credit += payoutAmount;
                     lastPayout = payoutAmount;
                     reelOutputController.UpdateGameState(payoutNames, payoutAmount);
+                    gameFlag = reelOutputController.GetActiveBaseFlag();
+                    gameWinningNames = payoutNames;
+                    gamePayout = payoutAmount;
                 }
 
                 // リプレイ時は今回のBETを次ゲームへ持ち越す。
@@ -808,7 +818,7 @@ namespace AX.UdonSlot.REV1_0
                 RequestSerialization();
             }
             isGaming = false;
-            subBoard.SendCustomNetworkEvent(NetworkEventTarget.All, nameof(subBoard.GameEnd));
+            subBoard.SendCustomNetworkEvent(NetworkEventTarget.All, nameof(subBoard.GameEnd), gameFlag, gameWinningNames, gamePayout);
         }
 
         public bool IsOwner() { return Networking.IsOwner(gameObject); }

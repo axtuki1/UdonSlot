@@ -353,18 +353,18 @@ namespace AX.UdonSlot.REV1_0
         
         public virtual void FixedUpdateLogic(){}
         
+        /// <summary>レバーオンを全員へ通知する。引数は今回の成立フラグ（ボーナスを除いたもの）。</summary>
         [NetworkCallable]
-        public void LeverOn()
+        public void LeverOn(string flag)
         {
+            gameFlag = flag != null ? flag : "";
+            gameWinningNames = new string[0];
+            gamePayout = 0;
             LeverOnLogic();
         }
-        
-        public virtual void LeverOnLogic()
-        {
-            if (!CanPlaySound()) return;
-            soundBoard.StopSound(SoundType.WAIT);
-            soundBoard.PlaySound(SoundType.SE1, (int)ClipType.START);
-        }
+
+        /// <summary>機種固有のレバーオン演出を実装する拡張ポイント。全員の画面で呼ばれる。gameFlagで今回のフラグを読める。</summary>
+        public virtual void LeverOnLogic() { }
 
         [NetworkCallable]
         public void GameStart()
@@ -379,9 +379,21 @@ namespace AX.UdonSlot.REV1_0
             soundBoard.PlaySound(SoundType.SE1, (int)ClipType.START);
         }
 
+        /// <summary>今回（GameEnd後は直前）のゲームの成立フラグ（ボーナスを除いたもの）。LeverOnLogic・GameEndLogicの中で使う。</summary>
+        protected string gameFlag = "";
+
+        /// <summary>直前のゲームの入賞役の内部名。</summary>
+        protected string[] gameWinningNames = new string[0];
+
+        /// <summary>直前のゲームの払出枚数。</summary>
+        protected int gamePayout = 0;
+
         [NetworkCallable]
-        public void GameEnd()
+        public void GameEnd(string flag, string[] winningNames, int payout)
         {
+            gameFlag = flag != null ? flag : "";
+            gameWinningNames = winningNames != null ? winningNames : new string[0];
+            gamePayout = payout;
             GameEndLogic();
         }
 
