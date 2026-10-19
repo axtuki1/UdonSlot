@@ -10,7 +10,7 @@ namespace AX.UdonSlot.REV1_0.Editor.ReelRule
     {
         private static readonly string[] ViewNames = { "滑り表", "出目マップ" };
         private static readonly string[] StageNames = { "第一停止", "第二停止", "第三停止" };
-        private static readonly string[] ReelLetters = { "L", "C", "R" };
+        private static readonly string[] ReelLetters = { "左", "中", "右" };
 
         [SerializeField] private int controlIndex;
         [SerializeField] private int view;
