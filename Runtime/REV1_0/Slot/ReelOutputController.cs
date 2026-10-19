@@ -1285,7 +1285,7 @@ namespace AX.UdonSlot.REV1_0
             stateGameCount = 0;
             isStateEnteredBySymbol = false;
             NotifySubBoard(nameof(SubBoard.BonusStart), bonusTable.GetBonusName(bonus));
-            if (activeChildBonus >= 0) NotifySubBoard(nameof(SubBoard.ChildBonusStart), bonusTable.GetBonusName(activeChildBonus));
+            if (activeChildBonus >= 0) NotifySubBoard(nameof(SubBoard.JACGameStart), bonusTable.GetBonusName(activeChildBonus));
         }
 
         private bool IsSecondKindBonus(int bonus)
@@ -1336,7 +1336,7 @@ namespace AX.UdonSlot.REV1_0
                     activeChildBonus = pendingBonus;
                     pendingBonus = -1;
                     ResetChildCount();
-                    NotifySubBoard(nameof(SubBoard.ChildBonusStart), bonusTable.GetBonusName(activeChildBonus));
+                    NotifySubBoard(nameof(SubBoard.JACGameStart), bonusTable.GetBonusName(activeChildBonus));
                 }
                 return;
             }
@@ -1346,9 +1346,9 @@ namespace AX.UdonSlot.REV1_0
                 IsBonusFinished(activeChildBonus, childPayoutCount, childGameCount, childWinCount))
             {
                 string childName = bonusTable.GetBonusName(activeChildBonus);
-                NotifySubBoard(nameof(SubBoard.ChildBonusEnd), childName);
+                NotifySubBoard(nameof(SubBoard.JACGameEnd), childName);
                 if (bonusTable.IsBonusManualChild(activeBonus)) activeChildBonus = -1;
-                else NotifySubBoard(nameof(SubBoard.ChildBonusStart), childName);
+                else NotifySubBoard(nameof(SubBoard.JACGameStart), childName);
                 ResetChildCount();
             }
         }
@@ -1368,7 +1368,7 @@ namespace AX.UdonSlot.REV1_0
         {
             string bonusName = bonusTable.GetBonusName(activeBonus);
             int endState = bonusTable.GetBonusEndState(activeBonus);
-            if (activeChildBonus >= 0) NotifySubBoard(nameof(SubBoard.ChildBonusEnd), bonusTable.GetBonusName(activeChildBonus));
+            if (activeChildBonus >= 0) NotifySubBoard(nameof(SubBoard.JACGameEnd), bonusTable.GetBonusName(activeChildBonus));
             activeBonus = -1;
             activeChildBonus = -1;
             bonusPayoutCount = 0;

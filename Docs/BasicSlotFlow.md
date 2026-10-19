@@ -124,4 +124,4 @@ LotteryTableへ当選役を1件以上追加すると、すべてのフラグと�
 - `SubBoard`の各Logicメソッド: 告知、ランプ、映像、サウンドなどの演出。
 - `SubBoard.ReplayBetLogic(int)`: 全プレイヤーへ通知される再遊技音・表示用の拡張ポイント。
 
-ボーナス・RTは`BonusTable`で定義し、成立・作動・終了・RT移行は基底が同期します。演出は`SubBoard`の`BonusWonLogic`（成立、レバーオン時）・`BonusStartLogic`・`BonusEndLogic`・`ChildBonusStartLogic`／`ChildBonusEndLogic`（BB・MB中の連続作動の役物、JACゲームなど）・`StateChangeLogic`で追加します。これらは所有者が判定し、全員のSubBoardで呼ばれます。共通の抽選後に処理を追加する場合は`GenerateFlagLogic`を使用し、抽選そのものを置き換える場合だけ`GenerateFlag`をオーバーライドします。
+ボーナス・RTは`BonusTable`で定義し、成立・作動・終了・RT移行は基底が同期します。演出は`SubBoard`の`BonusWonLogic`（成立、レバーオン時）・`BonusStartLogic`・`BonusEndLogic`・`JACGameStartLogic`／`JACGameEndLogic`（BB・MB中の連続作動の役物、JACゲームなど）・`StateChangeLogic`で追加します。これらは所有者が判定し、全員のSubBoardで呼ばれます。共通の抽選後に処理を追加する場合は`GenerateFlagLogic`を使用し、抽選そのものを置き換える場合だけ`GenerateFlag`をオーバーライドします。

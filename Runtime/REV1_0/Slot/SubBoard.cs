@@ -487,21 +487,21 @@ namespace AX.UdonSlot.REV1_0
 
         /// <summary>BB・MB中に連続作動の役物（JACゲームなど）が作動したことを通知する。</summary>
         [NetworkCallable]
-        public void ChildBonusStart(string bonusName)
+        public void JACGameStart(string bonusName)
         {
-            ChildBonusStartLogic(bonusName);
+            JACGameStartLogic(bonusName);
         }
 
-        public virtual void ChildBonusStartLogic(string bonusName) { }
+        public virtual void JACGameStartLogic(string bonusName) { }
 
         /// <summary>連続作動の役物が終わったことを通知する。</summary>
         [NetworkCallable]
-        public void ChildBonusEnd(string bonusName)
+        public void JACGameEnd(string bonusName)
         {
-            ChildBonusEndLogic(bonusName);
+            JACGameEndLogic(bonusName);
         }
 
-        public virtual void ChildBonusEndLogic(string bonusName) { }
+        public virtual void JACGameEndLogic(string bonusName) { }
 
         /// <summary>ボーナスが作動したことを通知する。</summary>
         [NetworkCallable]
