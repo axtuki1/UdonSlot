@@ -13,11 +13,19 @@ namespace AX.UdonSlot.REV1_0.Editor
         private bool[] winPairFoldouts = new bool[0];
         private bool showWinPairs = true;
         private bool showPayLines = true;
+        private bool isMachineTable;
+
+        private void OnEnable()
+        {
+            isMachineTable = AX.UdonSlot.REV1_0.Editor.ReelRule.ReelRuleEditorWindow.IsMachineTable(target);
+        }
 
         public override void OnInspectorGUI()
         {
             if (UdonSharpGUI.DrawDefaultUdonSharpBehaviourHeader(target)) return;
             if (GUILayout.Button("機種エディタで開く")) AX.UdonSlot.REV1_0.Editor.ReelRule.ReelRuleEditorWindow.OpenFor(target);
+            // 機種で使っている表は機種エディタでだけ編集する（名前の変更を制御に反映するため）
+            if (isMachineTable) return;
             // 移行図柄は機種エディタでだけ編集する（配列の並びが崩れないように）
             var payoutTable = (PayoutTable)target;
             if (payoutTable.isTransitions != null)

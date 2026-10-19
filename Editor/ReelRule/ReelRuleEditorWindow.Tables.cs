@@ -26,6 +26,17 @@ namespace AX.UdonSlot.REV1_0.Editor.ReelRule
         private BonusTable MachineBonusTable { get { return ReelMachineReader.BonusTableOf(machineObject); } }
 
         /// <summary>表（抽選表・配当表・ボーナス表）を使っている機種を探して、該当するタブを開く。</summary>
+        /// <summary>開いているシーンのどれかの機種が使っている表か。</summary>
+        public static bool IsMachineTable(UnityEngine.Object table)
+        {
+            foreach (var candidate in UnityEngine.Object.FindObjectsOfType<ReelOutputController>(true))
+            {
+                if (table is LotteryTable && ReelMachineReader.LotteryTablesOf(candidate).Contains((LotteryTable)table)) return true;
+                if (table is PayoutTable && ReelMachineReader.PayoutTableOf(candidate) == table) return true;
+            }
+            return false;
+        }
+
         public static void OpenFor(UnityEngine.Object table)
         {
             foreach (var candidate in UnityEngine.Object.FindObjectsOfType<ReelOutputController>(true))

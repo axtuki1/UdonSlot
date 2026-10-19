@@ -11,6 +11,12 @@ namespace AX.UdonSlot.REV1_0
     public class LotteryTableEditor : UnityEditor.Editor
     {
         private bool[] flagFoldouts = new bool[0];
+        private bool isMachineTable;
+
+        private void OnEnable()
+        {
+            isMachineTable = AX.UdonSlot.REV1_0.Editor.ReelRule.ReelRuleEditorWindow.IsMachineTable(target);
+        }
 
         private static bool HasBonusEntries(LotteryTable table)
         {
@@ -23,6 +29,8 @@ namespace AX.UdonSlot.REV1_0
         {
             if (UdonSharpGUI.DrawDefaultUdonSharpBehaviourHeader(target)) return;
             if (GUILayout.Button("機種エディタで開く")) AX.UdonSlot.REV1_0.Editor.ReelRule.ReelRuleEditorWindow.OpenFor(target);
+            // 機種で使っている表は機種エディタでだけ編集する（名前の変更を制御に反映するため）
+            if (isMachineTable) return;
             var table = (LotteryTable)target;
             // 設定やボーナス付きの行は機種エディタでだけ編集する（配列の並びが崩れないように）
             if (table.GetSettingCount() > 1 || HasBonusEntries(table)) return;
