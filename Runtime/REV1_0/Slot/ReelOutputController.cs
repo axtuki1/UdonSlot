@@ -781,6 +781,54 @@ namespace AX.UdonSlot.REV1_0
         }
 
         /// <summary>
+        /// ここまでに止まったリールの図柄で、まだ揃う可能性がある役の内部名を返す。
+        /// 有効ラインのどれかで止まったリールの図柄がすべて一致し、押し順の指定にも反していない役。
+        /// 回っているリールは問わない（滑りで届くかは見ない）。
+        /// </summary>
+        public string[] GetPossibleRoles()
+        {
+            string[] roles = new string[0];
+            if (!IsAutomaticControlStateValid(0, payoutTable)) return roles;
+            for (int pairIndex = 0; pairIndex < payoutTable.GetWinPairCount(); pairIndex++)
+            {
+                if (!IsStopOrderPossible(payoutTable, pairIndex)) continue;
+                for (int lineIndex = 0; lineIndex < payoutTable.GetPayLineCount(); lineIndex++)
+                {
+                    if (!payoutTable.IsPayLineActive(lineIndex, mainBoard.bet)) continue;
+                    if (!IsStoppedWinPairMatched(payoutTable, pairIndex, lineIndex)) continue;
+                    roles = AppendString(roles, payoutTable.winPairNames[pairIndex]);
+                    break;
+                }
+            }
+            return roles;
+        }
+
+        private bool IsStopOrderPossible(PayoutTable payoutTable, int pairIndex)
+        {
+            if (payoutTable.isReelStopOrderAny[pairIndex]) return true;
+            for (int reelIndex = 0; reelIndex < 3; reelIndex++)
+            {
+                int order = mainBoard.stoppedReelsStopOrder[reelIndex];
+                if (order >= 0 && payoutTable.GetStopOrder(pairIndex, reelIndex) != order) return false;
+            }
+            return true;
+        }
+
+        private bool IsStoppedWinPairMatched(PayoutTable payoutTable, int pairIndex, int lineIndex)
+        {
+            for (int reelIndex = 0; reelIndex < 3; reelIndex++)
+            {
+                if (mainBoard.stoppedReelsSymbolIndex[reelIndex] < 0) continue;
+                if (!IsReelDataValid(reelIndex)) return false;
+                string requiredSymbol = payoutTable.GetSymbol(pairIndex, reelIndex);
+                if (string.IsNullOrEmpty(requiredSymbol)) continue;
+                int row = payoutTable.GetPayLineRow(lineIndex, reelIndex);
+                if (!IsPayoutSymbolMatched(GetSymbolAtRow(reelIndex, GetStoppedLowerSymbolIndex(reelIndex), row), requiredSymbol)) return false;
+            }
+            return true;
+        }
+
+        /// <summary>
         /// 現在BETで有効なライン上の停止図柄を、ラインごとに左、中、右の順で返す。
         /// 戻り値は3要素単位の平坦な配列で、ラインの並びはPayoutTableの登録順となる。
         /// </summary>
@@ -1488,6 +1536,16 @@ namespace AX.UdonSlot.REV1_0
             SetOwner();
             pendingBonus = -1;
             RequestSerialization();
+        }
+
+        private bool hasReceivedState = false;
+
+        /// <summary>同期された状態を一度でも受け取ったか（途中参加の復元に使う）。</summary>
+        public bool HasReceivedState() { return hasReceivedState; }
+
+        public override void OnDeserialization()
+        {
+            hasReceivedState = true;
         }
 
         public bool IsBonusPending() { return pendingBonus >= 0; }

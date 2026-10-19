@@ -257,7 +257,39 @@ namespace AX.UdonSlot.REV1_0
             // MaxBetボタン制御
             BetButtonEffect();
             UpdateWaitView();
+            RestoreStateOnJoin();
             UpdateLogic();
+        }
+
+        /// <summary>
+        /// 途中参加して状態を復元している最中か。BonusStartLogicなどの中で、ファンファーレのような一度きりの音を
+        /// 鳴らさないために使う。
+        /// </summary>
+        protected bool isRestoring = false;
+        private bool isStateRestored = false;
+
+        /// <summary>
+        /// 途中参加したとき、最初に同期された状態に合わせて演出の状態を戻す。
+        /// 作動中のボーナス・JACゲーム・RTの開始フックを、自分の画面だけで呼び直す。
+        /// 成立中（未作動）のボーナスは告知の有無が分からないので戻さない。
+        /// </summary>
+        private void RestoreStateOnJoin()
+        {
+            if (isStateRestored || !Utilities.IsValid(mainBoard)) return;
+            ReelOutputController controller = mainBoard.reelOutputController;
+            if (!Utilities.IsValid(controller)) { isStateRestored = true; return; }
+            if (controller.IsOwner()) { isStateRestored = true; return; }
+            if (!controller.HasReceivedState()) return;
+            isStateRestored = true;
+            isRestoring = true;
+            if (controller.GetStateIndex() != 0) StateChangeLogic(controller.GetStateName());
+            if (controller.IsBonusActive())
+            {
+                BonusStartLogic(controller.GetActiveBonusName());
+                string child = controller.GetActiveChildBonusName();
+                if (child.Length > 0) JACGameStartLogic(child);
+            }
+            isRestoring = false;
         }
 
         /// <summary>ウェイト中は残り時間のバーを表示する。ウェイト明けの表示はゲーム開始まで維持する。</summary>
@@ -403,12 +435,17 @@ namespace AX.UdonSlot.REV1_0
         }
 
         [NetworkCallable]
-        public void ReelStop(int reelIndex, int stopIndex, float accuracy)
+        public void ReelStop(int reelIndex, int stopIndex, float accuracy, string[] possibleRoles)
         {
-            ReelStopLogic(reelIndex, stopIndex, accuracy);
+            ReelStopLogic(reelIndex, stopIndex, accuracy, possibleRoles != null ? possibleRoles : new string[0]);
         }
 
-        public virtual void ReelStopLogic(int reelIndex, int stopIndex, float accuracy)
+        /// <summary>
+        /// リール停止時の演出を実装する拡張ポイント。全員の画面で呼ばれる。
+        /// possibleRolesは、ここまでに止まったリールの図柄で、まだ揃う可能性がある役の内部名（テンパイ音などに使う）。
+        /// 全リール停止時は実際に揃った役になる。
+        /// </summary>
+        public virtual void ReelStopLogic(int reelIndex, int stopIndex, float accuracy, string[] possibleRoles)
         {
             if (!CanPlaySound()) return;
             soundBoard.StopSound(SoundType.WAIT);

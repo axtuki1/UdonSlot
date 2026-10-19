@@ -724,7 +724,8 @@ namespace AX.UdonSlot.REV1_0
                     nameof(subBoard.ReelStop),
                     reelIndex,
                     GetReelStopIndex(reelIndex),
-                    stoppedReelsPerfectAccuracy[reelIndex]
+                    stoppedReelsPerfectAccuracy[reelIndex],
+                    Utilities.IsValid(reelOutputController) ? reelOutputController.GetPossibleRoles() : new string[0]
                 );
             }
             
