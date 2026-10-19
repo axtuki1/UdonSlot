@@ -411,7 +411,7 @@ namespace AX.UdonSlot.REV1_0.Editor.ReelRule
             const float cell = 26;
             var grid = new Rect(card.x + (card.width - cell * 3) / 2, card.y + 38, cell * 3, cell * 3);
             for (int reel = 0; reel < 3; reel++)
-                GUI.Label(new Rect(grid.x + reel * cell, card.y + 20, cell, 16), ReelLetters[reel], CenteredMini);
+                GUI.Label(new Rect(grid.x + reel * cell, card.y + 20, cell, 16), ReelRuleEngine.ReelNames[reel], CenteredMini);
             var points = new Vector3[3];
             for (int reel = 0; reel < 3; reel++)
                 for (int row = 0; row < 3; row++)
