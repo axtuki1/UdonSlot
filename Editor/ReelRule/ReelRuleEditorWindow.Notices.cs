@@ -35,6 +35,8 @@ namespace AX.UdonSlot.REV1_0.Editor.ReelRule
                         list.Add(new Notice { Warning = true, Text = b.Label + " を揃える制御がありません", Screen = 4 });
                     string over = RegulationProblem(b, regulation);
                     if (over != null) list.Add(new Notice { Warning = true, Text = b.Label + ": " + over, Screen = 4 });
+                    if ((b.Kind == BonusKind.MB || b.Kind == BonusKind.CB) && b.Lottery != null && b.Lottery != NormalLottery(model))
+                        list.Add(new Notice { Warning = true, Text = b.Label + ": 作動中の抽選表が通常時と違います", Screen = 4 });
                 }
             }
             if (results != null)
@@ -55,6 +57,13 @@ namespace AX.UdonSlot.REV1_0.Editor.ReelRule
             foreach (var c in Design.controls)
                 if (!c.IsCell)
                     list.Add(new Notice { Warning = true, Text = c.name + " は割り当て表に入っていません", Screen = 0, Control = c.name });
+        }
+
+        /// <summary>通常時の抽選表。</summary>
+        private LotteryTable NormalLottery(BonusModel model)
+        {
+            if (model.States.Count > 0 && model.States[0].Lottery != null) return model.States[0].Lottery;
+            return ReelMachineReader.LotteryTableOf(machineObject);
         }
 
         /// <summary>この役を当選として扱う制御があるか。</summary>

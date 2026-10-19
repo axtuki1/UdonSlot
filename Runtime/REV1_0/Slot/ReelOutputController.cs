@@ -193,11 +193,16 @@ namespace AX.UdonSlot.REV1_0
         /// <returns>リールの滑りコマ数</returns>
         public virtual int ControllReel(int reelIndex, int currentSymbol)
         {
-            // CB作動中にすぐ止まるリールは、制御表を使わず滑り1コマ以内で決める（規則: 75ms以内に停止）。
-            if (IsQuickStopReel(reelIndex))
+            // CB作動中は制御表を使わず、どの小役が揃ってもよいとして止める。
+            // すぐ止まるリールは滑り1コマ以内（規則: 75ms以内に停止）。
+            if (IsChallengeBonusActive())
             {
                 if (!Utilities.IsValid(payoutTable)) return 0;
-                return CalculatePrioritySlip(reelIndex, currentSymbol, payoutTable, GetCurrentLotteryTable(), activeFlag, priority, Mathf.Min(1, maxSlipCount));
+                int slipLimit = IsQuickStopReel(reelIndex) ? Mathf.Min(1, maxSlipCount) : maxSlipCount;
+                isAnySmallRoleAllowed = true;
+                int slip = CalculatePrioritySlip(reelIndex, currentSymbol, payoutTable, GetCurrentLotteryTable(), activeFlag, priority, slipLimit);
+                isAnySmallRoleAllowed = false;
+                return slip;
             }
 
             string flag = GetReelControlFlagName();
@@ -246,12 +251,22 @@ namespace AX.UdonSlot.REV1_0
             return slipCount;
         }
 
-        /// <summary>CB作動中で、このリールが「すぐ止まるリール」か。</summary>
-        public bool IsQuickStopReel(int reelIndex)
+        /// <summary>CB作動中の制御で、フラグに関係なく小役を揃えてよいとして計算しているか。</summary>
+        private bool isAnySmallRoleAllowed = false;
+
+        /// <summary>CB（単独、またはMBの中）が作動中か。</summary>
+        public bool IsChallengeBonusActive()
         {
             if (!Utilities.IsValid(bonusTable) || activeBonus < 0) return false;
             int bonus = activeChildBonus >= 0 ? activeChildBonus : activeBonus;
-            if (bonusTable.GetBonusKind(bonus) != BonusKind.CB) return false;
+            return bonusTable.GetBonusKind(bonus) == BonusKind.CB;
+        }
+
+        /// <summary>CB作動中で、このリールが「すぐ止まるリール」か。</summary>
+        public bool IsQuickStopReel(int reelIndex)
+        {
+            if (!IsChallengeBonusActive()) return false;
+            int bonus = activeChildBonus >= 0 ? activeChildBonus : activeBonus;
             return (bonusTable.GetBonusQuickReels(bonus) & (1 << reelIndex)) != 0;
         }
 
@@ -828,6 +843,9 @@ namespace AX.UdonSlot.REV1_0
         {
             // 成立中のボーナスの作動役は、毎遊技で引き込む。
             if (IsPendingBonusStartRole(payoutTable.winPairNames[pairIndex])) return true;
+            // CB作動中は、フラグに関係なく小役を揃えてよい。
+            if (isAnySmallRoleAllowed &&
+                !payoutTable.IsReplay(pairIndex) && !payoutTable.IsBonus(pairIndex) && !payoutTable.IsTransition(pairIndex)) return true;
             if (Utilities.IsValid(lotteryTable) && lotteryTable.HasWinningRoleDefinitions())
             {
                 return lotteryTable.IsRoleWon(activeFlag, payoutTable.winPairNames[pairIndex]);
@@ -1153,6 +1171,8 @@ namespace AX.UdonSlot.REV1_0
                 {
                     if (activeChildBonus >= 0) table = bonusTable.GetBonusLotteryTable(activeChildBonus);
                     if (!Utilities.IsValid(table)) table = bonusTable.GetBonusLotteryTable(activeBonus);
+                    // MB・CBは小役の確率を変えないので、抽選表が空なら通常時（今のRT）の表を使う。
+                    if (!Utilities.IsValid(table) && IsSecondKindBonus(activeBonus)) table = bonusTable.GetStateLotteryTable(stateIndex);
                 }
                 else
                 {
@@ -1247,6 +1267,12 @@ namespace AX.UdonSlot.REV1_0
             stateGameCount = 0;
             isStateEnteredBySymbol = false;
             NotifySubBoard(nameof(SubBoard.BonusStart), bonusTable.GetBonusName(bonus));
+        }
+
+        private bool IsSecondKindBonus(int bonus)
+        {
+            BonusKind kind = bonusTable.GetBonusKind(bonus);
+            return kind == BonusKind.MB || kind == BonusKind.CB;
         }
 
         /// <summary>MB作動中でも成立できる役物（RB・SB）か。</summary>
