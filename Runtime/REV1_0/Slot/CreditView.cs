@@ -98,6 +98,9 @@ namespace AX.UdonSlot.REV1_0
         
         private float currentNonActionTime = 0f;
 
+        /// <summary>テキストに書き込んだ値。int.MinValueは未表示。</summary>
+        private int shownInstantCredit = int.MinValue, shownViewingCredit = int.MinValue;
+
         private void Start()
         {
             mainBoard = GetComponentInParent<MainBoard>();
@@ -108,8 +111,18 @@ namespace AX.UdonSlot.REV1_0
             if (!Utilities.IsValid(mainBoard)) return;
 
             UpdateViewingCredit();
-            if (Utilities.IsValid(instantApplyText)) instantApplyText.text = mainBoard.credit.ToString();
-            if (Utilities.IsValid(creditText)) creditText.text = viewingCredit.ToString();
+            // 値が変わったときだけ文字列を作って書き込む。
+            int credit = mainBoard.credit;
+            if (Utilities.IsValid(instantApplyText) && credit != shownInstantCredit)
+            {
+                shownInstantCredit = credit;
+                instantApplyText.text = credit.ToString();
+            }
+            if (Utilities.IsValid(creditText) && viewingCredit != shownViewingCredit)
+            {
+                shownViewingCredit = viewingCredit;
+                creditText.text = viewingCredit.ToString();
+            }
             if (Utilities.IsValid(creditSegText)) UpdateSegmentDisplay();
         }
 

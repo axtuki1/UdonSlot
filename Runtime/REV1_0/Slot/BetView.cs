@@ -16,9 +16,15 @@ namespace AX.UdonSlot.REV1_0
         [SerializeField]
         private Image[] bet1Images, bet2Images, bet3Images;
 
+        /// <summary>表示に反映したBET数。-1は未反映。</summary>
+        private int shownBet = -1;
+
         private void FixedUpdate()
         {
             if (!Utilities.IsValid(mainBoard)) return;
+            int bet = mainBoard.bet;
+            if (bet == shownBet) return;
+            shownBet = bet;
             SetImageAlpha(bet1Images, mainBoard.bet >= 1);
             SetImageAlpha(bet2Images, mainBoard.bet >= 2);
             SetImageAlpha(bet3Images, mainBoard.bet >= 3);

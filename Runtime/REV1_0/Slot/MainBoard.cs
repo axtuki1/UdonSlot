@@ -118,6 +118,8 @@ namespace AX.UdonSlot.REV1_0
         private bool[] _mockPlayShakeApplied = new bool[3];
         private Quaternion[] _mockPlayShakeBaseRotation = new Quaternion[3];
         private bool[] _scheduledRollHolding = new bool[3];
+        /// <summary>UpdateScheduledRollの戻り値。毎フレーム配列を作らないよう使い回す。</summary>
+        private bool[] _scheduledRollActive = new bool[3];
 
         /// <summary>
         /// リール回転中
@@ -330,7 +332,6 @@ namespace AX.UdonSlot.REV1_0
             bool isLocalOwner = IsOwner();
             if (isLocalOwner && requestGameStart && (!isWaitMode || GetLastGameStartElapsed() > 4.1f * 1000f))
             {
-                Debug.Log("Game Start");
                 StartReel();
             }
 
@@ -348,7 +349,8 @@ namespace AX.UdonSlot.REV1_0
             if (!scheduledRollActive[1]) UpdateReel(1, reel2Transform, isRollingReel2, currentServerMs, isLocalOwner, maxStopStepDeg);
             if (!scheduledRollActive[2]) UpdateReel(2, reel3Transform, isRollingReel3, currentServerMs, isLocalOwner, maxStopStepDeg);
 
-            if (Utilities.IsValid(controllableStateObject)) controllableStateObject.SetActive(isControllable);
+            if (Utilities.IsValid(controllableStateObject) && controllableStateObject.activeSelf != isControllable)
+                controllableStateObject.SetActive(isControllable);
             UpdateLogic();
             bool shakeReel1 = CanMockPlayShake(0, isRollingReel1, scheduledRollActive[0], _reel1AccumRot);
             bool shakeReel2 = CanMockPlayShake(1, isRollingReel2, scheduledRollActive[1], _reel2AccumRot);
@@ -414,6 +416,19 @@ namespace AX.UdonSlot.REV1_0
 
             if (!isRolling)
             {
+                // 止まりきったリールは、表示がずれたとき（停止位置の同期・予約回転の後など）だけ書き込む。
+                if (accumulatedRotation.x == 0f && accumulatedRotation.y == 0f && accumulatedRotation.z == 0f && accumulatedRotation.w == 1f)
+                {
+                    if (reelTransform.localRotation != targetRotation) reelTransform.localRotation = targetRotation;
+                    return;
+                }
+                if (accumulatedRotation == Quaternion.identity)
+                {
+                    // 誤差の範囲まで寄ったら、ちょうど停止位置にそろえる。
+                    SetReelAccumulatedRotation(reelIndex, Quaternion.identity);
+                    reelTransform.localRotation = targetRotation;
+                    return;
+                }
                 if (Quaternion.Dot(accumulatedRotation, Quaternion.identity) < 0f)
                 {
                     accumulatedRotation = new Quaternion(
@@ -709,7 +724,6 @@ namespace AX.UdonSlot.REV1_0
                     stoppedReelsPerfectAccuracy[reelIndex]
                 );
             }
-            Debug.Log("滑りコマ数: "+throughSymbolCount);
             
             RequestSerialization();
         }
@@ -859,7 +873,8 @@ namespace AX.UdonSlot.REV1_0
 
         private bool[] UpdateScheduledRoll(double currentServerMs)
         {
-            bool[] activeReels = new bool[3];
+            bool[] activeReels = _scheduledRollActive;
+            for (int i = 0; i < 3; i++) activeReels[i] = false;
             for (int i = 0; i < 3; i++) _scheduledRollHolding[i] = false;
             if (scheduledRollType.Length == 0) return activeReels;
             if (scheduledRollStartTime.Length == 0 || scheduledRollEndTime.Length == 0)

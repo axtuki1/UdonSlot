@@ -24,15 +24,24 @@ namespace AX.UdonSlot.REV1_0
         /// </summary>
         private byte[] activeSegFlgs;
         
+        /// <summary>各ユニットに反映したパターン。-1は未反映。</summary>
+        private int[] appliedSegFlgs;
+
         private void Start()
         {
             activeSegFlgs = new byte[segObjs.Length];
+            appliedSegFlgs = new int[segObjs.Length];
+            for (int i = 0; i < appliedSegFlgs.Length; i++) appliedSegFlgs[i] = -1;
         }
 
         private void FixedUpdate()
         {
+            if (activeSegFlgs == null || appliedSegFlgs == null) return;
+            // 変わったユニットだけ点灯を切り替える。
             for (int i = 0; i < segObjs.Length; i++)
             {
+                if (appliedSegFlgs[i] == activeSegFlgs[i]) continue;
+                appliedSegFlgs[i] = activeSegFlgs[i];
                 segObjs[i].ApplySegPattern(activeSegFlgs[i]);
             }
         }

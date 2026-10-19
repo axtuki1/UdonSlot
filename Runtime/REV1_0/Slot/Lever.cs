@@ -18,6 +18,8 @@ namespace AX.UdonSlot.REV1_0
 
         private Quaternion initialRotation;
         private bool isPushed = false;
+        /// <summary>目標の角度に着いたか。着いたら書き込みをやめる。</summary>
+        private bool isSettled = false;
         
         private void Start()
         {
@@ -27,7 +29,16 @@ namespace AX.UdonSlot.REV1_0
         private void Update()
         {
             Quaternion targetRotation = isPushed ? Quaternion.Euler(leverPushAngle, 0, 0) : initialRotation;
-            transform.localRotation = Quaternion.Lerp(transform.localRotation, targetRotation, Time.deltaTime * 10f);
+            Quaternion current = transform.localRotation;
+            if (current == targetRotation)
+            {
+                if (isSettled) return;
+                transform.localRotation = targetRotation;
+                isSettled = true;
+                return;
+            }
+            isSettled = false;
+            transform.localRotation = Quaternion.Lerp(current, targetRotation, Time.deltaTime * 10f);
         }
 
         public override void Interact()

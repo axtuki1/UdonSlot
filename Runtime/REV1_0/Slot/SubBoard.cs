@@ -222,6 +222,8 @@ namespace AX.UdonSlot.REV1_0
                 float angle = Mathf.Atan2(direction.z, direction.y) * Mathf.Rad2Deg;
                 float deltaAngle = Mathf.DeltaAngle(emissionPreviousAngles[i], angle);
                 emissionPreviousAngles[i] = angle;
+                // 止まっているリールはマテリアルに書き込まない。
+                if (deltaAngle == 0f) continue;
                 if (followReelEmissionMask && emissionMaskEnabled[i])
                 {
                     Vector2 offset = emissionMaskOffsets[i];
@@ -264,14 +266,14 @@ namespace AX.UdonSlot.REV1_0
             if (!Utilities.IsValid(waitWrapper)) return;
             if (!Utilities.IsValid(waitValue) || !mainBoard.requestGameStart)
             {
-                waitWrapper.SetActive(false);
+                if (waitWrapper.activeSelf) waitWrapper.SetActive(false);
                 return;
             }
 
             float wait = mainBoard.GetLastGameStartElapsed() / (4.1f * 1000f);
             if (wait > 1f) return;
             waitValue.localScale = new Vector3(Mathf.Clamp01(wait), 1f, 1f);
-            waitWrapper.SetActive(true);
+            if (!waitWrapper.activeSelf) waitWrapper.SetActive(true);
         }
 
         public void StopButtonEffect(int reelIndex)
@@ -311,11 +313,17 @@ namespace AX.UdonSlot.REV1_0
             {
                 emissionColor = isRolling && mainBoard.isControllable ? stopButtonActiveColor : stopButtonInactiveColor;
             }
-            mat.SetColor("_EmissionColor", emissionColor);
+            SetEmissionColor(mat, emissionColor);
 
             StopButtonEffectLogic(reelIndex, stopButton, mat, isRolling);
         }
         
+        /// <summary>色が変わるときだけ書き込む（マテリアルの更新を毎フレーム起こさない）。</summary>
+        private void SetEmissionColor(Material mat, Color color)
+        {
+            if (mat.GetColor("_EmissionColor") != color) mat.SetColor("_EmissionColor", color);
+        }
+
         public virtual void StopButtonEffectLogic(int reelIndex, Renderer stopButton, Material mat, bool isRolling){}
         
         public void BetButtonEffect()
@@ -323,7 +331,7 @@ namespace AX.UdonSlot.REV1_0
             Material mat = betButton.material;
             int maxBet = mainBoard.GetMaxBet();
             bool isCanBetting = maxBet > 0 && mainBoard.bet < maxBet && mainBoard.isControllable;
-            mat.SetColor("_EmissionColor", isCanBetting ? betButtonActiveColor : betButtonInactiveColor);
+            SetEmissionColor(mat, isCanBetting ? betButtonActiveColor : betButtonInactiveColor);
             BetButtonEffectLogic(betButton, mat, isCanBetting);
         }
         
@@ -403,7 +411,6 @@ namespace AX.UdonSlot.REV1_0
 
         public virtual void BetLogic(int betCount)
         {
-            Debug.Log($"SubBoard: Bet {betCount}");
             if (!CanPlaySound() || betCount <= 0) return;
             // 1枚目は即時、2枚目以降は0.13秒間隔でベット音を鳴らす。
             soundBoard.PlaySound(SoundType.SE1, (int)ClipType.BET);
@@ -443,7 +450,6 @@ namespace AX.UdonSlot.REV1_0
         
         public virtual void WaitLogic()
         {
-            Debug.Log("SubBoard: Wait");
             if (!CanPlaySound()) return;
             soundBoard.PlaySound(SoundType.WAIT, (int)ClipType.WAIT);
         }

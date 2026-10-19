@@ -72,6 +72,10 @@ namespace AX.UdonSlot.REV1_0
         
         [SerializeField]
         private ReelControl reelControl;
+
+        /// <summary>停止のたびにリール制御の経過をログに出す（調査用）。</summary>
+        [SerializeField]
+        protected bool isDebugLog = false;
         
         protected bool isAllDynamicControl = false;
 
@@ -190,13 +194,14 @@ namespace AX.UdonSlot.REV1_0
         public virtual int ControllReel(int reelIndex, int currentSymbol)
         {
             string flag = GetReelControlFlagName();
-            string[] symbols = GetVisibleSymbols(reelIndex, currentSymbol);
             int stopReelCount = GetStoppedReelCount();
-            
-            Debug.Log($"制御名: {flag}");
-            Debug.Log("リール停止数: " + stopReelCount);
-            Debug.Log($"停止位置(内部値): {reelDatas[reelIndex].symbols[currentSymbol]}({currentSymbol})");
-            Debug.Log($"滑り猶予圏内シンボルs: {string.Join(", ", symbols)}");
+
+            if (isDebugLog)
+            {
+                Debug.Log($"制御名: {flag}");
+                Debug.Log("リール停止数: " + stopReelCount);
+                Debug.Log($"停止位置(内部値): {reelDatas[reelIndex].symbols[currentSymbol]}({currentSymbol})");
+            }
 
             // 該当するテーブル制御がなければコントロール制御で決める。
             int stopPatternIndex = ReelControlData.GetIndexForReelStopPattern(
@@ -207,7 +212,7 @@ namespace AX.UdonSlot.REV1_0
             ReelControlData reelControlData = FindReelControlData(flag, stopPatternIndex);
             if (isAllDynamicControl || !IsTableControlPattern(reelControlData, stopPatternIndex))
             {
-                return DynamicControl(symbols, currentSymbol, reelIndex, stopReelCount);
+                return DynamicControl(GetVisibleSymbols(reelIndex, currentSymbol), currentSymbol, reelIndex, stopReelCount);
             }
 
             int conditionalSlip = reelControlData.GetConditionalSlip(
@@ -225,12 +230,12 @@ namespace AX.UdonSlot.REV1_0
                 slipTable[stopPatternIndex] == null ||
                 slipTable[stopPatternIndex].Length <= currentSymbol)
             {
-                Debug.Log($"テーブル制御: パターン{stopPatternIndex}のリール{reelIndex}の停止位置({currentSymbol})の滑りコマ数の情報が存在しないため0を返す");
+                if (isDebugLog) Debug.Log($"テーブル制御: パターン{stopPatternIndex}のリール{reelIndex}の停止位置({currentSymbol})の滑りコマ数の情報が存在しないため0を返す");
                 return 0;
             }
 
             int slipCount = slipTable[stopPatternIndex][currentSymbol];
-            Debug.Log($"テーブル制御: パターン{stopPatternIndex}のリール{reelIndex}の停止位置({currentSymbol})の滑りコマ数は{slipCount}");
+            if (isDebugLog) Debug.Log($"テーブル制御: パターン{stopPatternIndex}のリール{reelIndex}の停止位置({currentSymbol})の滑りコマ数は{slipCount}");
             return slipCount;
         }
 
@@ -239,18 +244,18 @@ namespace AX.UdonSlot.REV1_0
         {
             if (reelControl == null || reelControl.flagNames == null || reelControl.reelControlDataList == null)
             {
-                Debug.Log("ReelControl が未設定");
+                if (isDebugLog) Debug.Log("ReelControl が未設定");
                 return null;
             }
 
             int dataIndex = Array.IndexOf(reelControl.flagNames, flag);
             if (dataIndex == -1 || dataIndex >= reelControl.reelControlDataList.Length)
             {
-                Debug.Log("ReelControlData が見つからない");
+                if (isDebugLog) Debug.Log("ReelControlData が見つからない");
                 return null;
             }
 
-            Debug.Log("ReelControlData が見つかりました: " + flag + "、停止パターンインデックス: " + stopPatternIndex);
+            if (isDebugLog) Debug.Log("ReelControlData が見つかりました: " + flag + "、停止パターンインデックス: " + stopPatternIndex);
             return reelControl.reelControlDataList[dataIndex];
         }
 
