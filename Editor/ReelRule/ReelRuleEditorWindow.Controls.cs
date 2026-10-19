@@ -113,9 +113,20 @@ namespace AX.UdonSlot.REV1_0.Editor.ReelRule
                 if (Design.FindCell(flag, "") == null) missing = true;
                 foreach (string bonus in bonuses) if (Design.FindCell(flag, bonus) == null && !SkipCell(flag, bonus)) missing = true;
             }
-            if (!legacy && !missing) return;
+            // 消した（または作動役を外した）ボーナスのマスは表に出ないので消す。
+            var orphans = new List<string>();
+            if (MachineBonusTable != null)
+                foreach (var c in Design.controls)
+                    if (c.IsCell && !string.IsNullOrEmpty(c.bonus) && !bonuses.Contains(c.bonus)) orphans.Add(c.name);
+            if (!legacy && !missing && orphans.Count == 0) return;
             Edit("割り当て表の作成", delegate
             {
+                foreach (string name in orphans)
+                {
+                    Design.controls.Remove(Design.FindControl(name));
+                    foreach (var shape in Design.shapes) shape.RemoveControl(name);
+                }
+                if (orphans.Count > 0) controlIndex = Mathf.Max(0, Mathf.Min(controlIndex, Design.controls.Count - 1));
                 if (legacy) MigrateControls(flags, bonuses);
                 foreach (string flag in flags)
                 {

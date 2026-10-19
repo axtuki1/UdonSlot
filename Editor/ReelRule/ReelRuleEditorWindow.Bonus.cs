@@ -26,6 +26,7 @@ namespace AX.UdonSlot.REV1_0.Editor.ReelRule
             change(model);
             model.Save(label);
             Changed();
+            PrepareCells();
             Repaint();
         }
 
