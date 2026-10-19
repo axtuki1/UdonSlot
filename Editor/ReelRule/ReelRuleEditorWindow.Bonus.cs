@@ -247,7 +247,7 @@ namespace AX.UdonSlot.REV1_0.Editor.ReelRule
             {
                 // BBはRB、MBはCBを連続作動させる（規則）。なしは終了条件だけで動く簡易版。
                 var childKind = b.Kind == BonusKind.BB ? BonusKind.RB : BonusKind.CB;
-                var labels = new List<string> { "なし" };
+                var labels = new List<string> { "簡易（終了条件のみ）" };
                 var values = new List<int> { -1 };
                 for (int i = 0; i < model.Bonuses.Count; i++)
                     if (i != index && (model.Bonuses[i].Kind == childKind || i == b.Child)) { labels.Add(model.Bonuses[i].Label); values.Add(i); }
