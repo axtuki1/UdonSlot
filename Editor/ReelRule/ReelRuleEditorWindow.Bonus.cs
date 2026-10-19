@@ -18,6 +18,8 @@ namespace AX.UdonSlot.REV1_0.Editor.ReelRule
         [SerializeField] private int bonusIndex;
         private Vector2 bonusListScroll, bonusDetailScroll, rtScroll;
 
+        private static readonly string[] JacInNames = { "自動", "手動" };
+
         private void EditBonus(string label, Action<BonusModel> change)
         {
             var table = MachineBonusTable;
@@ -195,7 +197,7 @@ namespace AX.UdonSlot.REV1_0.Editor.ReelRule
             }
 
             int index = model.Bonuses.IndexOf(b);
-            bool fromParent = model.Bonuses.Exists(p => p.Child == index);
+            bool fromParent = model.Bonuses.Exists(p => p.Child == index && !p.ManualChild);
             if (fromParent && b.StartRole.Length == 0)
             {
                 EditorGUILayout.LabelField("作動役", "（" + model.Bonuses.Find(p => p.Child == index).Label + "から作動）");
@@ -250,6 +252,14 @@ namespace AX.UdonSlot.REV1_0.Editor.ReelRule
                 int at = Math.Max(0, values.IndexOf(b.Child));
                 int next = EditorGUILayout.Popup("連続作動", at, labels.ToArray());
                 if (next != at) { b.Child = values[next]; changed = true; }
+                if (b.Child >= 0)
+                    using (new EditorGUILayout.HorizontalScope())
+                    {
+                        EditorGUILayout.PrefixLabel("JACイン");
+                        int manual = GUILayout.Toolbar(b.ManualChild ? 1 : 0, JacInNames, GUILayout.Width(96));
+                        if (manual != (b.ManualChild ? 1 : 0)) { b.ManualChild = manual == 1; changed = true; }
+                        GUILayout.FlexibleSpace();
+                    }
             }
 
             if (b.Kind == BonusKind.CB)

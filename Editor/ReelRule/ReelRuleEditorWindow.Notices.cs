@@ -37,6 +37,14 @@ namespace AX.UdonSlot.REV1_0.Editor.ReelRule
                     if (over != null) list.Add(new Notice { Warning = true, Text = b.Label + ": " + over, Screen = 4 });
                     if ((b.Kind == BonusKind.MB || b.Kind == BonusKind.CB) && b.Lottery != null && b.Lottery != NormalLottery(model))
                         list.Add(new Notice { Warning = true, Text = b.Label + ": 作動中の抽選表が通常時と違います", Screen = 4 });
+                    if (b.ManualChild && b.Child >= 0 && b.Child < model.Bonuses.Count)
+                    {
+                        var child = model.Bonuses[b.Child];
+                        if (child.StartRole.Length == 0)
+                            list.Add(new Notice { Warning = true, Text = child.Label + ": 作動役がありません（" + b.Label + "の手動JACイン）", Screen = 4 });
+                        if (!LotteryHasBonus(b.Lottery, child.Name))
+                            list.Add(new Notice { Warning = true, Text = b.Label + ": 作動中の抽選表に" + child.Label + "の行がありません", Screen = 4 });
+                    }
                 }
             }
             if (results != null)
@@ -57,6 +65,13 @@ namespace AX.UdonSlot.REV1_0.Editor.ReelRule
             foreach (var c in Design.controls)
                 if (!c.IsCell)
                     list.Add(new Notice { Warning = true, Text = c.name + " は割り当て表に入っていません", Screen = 0, Control = c.name });
+        }
+
+        private static bool LotteryHasBonus(LotteryTable table, string bonus)
+        {
+            if (table == null || table.entryBonusNames == null) return false;
+            foreach (string name in table.entryBonusNames) if (name == bonus) return true;
+            return false;
         }
 
         /// <summary>通常時の抽選表。</summary>

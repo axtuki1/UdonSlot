@@ -1104,7 +1104,7 @@ namespace AX.UdonSlot.REV1_0
             if (Utilities.IsValid(reelControl) && reelControl.HasMap())
             {
                 // 作動中は成立中の役物を揃えないので、ボーナスなしの制御を使う。
-                string bonusName = activeBonus >= 0 ? "" : GetPendingBonusName();
+                string bonusName = activeBonus >= 0 && !IsJacInPending() ? "" : GetPendingBonusName();
                 string state = GetStateName();
                 string mapped = reelControl.FindControlName(activeFlag, bonusName, state);
                 if (mapped.Length == 0) mapped = reelControl.FindControlName(GetActiveBaseFlag(), bonusName, state);
@@ -1115,7 +1115,7 @@ namespace AX.UdonSlot.REV1_0
             string format = controlNameFormat;
             if (string.IsNullOrEmpty(format)) return flag;
 
-            string bonus = activeBonus >= 0 ? "" : GetPendingBonusName();
+            string bonus = activeBonus >= 0 && !IsJacInPending() ? "" : GetPendingBonusName();
             if (bonus.Length == 0 && format.IndexOf("{bonus}") >= 0) return flag;
 
             string name = format.Replace("{flag}", flag).Replace("{bonus}", bonus).Replace("{rt}", GetStateName());
@@ -1210,6 +1210,13 @@ namespace AX.UdonSlot.REV1_0
                 activeFlag = drawnLotteryTable.GetEntryBaseFlag(activeFlag);
                 return;
             }
+            // 手動JACイン: BB・MB中に連続作動の役物が成立したら、作動役が揃うまで成立中にする。
+            if (bonus >= 0 && pendingBonus < 0 && activeBonus >= 0 && activeChildBonus < 0 &&
+                bonusTable.IsBonusManualChild(activeBonus) && bonusTable.GetBonusChild(activeBonus) == bonus)
+            {
+                pendingBonus = bonus;
+                return;
+            }
             if (bonus < 0 || pendingBonus >= 0 || activeBonus >= 0)
             {
                 activeFlag = drawnLotteryTable.GetEntryBaseFlag(activeFlag);
@@ -1224,7 +1231,7 @@ namespace AX.UdonSlot.REV1_0
         private bool IsPendingBonusStartRole(string roleName)
         {
             // 作動中（MB中にRB・SBが成立した遊技）は、成立中の役物を揃えない。
-            if (pendingBonus < 0 || activeBonus >= 0 || !Utilities.IsValid(bonusTable) || string.IsNullOrEmpty(roleName)) return false;
+            if (pendingBonus < 0 || activeBonus >= 0 && !IsJacInPending() || !Utilities.IsValid(bonusTable) || string.IsNullOrEmpty(roleName)) return false;
             return bonusTable.GetBonusStartRole(pendingBonus) == roleName;
         }
 
@@ -1254,11 +1261,19 @@ namespace AX.UdonSlot.REV1_0
             RequestSerialization();
         }
 
+        /// <summary>手動JACインのBB・MB中に、連続作動の役物が成立して作動待ちか。</summary>
+        public bool IsJacInPending()
+        {
+            return activeBonus >= 0 && activeChildBonus < 0 && pendingBonus >= 0 && Utilities.IsValid(bonusTable) &&
+                bonusTable.IsBonusManualChild(activeBonus) && bonusTable.GetBonusChild(activeBonus) == pendingBonus;
+        }
+
         private void StartBonus(int bonus)
         {
             pendingBonus = -1;
             activeBonus = bonus;
-            activeChildBonus = bonusTable.GetBonusChild(bonus);
+            // 手動JACインなら、連続作動の役物は作動役が揃うまで作動しない。
+            activeChildBonus = bonusTable.IsBonusManualChild(bonus) ? -1 : bonusTable.GetBonusChild(bonus);
             bonusPayoutCount = 0;
             bonusGameCount = 0;
             bonusWinCount = 0;
@@ -1295,9 +1310,12 @@ namespace AX.UdonSlot.REV1_0
                 if (isWin) childWinCount++;
             }
 
+            bool isJacIn = IsJacInPending();
             // MB作動中にRB・SBが成立した遊技でも、MBを終える。成立した役物は成立中のまま残る。
-            if (pendingBonus >= 0 || IsBonusFinished(activeBonus, bonusPayoutCount, bonusGameCount, bonusWinCount))
+            if (pendingBonus >= 0 && !isJacIn || IsBonusFinished(activeBonus, bonusPayoutCount, bonusGameCount, bonusWinCount))
             {
+                // JACイン待ちのまま親が終わったら、その成立は消す。
+                if (isJacIn) pendingBonus = -1;
                 EndBonus();
                 if (pendingBonus >= 0)
                 {
@@ -1307,10 +1325,22 @@ namespace AX.UdonSlot.REV1_0
                 return;
             }
 
-            // 親が続く間は、終わった役物をすぐ再作動する（連続作動）。
+            if (isJacIn)
+            {
+                if (ContainsName(winningNames, bonusTable.GetBonusStartRole(pendingBonus)))
+                {
+                    activeChildBonus = pendingBonus;
+                    pendingBonus = -1;
+                    ResetChildCount();
+                }
+                return;
+            }
+
+            // 親が続く間は、終わった役物をすぐ再作動する（連続作動）。手動JACインなら次の成立を待つ。
             if (activeChildBonus >= 0 &&
                 IsBonusFinished(activeChildBonus, childPayoutCount, childGameCount, childWinCount))
             {
+                if (bonusTable.IsBonusManualChild(activeBonus)) activeChildBonus = -1;
                 ResetChildCount();
             }
         }

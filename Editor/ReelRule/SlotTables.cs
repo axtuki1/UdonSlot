@@ -359,6 +359,8 @@ namespace AX.UdonSlot.REV1_0.Editor.ReelRule
         public int EndState = -1;
         /// <summary>CB作動中にすぐ止まるリール（1=左、2=中、4=右）。</summary>
         public int QuickReels;
+        /// <summary>連続作動の役物を作動役で作動させる（手動JACイン）。</summary>
+        public bool ManualChild;
 
         public string Label { get { return Display.Length > 0 ? Display : Name; } }
         public BonusRow Copy() { return (BonusRow)MemberwiseClone(); }
@@ -410,7 +412,8 @@ namespace AX.UdonSlot.REV1_0.Editor.ReelRule
                     RequiredBet = t.GetBonusRequiredBet(i),
                     WonState = Get(t.bonusWonStates, i, -1),
                     EndState = Get(t.bonusEndStates, i, -1),
-                    QuickReels = t.GetBonusQuickReels(i)
+                    QuickReels = t.GetBonusQuickReels(i),
+                    ManualChild = t.IsBonusManualChild(i)
                 });
             }
             for (int i = 0; i < t.GetStateCount(); i++)
@@ -454,6 +457,7 @@ namespace AX.UdonSlot.REV1_0.Editor.ReelRule
             t.bonusWonStates = new int[n];
             t.bonusEndStates = new int[n];
             t.bonusQuickReels = new int[n];
+            t.bonusManualChild = new int[n];
             for (int i = 0; i < n; i++)
             {
                 var b = Bonuses[i];
@@ -470,6 +474,7 @@ namespace AX.UdonSlot.REV1_0.Editor.ReelRule
                 t.bonusWonStates[i] = b.WonState;
                 t.bonusEndStates[i] = b.EndState;
                 t.bonusQuickReels[i] = b.QuickReels;
+                t.bonusManualChild[i] = b.ManualChild ? 1 : 0;
             }
             int s = States.Count;
             t.stateNames = new string[s];
