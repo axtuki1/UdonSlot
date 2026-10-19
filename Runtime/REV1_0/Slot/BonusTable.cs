@@ -60,6 +60,9 @@ namespace AX.UdonSlot.REV1_0
         /// <summary>終了後に移る状態。-1は状態0。</summary>
         [HideInInspector] public int[] bonusEndStates = new int[0];
 
+        /// <summary>CB作動中に75ms以内（滑り1コマ以内）で止まるリール。1=左、2=中、4=右のビット。</summary>
+        [HideInInspector] public int[] bonusQuickReels = new int[0];
+
         // ---- 状態（RT） ----
 
         [HideInInspector] public string[] stateNames = new string[0];
@@ -151,6 +154,8 @@ namespace AX.UdonSlot.REV1_0
         public int GetBonusRequiredBet(int index) { return GetInt(bonusRequiredBets, index, 0); }
         public int GetBonusWonState(int index) { return ClampState(GetInt(bonusWonStates, index, -1)); }
         public int GetBonusEndState(int index) { return ClampState(GetInt(bonusEndStates, index, -1)); }
+
+        public int GetBonusQuickReels(int index) { return GetInt(bonusQuickReels, index, 0); }
 
         /// <summary>SB・CBは1遊技で終わる。</summary>
         public bool IsSingleGameBonus(int index)

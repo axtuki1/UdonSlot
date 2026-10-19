@@ -67,6 +67,7 @@ namespace AX.UdonSlot.REV1_0.Editor.ReelRule
 
         private static string RegulationProblem(BonusRow b, Regulation regulation)
         {
+            if (b.Kind == BonusKind.CB && b.QuickReels == 0) return "すぐ止まるリールがありません";
             switch (b.Kind)
             {
                 case BonusKind.BB:

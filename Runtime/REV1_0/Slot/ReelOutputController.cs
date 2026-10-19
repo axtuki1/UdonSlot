@@ -193,6 +193,13 @@ namespace AX.UdonSlot.REV1_0
         /// <returns>リールの滑りコマ数</returns>
         public virtual int ControllReel(int reelIndex, int currentSymbol)
         {
+            // CB作動中にすぐ止まるリールは、制御表を使わず滑り1コマ以内で決める（規則: 75ms以内に停止）。
+            if (IsQuickStopReel(reelIndex))
+            {
+                if (!Utilities.IsValid(payoutTable)) return 0;
+                return CalculatePrioritySlip(reelIndex, currentSymbol, payoutTable, GetCurrentLotteryTable(), activeFlag, priority, Mathf.Min(1, maxSlipCount));
+            }
+
             string flag = GetReelControlFlagName();
             int stopReelCount = GetStoppedReelCount();
 
@@ -237,6 +244,15 @@ namespace AX.UdonSlot.REV1_0
             int slipCount = slipTable[stopPatternIndex][currentSymbol];
             if (isDebugLog) Debug.Log($"テーブル制御: パターン{stopPatternIndex}のリール{reelIndex}の停止位置({currentSymbol})の滑りコマ数は{slipCount}");
             return slipCount;
+        }
+
+        /// <summary>CB作動中で、このリールが「すぐ止まるリール」か。</summary>
+        public bool IsQuickStopReel(int reelIndex)
+        {
+            if (!Utilities.IsValid(bonusTable) || activeBonus < 0) return false;
+            int bonus = activeChildBonus >= 0 ? activeChildBonus : activeBonus;
+            if (bonusTable.GetBonusKind(bonus) != BonusKind.CB) return false;
+            return (bonusTable.GetBonusQuickReels(bonus) & (1 << reelIndex)) != 0;
         }
 
         /// <summary>制御名に対応するReelControlDataを返す。未設定・未登録ならnull。</summary>
@@ -1069,7 +1085,8 @@ namespace AX.UdonSlot.REV1_0
         {
             if (Utilities.IsValid(reelControl) && reelControl.HasMap())
             {
-                string bonusName = GetPendingBonusName();
+                // 作動中は成立中の役物を揃えないので、ボーナスなしの制御を使う。
+                string bonusName = activeBonus >= 0 ? "" : GetPendingBonusName();
                 string state = GetStateName();
                 string mapped = reelControl.FindControlName(activeFlag, bonusName, state);
                 if (mapped.Length == 0) mapped = reelControl.FindControlName(GetActiveBaseFlag(), bonusName, state);
@@ -1080,7 +1097,7 @@ namespace AX.UdonSlot.REV1_0
             string format = controlNameFormat;
             if (string.IsNullOrEmpty(format)) return flag;
 
-            string bonus = GetPendingBonusName();
+            string bonus = activeBonus >= 0 ? "" : GetPendingBonusName();
             if (bonus.Length == 0 && format.IndexOf("{bonus}") >= 0) return flag;
 
             string name = format.Replace("{flag}", flag).Replace("{bonus}", bonus).Replace("{rt}", GetStateName());
@@ -1164,6 +1181,15 @@ namespace AX.UdonSlot.REV1_0
             if (bonusName.Length == 0) return;
 
             int bonus = bonusTable.FindBonus(bonusName);
+            // MB作動中にRB・SBが成立したら、その遊技でMBを終える（終了はUpdateGameState）。
+            if (bonus >= 0 && pendingBonus < 0 && activeBonus >= 0 &&
+                bonusTable.GetBonusKind(activeBonus) == BonusKind.MB && IsMiddleBreakingBonus(bonus))
+            {
+                // この遊技はMB中なので、成立した役物は揃えない（元のフラグとして止める）。
+                pendingBonus = bonus;
+                activeFlag = drawnLotteryTable.GetEntryBaseFlag(activeFlag);
+                return;
+            }
             if (bonus < 0 || pendingBonus >= 0 || activeBonus >= 0)
             {
                 activeFlag = drawnLotteryTable.GetEntryBaseFlag(activeFlag);
@@ -1177,7 +1203,8 @@ namespace AX.UdonSlot.REV1_0
 
         private bool IsPendingBonusStartRole(string roleName)
         {
-            if (pendingBonus < 0 || !Utilities.IsValid(bonusTable) || string.IsNullOrEmpty(roleName)) return false;
+            // 作動中（MB中にRB・SBが成立した遊技）は、成立中の役物を揃えない。
+            if (pendingBonus < 0 || activeBonus >= 0 || !Utilities.IsValid(bonusTable) || string.IsNullOrEmpty(roleName)) return false;
             return bonusTable.GetBonusStartRole(pendingBonus) == roleName;
         }
 
@@ -1222,6 +1249,13 @@ namespace AX.UdonSlot.REV1_0
             NotifySubBoard(nameof(SubBoard.BonusStart), bonusTable.GetBonusName(bonus));
         }
 
+        /// <summary>MB作動中でも成立できる役物（RB・SB）か。</summary>
+        private bool IsMiddleBreakingBonus(int bonus)
+        {
+            BonusKind kind = bonusTable.GetBonusKind(bonus);
+            return kind == BonusKind.RB || kind == BonusKind.SB;
+        }
+
         private void CountBonusGame(string[] winningNames, int payout)
         {
             bool isWin = CountWinningRoles(winningNames) > 0;
@@ -1235,9 +1269,15 @@ namespace AX.UdonSlot.REV1_0
                 if (isWin) childWinCount++;
             }
 
-            if (IsBonusFinished(activeBonus, bonusPayoutCount, bonusGameCount, bonusWinCount))
+            // MB作動中にRB・SBが成立した遊技でも、MBを終える。成立した役物は成立中のまま残る。
+            if (pendingBonus >= 0 || IsBonusFinished(activeBonus, bonusPayoutCount, bonusGameCount, bonusWinCount))
             {
                 EndBonus();
+                if (pendingBonus >= 0)
+                {
+                    int wonState = bonusTable.GetBonusWonState(pendingBonus);
+                    if (wonState >= 0) EnterState(wonState, false);
+                }
                 return;
             }
 

@@ -154,6 +154,7 @@ namespace AX.UdonSlot.REV1_0.Editor.ReelRule
                     b.EndWins = 0;
                     break;
             }
+            if (b.Kind == BonusKind.CB && b.QuickReels == 0) b.QuickReels = 1;
         }
 
         // ------------------------------------------------------------ 中央: 役物の設定
@@ -248,6 +249,21 @@ namespace AX.UdonSlot.REV1_0.Editor.ReelRule
                 int at = Math.Max(0, values.IndexOf(b.Child));
                 int next = EditorGUILayout.Popup("連続作動", at, labels.ToArray());
                 if (next != at) { b.Child = values[next]; changed = true; }
+            }
+
+            if (b.Kind == BonusKind.CB)
+            {
+                using (new EditorGUILayout.HorizontalScope())
+                {
+                    EditorGUILayout.PrefixLabel("すぐ止まるリール");
+                    for (int reel = 0; reel < 3; reel++)
+                    {
+                        bool on = (b.QuickReels & (1 << reel)) != 0;
+                        bool next = GUILayout.Toggle(on, ReelRuleEngine.ReelNames[reel], EditorStyles.miniButton, GUILayout.Width(32));
+                        if (next != on) { b.QuickReels ^= 1 << reel; changed = true; }
+                    }
+                    GUILayout.FlexibleSpace();
+                }
             }
 
             changed |= StatePopup("成立時のRT", ref b.WonState, model, "なし");
