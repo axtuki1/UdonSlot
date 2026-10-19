@@ -1374,6 +1374,68 @@ namespace AX.UdonSlot.REV1_0
         }
 
         /// <summary>
+        /// レバーオン時のリール演出（フリーズなど）を、所有者の今のリール位置からのコマ数で再生する。
+        /// 全員へ配信し、終わるまで操作を止め、終わったらゲームを開始する。LeverOnLogicから呼び、falseを返す。
+        /// </summary>
+        /// <param name="durations">各区間の長さ(ms)。</param>
+        /// <param name="symbols">各区間の終わりに、元の位置から上方向へ何コマ動いているか。0で元の位置。durationsと同じ長さ。</param>
+        /// <returns>演出全体の長さ(ms)。入力が不正なら-1で、何もしない。</returns>
+        /// <example>
+        /// <code>
+        /// public override bool LeverOnLogic()
+        /// {
+        ///     if (reelOutputController.GetActiveBaseFlag() != "Cherry") return true;
+        ///     // 2秒保持 → 0.35秒で1コマ上へ → 1.5秒保持 → 0.35秒で元へ
+        ///     PlayReelSequence(new int[] { 2000, 350, 1500, 350 }, new float[] { 0, 1, 1, 0 });
+        ///     return false;
+        /// }
+        /// </code>
+        /// </example>
+        public int PlayReelSequence(int[] durations, float[] symbols)
+        {
+            return PlayReelSequenceEach(durations, symbols, symbols, symbols);
+        }
+
+        /// <summary>PlayReelSequenceのリール別版。左・中・右のコマ数を別々に指定する。</summary>
+        public int PlayReelSequenceEach(int[] durations, float[] left, float[] center, float[] right)
+        {
+            if (!IsOwner() || durations == null || left == null || center == null || right == null) return -1;
+            int sections = durations.Length;
+            if (sections == 0 || left.Length != sections || center.Length != sections || right.Length != sections) return -1;
+
+            // 角度は所有者の今の位置を基準にした絶対角で送る。受け取った側は各区間の開始角から動くので、
+            // それまでの各自の表示位置がずれていても同じ動きになる。
+            float oneAngle = GetOneSymbolAngle();
+            float[] baseAngles = new float[] { GetCurrentReelAngle(0), GetCurrentReelAngle(1), GetCurrentReelAngle(2) };
+            int[] startOffsets = new int[sections * 3];
+            int[] endOffsets = new int[sections * 3];
+            float[] startAngles = new float[sections * 3];
+            float[] goalAngles = new float[sections * 3];
+            float[] previous = new float[3];
+            int totalTime = 0;
+            for (int section = 0; section < sections; section++)
+            {
+                int duration = Mathf.Max(0, durations[section]);
+                for (int reel = 0; reel < 3; reel++)
+                {
+                    float goal = reel == 0 ? left[section] : (reel == 1 ? center[section] : right[section]);
+                    int index = section * 3 + reel;
+                    startOffsets[index] = totalTime;
+                    endOffsets[index] = totalTime + duration;
+                    startAngles[index] = baseAngles[reel] - oneAngle * previous[reel];
+                    goalAngles[index] = baseAngles[reel] - oneAngle * goal;
+                    previous[reel] = goal;
+                }
+                totalTime += duration;
+            }
+            SendCustomNetworkEvent(NetworkEventTarget.All, nameof(scheduleRollSequence),
+                Networking.GetServerTimeInMilliseconds(), startOffsets, endOffsets, startAngles, goalAngles);
+            OffControllable(totalTime / 1000f);
+            SendCustomEventDelayedSeconds(nameof(RequestGameStart), totalTime / 1000f);
+            return totalTime;
+        }
+
+        /// <summary>
         /// 複数区間の角度指定予約を一括追加する。方向はscheduleRollWithGoalと同じ最短経路。
         /// ローカル動作のため、全員へ反映する場合はSendCustomNetworkEvent(NetworkEventTarget.All,
         /// nameof(scheduleRollSequence), baseTime, startOffsets, endOffsets, startAngles, goalAngles)で一度だけ呼ぶ。
