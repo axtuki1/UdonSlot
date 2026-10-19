@@ -32,11 +32,11 @@ namespace AX.UdonSlot.REV1_0.Editor.ReelRule
                 Section(title, body, "BB（ビッグボーナス）",
                     "作動中はRBを連続で作動させる大きいボーナス。払出が規定枚数を超えたら終了（" + gen + "は " +
                     RegulationLimits.BigPayout(regulation) + " 枚以下で設定）。「連続作動」にRBを選ぶ。",
-                    "ジャグラーシリーズ・ハナハナシリーズのBIG");
+                    "6号機Aタイプの多くのBIG");
                 Section(title, body, "RB（レギュラーボーナス）",
                     "作動中は作動中の抽選表で小役が揃いやすくなる。" + RegulationLimits.RegularGames + " 遊技か " +
                     RegulationLimits.RegularWins + " 回入賞で終了。単独でも、BBの中身としても使う。",
-                    "ジャグラーシリーズ・ハナハナシリーズのREG");
+                    "6号機のドンちゃん2・ライトニング・新ハナビのREG");
                 Section(title, body, "MB（ミドルボーナス）",
                     "作動中はCBを連続で作動させる、BBより小さいボーナス。払出が規定枚数を超えたら終了（" + gen + "は " +
                     RegulationLimits.MiddlePayout(regulation) + " 枚以下で設定）。「連続作動」にCBを選ぶ。",
@@ -50,7 +50,8 @@ namespace AX.UdonSlot.REV1_0.Editor.ReelRule
 
                 GUILayout.Space(6);
                 GUILayout.Label("よくある組み合わせ", title);
-                GUILayout.Label("・Aタイプ（ジャグラーのような機種）: BB（連続作動: RB）＋ RB", body);
+                GUILayout.Label("・Aタイプ: BB（連続作動: RB）＋ RB", body);
+                GUILayout.Label("・REGを払出の少ないBBで作る機種もある（例: 6号機のCCエンジェル）。配列の揃い目が少ないときに選べる。", body);
                 GUILayout.Label("・ボーナスを1種類だけにする: RB だけ", body);
                 GUILayout.Label("・6号機のAT機の「疑似ボーナス」（例: スマスロ北斗の拳のBB）は役物ではない。役物を使わず、RT（状態）と押し順ベルで作る。", body);
 
