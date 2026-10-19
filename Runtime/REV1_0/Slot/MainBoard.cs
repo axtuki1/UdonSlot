@@ -1374,8 +1374,10 @@ namespace AX.UdonSlot.REV1_0
         }
 
         /// <summary>
-        /// レバーオン時のリール演出（フリーズなど）を、所有者の今のリール位置からのコマ数で再生する。
-        /// 全員へ配信し、終わるまで操作を止め、終わったらゲームを開始する。LeverOnLogicから呼び、falseを返す。
+        /// リール演出（フリーズなど）を、所有者の今のリール位置からのコマ数で再生する。
+        /// 全員へ配信し、終わるまで操作を止める。
+        /// レバーオン時（LeverOnLogicから呼んでfalseを返す）は、終わったらゲームを開始する。
+        /// 回転中（PushStopButtonLogicから呼んでfalseを返す）は、終わると回転に戻る。
         /// </summary>
         /// <param name="durations">各区間の長さ(ms)。</param>
         /// <param name="symbols">各区間の終わりに、元の位置から上方向へ何コマ動いているか。0で元の位置。durationsと同じ長さ。</param>
@@ -1404,7 +1406,7 @@ namespace AX.UdonSlot.REV1_0
             if (sections == 0 || left.Length != sections || center.Length != sections || right.Length != sections) return -1;
 
             // 角度は所有者の今の位置を基準にした絶対角で送る。受け取った側は各区間の開始角から動くので、
-            // それまでの各自の表示位置がずれていても同じ動きになる。
+            // それまでの各自の表示位置がずれていても（回転中に割り込んでも）同じ動きになる。
             float oneAngle = GetOneSymbolAngle();
             float[] baseAngles = new float[] { GetCurrentReelAngle(0), GetCurrentReelAngle(1), GetCurrentReelAngle(2) };
             int[] startOffsets = new int[sections * 3];
@@ -1431,7 +1433,7 @@ namespace AX.UdonSlot.REV1_0
             SendCustomNetworkEvent(NetworkEventTarget.All, nameof(scheduleRollSequence),
                 Networking.GetServerTimeInMilliseconds(), startOffsets, endOffsets, startAngles, goalAngles);
             OffControllable(totalTime / 1000f);
-            SendCustomEventDelayedSeconds(nameof(RequestGameStart), totalTime / 1000f);
+            if (!isGaming) SendCustomEventDelayedSeconds(nameof(RequestGameStart), totalTime / 1000f);
             return totalTime;
         }
 
