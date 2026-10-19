@@ -475,6 +475,34 @@ namespace AX.UdonSlot.REV1_0
             if (!IsSubBoardOwner()) Networking.SetOwner(Networking.LocalPlayer, gameObject);
         }
 
+        /// <summary>ボーナスが成立したことを通知する（レバーオン時）。</summary>
+        [NetworkCallable]
+        public void BonusWon(string bonusName)
+        {
+            BonusWonLogic(bonusName);
+        }
+
+        /// <summary>機種固有のボーナス成立演出（告知ランプなど）を実装する拡張ポイント。引数は役物の内部名。</summary>
+        public virtual void BonusWonLogic(string bonusName) { }
+
+        /// <summary>BB・MB中に連続作動の役物（JACゲームなど）が作動したことを通知する。</summary>
+        [NetworkCallable]
+        public void ChildBonusStart(string bonusName)
+        {
+            ChildBonusStartLogic(bonusName);
+        }
+
+        public virtual void ChildBonusStartLogic(string bonusName) { }
+
+        /// <summary>連続作動の役物が終わったことを通知する。</summary>
+        [NetworkCallable]
+        public void ChildBonusEnd(string bonusName)
+        {
+            ChildBonusEndLogic(bonusName);
+        }
+
+        public virtual void ChildBonusEndLogic(string bonusName) { }
+
         /// <summary>ボーナスが作動したことを通知する。</summary>
         [NetworkCallable]
         public void BonusStart(string bonusName)

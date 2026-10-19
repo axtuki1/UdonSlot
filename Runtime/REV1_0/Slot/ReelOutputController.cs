@@ -1208,6 +1208,7 @@ namespace AX.UdonSlot.REV1_0
                 // この遊技はMB中なので、成立した役物は揃えない（元のフラグとして止める）。
                 pendingBonus = bonus;
                 activeFlag = drawnLotteryTable.GetEntryBaseFlag(activeFlag);
+                NotifySubBoard(nameof(SubBoard.BonusWon), bonusName);
                 return;
             }
             // 手動JACイン: BB・MB中に連続作動の役物が成立したら、作動役が揃うまで成立中にする。
@@ -1215,6 +1216,7 @@ namespace AX.UdonSlot.REV1_0
                 bonusTable.IsBonusManualChild(activeBonus) && bonusTable.GetBonusChild(activeBonus) == bonus)
             {
                 pendingBonus = bonus;
+                NotifySubBoard(nameof(SubBoard.BonusWon), bonusName);
                 return;
             }
             if (bonus < 0 || pendingBonus >= 0 || activeBonus >= 0)
@@ -1224,6 +1226,7 @@ namespace AX.UdonSlot.REV1_0
             }
 
             pendingBonus = bonus;
+            NotifySubBoard(nameof(SubBoard.BonusWon), bonusName);
             int wonState = bonusTable.GetBonusWonState(bonus);
             if (wonState >= 0) EnterState(wonState, false);
         }
@@ -1282,6 +1285,7 @@ namespace AX.UdonSlot.REV1_0
             stateGameCount = 0;
             isStateEnteredBySymbol = false;
             NotifySubBoard(nameof(SubBoard.BonusStart), bonusTable.GetBonusName(bonus));
+            if (activeChildBonus >= 0) NotifySubBoard(nameof(SubBoard.ChildBonusStart), bonusTable.GetBonusName(activeChildBonus));
         }
 
         private bool IsSecondKindBonus(int bonus)
@@ -1332,6 +1336,7 @@ namespace AX.UdonSlot.REV1_0
                     activeChildBonus = pendingBonus;
                     pendingBonus = -1;
                     ResetChildCount();
+                    NotifySubBoard(nameof(SubBoard.ChildBonusStart), bonusTable.GetBonusName(activeChildBonus));
                 }
                 return;
             }
@@ -1340,7 +1345,10 @@ namespace AX.UdonSlot.REV1_0
             if (activeChildBonus >= 0 &&
                 IsBonusFinished(activeChildBonus, childPayoutCount, childGameCount, childWinCount))
             {
+                string childName = bonusTable.GetBonusName(activeChildBonus);
+                NotifySubBoard(nameof(SubBoard.ChildBonusEnd), childName);
                 if (bonusTable.IsBonusManualChild(activeBonus)) activeChildBonus = -1;
+                else NotifySubBoard(nameof(SubBoard.ChildBonusStart), childName);
                 ResetChildCount();
             }
         }
@@ -1360,6 +1368,7 @@ namespace AX.UdonSlot.REV1_0
         {
             string bonusName = bonusTable.GetBonusName(activeBonus);
             int endState = bonusTable.GetBonusEndState(activeBonus);
+            if (activeChildBonus >= 0) NotifySubBoard(nameof(SubBoard.ChildBonusEnd), bonusTable.GetBonusName(activeChildBonus));
             activeBonus = -1;
             activeChildBonus = -1;
             bonusPayoutCount = 0;
@@ -1470,6 +1479,7 @@ namespace AX.UdonSlot.REV1_0
             SetOwner();
             pendingBonus = bonus;
             RequestSerialization();
+            NotifySubBoard(nameof(SubBoard.BonusWon), bonusName);
         }
 
         /// <summary>デバッグ用: 成立中のボーナスを取り消す。</summary>

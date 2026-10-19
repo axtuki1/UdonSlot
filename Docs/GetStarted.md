@@ -49,7 +49,7 @@ using AX.UdonSlot.REV1_0;
 
 機種エディタの⑤ボーナス・RTで「ボーナス・RT表を作成」を押すと、`BonusTable` が作られ機種に設定されます。役物（BB・RBなど）と作動役、終了条件、RTを登録し、③抽選表でフラグの下にボーナス付きの行（例 `Cherry_RedBB`）を追加すると、そのフラグと同時にボーナスが成立します。
 
-成立・作動・RTの管理は基底の `ReelOutputController` が行うので、機種側のコードは不要です。演出は `SubBoard` の `BonusStartLogic`・`BonusEndLogic`・`StateChangeLogic` に書きます。
+成立・作動・RTの管理は基底の `ReelOutputController` が行うので、機種側のコードは不要です。演出は `SubBoard` の `BonusWonLogic`・`BonusStartLogic`・`BonusEndLogic`・`ChildBonusStartLogic`・`ChildBonusEndLogic`・`StateChangeLogic` に書きます。
 
 ## 5. 機種用クラスを作る
 
