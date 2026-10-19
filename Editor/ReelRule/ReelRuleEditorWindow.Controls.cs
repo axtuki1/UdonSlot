@@ -113,11 +113,12 @@ namespace AX.UdonSlot.REV1_0.Editor.ReelRule
                 if (Design.FindCell(flag, "") == null) missing = true;
                 foreach (string bonus in bonuses) if (Design.FindCell(flag, bonus) == null && !SkipCell(flag, bonus)) missing = true;
             }
-            // 消した（または作動役を外した）ボーナスのマスは表に出ないので消す。
+            // 消したフラグ・ボーナス（作動役を外したものも）のマスは表に出ないので消す。
             var orphans = new List<string>();
-            if (MachineBonusTable != null)
-                foreach (var c in Design.controls)
-                    if (c.IsCell && !string.IsNullOrEmpty(c.bonus) && !bonuses.Contains(c.bonus)) orphans.Add(c.name);
+            bool hasBonusTable = MachineBonusTable != null;
+            foreach (var c in Design.controls)
+                if (c.IsCell && (flags.Count > 0 && !flags.Contains(c.flag) || hasBonusTable && !string.IsNullOrEmpty(c.bonus) && !bonuses.Contains(c.bonus)))
+                    orphans.Add(c.name);
             if (!legacy && !missing && orphans.Count == 0) return;
             Edit("割り当て表の作成", delegate
             {

@@ -168,6 +168,7 @@ namespace AX.UdonSlot.REV1_0.Editor.ReelRule
                 Restart(null, null);
                 return;
             }
+            PrepareCells();
             string json = JsonUtility.ToJson(Design);
             string signature = ReelMachineReader.Signature(machine) + "\n" + json;
             if (signature == requested) return;
