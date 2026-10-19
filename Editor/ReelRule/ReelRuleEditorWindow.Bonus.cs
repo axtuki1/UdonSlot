@@ -176,7 +176,14 @@ namespace AX.UdonSlot.REV1_0.Editor.ReelRule
                 b.Name = renamed;
                 changed = true;
             }
-            int kind = EditorGUILayout.Popup("種別", (int)b.Kind, BonusKindNames);
+            int kind;
+            using (new EditorGUILayout.HorizontalScope())
+            {
+                kind = EditorGUILayout.Popup("種別", (int)b.Kind, BonusKindNames);
+                var help = GUILayoutUtility.GetRect(new GUIContent("?"), EditorStyles.miniButton, GUILayout.Width(20));
+                if (GUI.Button(help, "?", EditorStyles.miniButton))
+                    PopupWindow.Show(help, new BonusKindHelpPopup(asset != null ? Design.regulation : Regulation.Gen6));
+            }
             if (kind != (int)b.Kind)
             {
                 b.Kind = (BonusKind)kind;
