@@ -245,17 +245,17 @@ namespace AX.UdonSlot.REV1_0.Editor.ReelRule
 
             if (b.Kind == BonusKind.BB || b.Kind == BonusKind.MB)
             {
-                // BBはRB、MBはCBを連続作動させる（規則）。
+                // BBはRB、MBはCBを連続作動させる（規則）。なしは終了条件だけで動く簡易版。
                 var childKind = b.Kind == BonusKind.BB ? BonusKind.RB : BonusKind.CB;
-                var labels = new List<string>();
-                var values = new List<int>();
-                if (b.Child < 0) { labels.Add("—"); values.Add(-1); }
+                var labels = new List<string> { "なし" };
+                var values = new List<int> { -1 };
                 for (int i = 0; i < model.Bonuses.Count; i++)
                     if (i != index && (model.Bonuses[i].Kind == childKind || i == b.Child)) { labels.Add(model.Bonuses[i].Label); values.Add(i); }
                 int at = Math.Max(0, values.IndexOf(b.Child));
                 int next = EditorGUILayout.Popup("連続作動", at, labels.ToArray());
                 if (next != at) { b.Child = values[next]; changed = true; }
-                using (new EditorGUILayout.HorizontalScope())
+                if (b.Child >= 0)
+                    using (new EditorGUILayout.HorizontalScope())
                     {
                         EditorGUILayout.PrefixLabel("JACイン");
                         int manual = GUILayout.Toolbar(b.ManualChild ? 1 : 0, JacInNames, GUILayout.Width(96));

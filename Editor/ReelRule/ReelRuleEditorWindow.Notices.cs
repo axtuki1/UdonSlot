@@ -37,8 +37,6 @@ namespace AX.UdonSlot.REV1_0.Editor.ReelRule
                     if (over != null) list.Add(new Notice { Warning = true, Text = b.Label + ": " + over, Screen = 4 });
                     if ((b.Kind == BonusKind.MB || b.Kind == BonusKind.CB) && b.Lottery != null && b.Lottery != NormalLottery(model))
                         list.Add(new Notice { Warning = true, Text = b.Label + ": 作動中の抽選表が通常時と違います", Screen = 4 });
-                    if ((b.Kind == BonusKind.BB || b.Kind == BonusKind.MB) && b.Child < 0)
-                        list.Add(new Notice { Warning = true, Text = b.Label + ": 連続作動の役物がありません", Screen = 4 });
                     if (b.ManualChild && b.Child >= 0 && b.Child < model.Bonuses.Count)
                     {
                         var child = model.Bonuses[b.Child];
