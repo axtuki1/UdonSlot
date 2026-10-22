@@ -74,7 +74,7 @@ namespace AX.UdonSlot.REV1_0.Editor.ReelRule
             Build(model, o.FlowPayoutTable, out nodes, out edges);
             if (positions.Count == 0) LoadPositions();
             bool placed = false;
-            foreach (var n in nodes) if (!positions.ContainsKey(n.Key)) { AutoLayout(nodes, edges); placed = true; break; }
+            foreach (var n in nodes) if (!positions.ContainsKey(n.Key)) { PlaceMissing(nodes, edges); placed = true; break; }
 
             DrawToolbar(nodes, edges);
             var area = new Rect(0, 22, position.width, position.height - 22);
@@ -123,7 +123,7 @@ namespace AX.UdonSlot.REV1_0.Editor.ReelRule
                 {
                     Key = "s:" + state.Name,
                     Label = state.Label,
-                    Sub = s == 0 ? "基底" : state.GameLimit > 0 ? state.GameLimit + "G" : "",
+                    Sub = state.GameLimit > 0 ? state.GameLimit + "G" : "",
                     Back = s == 0 ? new Color(0.18f, 0.30f, 0.45f) : stateBack,
                     Text = stateText
                 });
@@ -164,6 +164,12 @@ namespace AX.UdonSlot.REV1_0.Editor.ReelRule
             for (int s = 1; s < model.States.Count; s++)
                 if (model.States[s].GameLimit > 0)
                     edges.Add(new Edge { From = "s:" + model.States[s].Name, To = "s:" + model.States[0].Name, Label = model.States[s].GameLimit + "G", Color = gameColor });
+            if (model.States.Count > 0)
+            {
+                // 入口: リセットや設定変更のあとは状態0から始まる。
+                nodes.Insert(0, new Node { Key = "start", Label = "リセット・設定変更", Sub = "", Back = new Color(0.2f, 0.2f, 0.2f), Text = new Color(0.6f, 0.6f, 0.6f) });
+                edges.Add(new Edge { From = "start", To = "s:" + model.States[0].Name, Label = "", Color = new Color(0.6f, 0.6f, 0.6f) });
+            }
             if (any)
                 nodes.Insert(0, new Node { Key = "any", Label = "すべて", Sub = "", Back = new Color(0.2f, 0.2f, 0.2f), Text = new Color(0.6f, 0.6f, 0.6f) });
         }
@@ -298,6 +304,7 @@ namespace AX.UdonSlot.REV1_0.Editor.ReelRule
                 Handles.EndGUI();
 
                 var style = Style(10, dim ? FontStyle.Normal : FontStyle.Bold, color);
+                if (string.IsNullOrEmpty(e.Label)) continue;
                 var content = new GUIContent(e.Label);
                 var size = style.CalcSize(content);
                 // ラベルは線の中ほどに置き、ほかのラベルと重なるなら線に沿ってずらす。
@@ -446,6 +453,8 @@ namespace AX.UdonSlot.REV1_0.Editor.ReelRule
                 if (n.Key.StartsWith("s:")) positions[n.Key] = new Vector2(column++ * (NodeW + 70), 0);
             foreach (var n in nodes)
                 if (n.Key == "any") positions[n.Key] = new Vector2(column++ * (NodeW + 70), 0);
+            foreach (var n in nodes)
+                if (n.Key == "start") positions[n.Key] = new Vector2(0, -130);
 
             var bonusNodes = new List<Node>();
             var order = new Dictionary<string, float>();
@@ -466,6 +475,29 @@ namespace AX.UdonSlot.REV1_0.Editor.ReelRule
                 positions[n.Key] = new Vector2(x, 170);
                 next = x + NodeW + 40;
             }
+        }
+
+        /// <summary>配置のないノードだけ自動配置の位置に置く（動かしたノードはそのまま）。</summary>
+        private void PlaceMissing(List<Node> nodes, List<Edge> edges)
+        {
+            if (positions.Count == 0) { AutoLayout(nodes, edges); return; }
+            var kept = new Dictionary<string, Vector2>(positions);
+            AutoLayout(nodes, edges);
+            var auto = new Dictionary<string, Vector2>(positions);
+            positions.Clear();
+            foreach (var n in nodes)
+            {
+                Vector2 p;
+                if (kept.TryGetValue(n.Key, out p)) positions[n.Key] = p;
+                else if (n.Key == "start" && nodes.Count > 1 && kept.ContainsKey(FirstStateKey(nodes))) positions[n.Key] = kept[FirstStateKey(nodes)] + new Vector2(0, -130);
+                else positions[n.Key] = auto[n.Key];
+            }
+        }
+
+        private static string FirstStateKey(List<Node> nodes)
+        {
+            foreach (var n in nodes) if (n.Key.StartsWith("s:")) return n.Key;
+            return "";
         }
 
         private void LoadPositions()
