@@ -288,8 +288,8 @@ namespace AX.UdonSlot.REV1_0.Editor.ReelRule
             foreach (var e in drawOrder)
             {
                 bool dim = selected != null && !IsHighlighted(e);
-                var color = dim ? new Color(e.Color.r, e.Color.g, e.Color.b, 0.18f) : e.Color;
-                float width = selected != null && !dim ? 3.5f : 2f;
+                var color = dim ? new Color(e.Color.r, e.Color.g, e.Color.b, 0.45f) : e.Color;
+                float width = selected != null && !dim ? 4f : 2.5f;
                 Vector2 start = ports[PortKey(e, true)], end = ports[PortKey(e, false)];
                 Vector2 startDir = fromBottom[e] ? Vector2.up : Vector2.down;   // GUI座標は下が+y
                 Vector2 endDir = toTop[e] ? Vector2.down : Vector2.up;           // 終点の辺の外向き
