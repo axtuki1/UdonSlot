@@ -15,6 +15,8 @@ namespace AX.UdonSlot.REV1_0.Editor.ReelRule
         private string dragging;
         private Vector2 dragOffset;
         private bool panning;
+        private string selected;
+        private bool clickedEmpty;
         private readonly Dictionary<string, Vector2> positions = new Dictionary<string, Vector2>();
 
         private sealed class Node
@@ -111,8 +113,7 @@ namespace AX.UdonSlot.REV1_0.Editor.ReelRule
             var stateText = new Color(0.88f, 0.88f, 0.88f);
             var symbolColor = new Color(0.45f, 0.75f, 0.52f);
             var gameColor = new Color(0.94f, 0.77f, 0.42f);
-            var bonusColor = new Color(0.96f, 0.55f, 0.62f);
-            var endColor = new Color(0.65f, 0.65f, 0.65f);
+            int bonusNumber = 0;
             bool any = false;
 
             for (int s = 0; s < model.States.Count; s++)
@@ -140,6 +141,9 @@ namespace AX.UdonSlot.REV1_0.Editor.ReelRule
                     Back = big ? new Color(0.36f, 0.12f, 0.16f) : new Color(0.12f, 0.23f, 0.36f),
                     Text = big ? new Color(0.96f, 0.65f, 0.71f) : new Color(0.65f, 0.80f, 0.96f)
                 });
+                // ボーナスごとに色を変え、成立と終了の線は同じ色相にする（終了は暗め）。
+                var bonusColor = BonusColors[bonusNumber++ % BonusColors.Length];
+                var endColor = Color.Lerp(bonusColor, new Color(0.45f, 0.45f, 0.45f), 0.55f);
                 string from = bonus.WonState >= 0 && bonus.WonState < model.States.Count ? "s:" + model.States[bonus.WonState].Name : "any";
                 if (from == "any") any = true;
                 else edges.Add(new Edge { From = "any", To = from, Label = "成立 " + bonus.Label, Color = bonusColor });
@@ -163,6 +167,16 @@ namespace AX.UdonSlot.REV1_0.Editor.ReelRule
             if (any)
                 nodes.Insert(0, new Node { Key = "any", Label = "すべて", Sub = "", Back = new Color(0.2f, 0.2f, 0.2f), Text = new Color(0.6f, 0.6f, 0.6f) });
         }
+
+        private static readonly Color[] BonusColors =
+        {
+            new Color(0.95f, 0.55f, 0.63f),
+            new Color(0.50f, 0.72f, 0.95f),
+            new Color(0.73f, 0.60f, 0.95f),
+            new Color(0.42f, 0.81f, 0.77f),
+            new Color(0.88f, 0.48f, 0.80f),
+            new Color(0.95f, 0.62f, 0.45f),
+        };
 
         private static string Role(PayoutTable payout, string role)
         {
@@ -203,6 +217,14 @@ namespace AX.UdonSlot.REV1_0.Editor.ReelRule
             EditorGUI.DrawRect(new Rect(rect.x, rect.yMax - 1, rect.width, 1), border);
             EditorGUI.DrawRect(new Rect(rect.x, rect.y, 1, rect.height), border);
             EditorGUI.DrawRect(new Rect(rect.xMax - 1, rect.y, 1, rect.height), border);
+            if (n.Key == selected)
+            {
+                var mark = new Color(0.95f, 0.95f, 0.95f);
+                EditorGUI.DrawRect(new Rect(rect.x - 2, rect.y - 2, rect.width + 4, 2), mark);
+                EditorGUI.DrawRect(new Rect(rect.x - 2, rect.yMax, rect.width + 4, 2), mark);
+                EditorGUI.DrawRect(new Rect(rect.x - 2, rect.y, 2, rect.height), mark);
+                EditorGUI.DrawRect(new Rect(rect.xMax, rect.y, 2, rect.height), mark);
+            }
             if (string.IsNullOrEmpty(n.Sub))
             {
                 GUI.Label(rect, n.Label, Style(12, FontStyle.Bold, n.Text));
@@ -252,23 +274,30 @@ namespace AX.UdonSlot.REV1_0.Editor.ReelRule
                 }
             }
 
+            // 選択中の箱につながる線を強調し、ほかは薄くする。強調する線は後から描いて上に重ねる。
+            var drawOrder = new List<Edge>();
+            foreach (var e in visible) if (!IsHighlighted(e)) drawOrder.Add(e);
+            foreach (var e in visible) if (IsHighlighted(e)) drawOrder.Add(e);
             var labels = new List<KeyValuePair<Rect, KeyValuePair<GUIContent, GUIStyle>>>();
-            foreach (var e in visible)
+            foreach (var e in drawOrder)
             {
+                bool dim = selected != null && !IsHighlighted(e);
+                var color = dim ? new Color(e.Color.r, e.Color.g, e.Color.b, 0.18f) : e.Color;
+                float width = selected != null && !dim ? 3.5f : 2f;
                 Vector2 start = ports[PortKey(e, true)], end = ports[PortKey(e, false)];
                 Vector2 startDir = fromBottom[e] ? Vector2.up : Vector2.down;   // GUI座標は下が+y
                 Vector2 endDir = toTop[e] ? Vector2.down : Vector2.up;           // 終点の辺の外向き
                 float reach = Mathf.Max(40 * zoom, Mathf.Abs(end.y - start.y) * 0.5f);
                 Vector2 c1 = start + startDir * reach, c2 = end + endDir * reach;
                 Handles.BeginGUI();
-                Handles.DrawBezier(start, end, c1, c2, e.Color, null, 2f);
-                Handles.color = e.Color;
+                Handles.DrawBezier(start, end, c1, c2, color, null, width);
+                Handles.color = color;
                 Vector2 into = -endDir;
                 Vector2 side = new Vector2(-into.y, into.x);
                 Handles.DrawAAConvexPolygon(end, end - into * 10 * zoom + side * 5 * zoom, end - into * 10 * zoom - side * 5 * zoom);
                 Handles.EndGUI();
 
-                var style = Style(10, FontStyle.Normal, e.Color);
+                var style = Style(10, dim ? FontStyle.Normal : FontStyle.Bold, color);
                 var content = new GUIContent(e.Label);
                 var size = style.CalcSize(content);
                 // ラベルは線の中ほどに置き、ほかのラベルと重なるなら線に沿ってずらす。
@@ -286,9 +315,14 @@ namespace AX.UdonSlot.REV1_0.Editor.ReelRule
             // 線の上にラベルを描く。
             foreach (var label in labels)
             {
-                EditorGUI.DrawRect(label.Key, new Color(0.13f, 0.13f, 0.13f, 0.9f));
+                EditorGUI.DrawRect(label.Key, new Color(0.13f, 0.13f, 0.13f, label.Value.Value.normal.textColor.a < 1 ? 0.5f : 0.9f));
                 GUI.Label(label.Key, label.Value.Key, label.Value.Value);
             }
+        }
+
+        private bool IsHighlighted(Edge e)
+        {
+            return selected != null && (e.From == selected || e.To == selected);
         }
 
         private static readonly float[] LabelPositions = { 0.5f, 0.35f, 0.65f, 0.25f, 0.75f, 0.15f, 0.85f };
@@ -331,6 +365,7 @@ namespace AX.UdonSlot.REV1_0.Editor.ReelRule
                             var rect = NodeRect(nodes[i].Key);
                             if (!rect.Contains(e.mousePosition)) continue;
                             dragging = nodes[i].Key;
+                            selected = nodes[i].Key;
                             dragOffset = e.mousePosition - rect.position;
                             e.Use();
                             return;
@@ -339,6 +374,7 @@ namespace AX.UdonSlot.REV1_0.Editor.ReelRule
                     if (e.button == 2 || e.button == 0)
                     {
                         panning = true;
+                        clickedEmpty = e.button == 0;
                         e.Use();
                     }
                     break;
@@ -351,12 +387,15 @@ namespace AX.UdonSlot.REV1_0.Editor.ReelRule
                     }
                     else if (panning)
                     {
+                        clickedEmpty = false;
                         pan += e.delta;
                         e.Use();
                     }
                     break;
                 case EventType.MouseUp:
                     if (dragging != null) SavePositions();
+                    if (clickedEmpty) selected = null;
+                    clickedEmpty = false;
                     dragging = null;
                     panning = false;
                     break;
