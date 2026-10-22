@@ -72,26 +72,26 @@ namespace AX.UdonSlot.REV1_0.Editor.ReelRule
             Build(model, o.FlowPayoutTable, out nodes, out edges);
             if (positions.Count == 0) LoadPositions();
             bool placed = false;
-            foreach (var n in nodes) if (!positions.ContainsKey(n.Key)) { AutoLayout(nodes); placed = true; break; }
+            foreach (var n in nodes) if (!positions.ContainsKey(n.Key)) { AutoLayout(nodes, edges); placed = true; break; }
 
-            DrawToolbar(nodes);
+            DrawToolbar(nodes, edges);
             var area = new Rect(0, 22, position.width, position.height - 22);
             EditorGUI.DrawRect(area, new Color(0.16f, 0.16f, 0.16f));
             GUI.BeginClip(area);
             var local = new Rect(0, 0, area.width, area.height);
             DrawGrid(local);
-            foreach (var e in edges) DrawEdge(e, edges);
+            DrawEdges(edges);
             foreach (var n in nodes) DrawNode(n);
             HandleInput(local, nodes);
             GUI.EndClip();
             if (placed) SavePositions();
         }
 
-        private void DrawToolbar(List<Node> nodes)
+        private void DrawToolbar(List<Node> nodes, List<Edge> edges)
         {
             using (new EditorGUILayout.HorizontalScope(EditorStyles.toolbar))
             {
-                if (GUILayout.Button("自動配置", EditorStyles.toolbarButton, GUILayout.Width(64))) { AutoLayout(nodes); SavePositions(); }
+                if (GUILayout.Button("自動配置", EditorStyles.toolbarButton, GUILayout.Width(64))) { AutoLayout(nodes, edges); SavePositions(); Fit(nodes); }
                 if (GUILayout.Button("全体表示", EditorStyles.toolbarButton, GUILayout.Width(64))) Fit(nodes);
                 GUILayout.Space(8);
                 if (GUILayout.Button("−", EditorStyles.toolbarButton, GUILayout.Width(22))) ZoomAt(new Vector2(position.width / 2, (position.height - 22) / 2), zoom / 1.2f);
@@ -212,55 +212,108 @@ namespace AX.UdonSlot.REV1_0.Editor.ReelRule
             GUI.Label(new Rect(rect.x, rect.y + rect.height * 0.55f, rect.width, rect.height * 0.4f), n.Sub, Style(10, FontStyle.Normal, new Color(n.Text.r, n.Text.g, n.Text.b, 0.7f)));
         }
 
-        private void DrawEdge(Edge e, List<Edge> all)
+        /// <summary>
+        /// 線は上下の辺から出入りさせ、同じ辺に付く線は相手のノードの左右の並びで辺に沿って振り分ける。
+        /// 下にあるノードへは下辺→上辺、上にあるノードへは上辺→下辺、同じ段どうしは上辺から弧で結ぶ。
+        /// </summary>
+        private void DrawEdges(List<Edge> all)
         {
-            if (!positions.ContainsKey(e.From) || !positions.ContainsKey(e.To)) return;
-            var a = NodeRect(e.From);
-            var b = NodeRect(e.To);
-            // 同じ2ノード間の線は少しずらす
-            int lane = 0, lanes = 0;
-            foreach (var other in all)
+            var visible = new List<Edge>();
+            foreach (var e in all) if (positions.ContainsKey(e.From) && positions.ContainsKey(e.To) && e.From != e.To) visible.Add(e);
+
+            // 辺ごとの接続点: key = ノード + 辺, value = (線, 始点側か)
+            var sides = new Dictionary<string, List<KeyValuePair<Edge, bool>>>();
+            var fromBottom = new Dictionary<Edge, bool>();
+            var toTop = new Dictionary<Edge, bool>();
+            foreach (var e in visible)
             {
-                if ((other.From == e.From && other.To == e.To) || (other.From == e.To && other.To == e.From))
+                var a = NodeRect(e.From);
+                var b = NodeRect(e.To);
+                float dy = b.center.y - a.center.y;
+                bool down = dy > a.height * 0.75f, up = dy < -a.height * 0.75f;
+                fromBottom[e] = down;
+                toTop[e] = !up;
+                AddPort(sides, e.From + (down ? "|b" : "|t"), e, true);
+                AddPort(sides, e.To + (up ? "|b" : "|t"), e, false);
+            }
+
+            var ports = new Dictionary<string, Vector2>();
+            foreach (var pair in sides)
+            {
+                string key = pair.Key.Substring(0, pair.Key.Length - 2);
+                bool bottom = pair.Key.EndsWith("|b");
+                var rect = NodeRect(key);
+                var list = pair.Value;
+                list.Sort((x, y) => OtherX(x).CompareTo(OtherX(y)));
+                for (int i = 0; i < list.Count; i++)
                 {
-                    if (other == e) lane = lanes;
-                    lanes++;
+                    float px = rect.x + rect.width * (i + 1) / (list.Count + 1);
+                    ports[PortKey(list[i].Key, list[i].Value)] = new Vector2(px, bottom ? rect.yMax : rect.y);
                 }
             }
-            Vector2 start = a.center, end = b.center;
-            Vector2 dir = (end - start).normalized;
-            Vector2 normal = new Vector2(-dir.y, dir.x);
-            float offset = (lane - (lanes - 1) / 2f) * 16 * zoom;
-            if (e.From.CompareTo(e.To) > 0) offset = -offset;
-            start = Edgepoint(a, end) + normal * offset;
-            end = Edgepoint(b, start) + normal * offset;
-            Handles.BeginGUI();
-            Handles.color = e.Color;
-            Handles.DrawAAPolyLine(2f, start, end);
-            Vector2 tip = end;
-            Vector2 left = tip - dir * 10 * zoom + normal * 5 * zoom;
-            Vector2 right = tip - dir * 10 * zoom - normal * 5 * zoom;
-            Handles.DrawAAConvexPolygon(tip, left, right);
-            Handles.EndGUI();
 
-            var style = Style(10, FontStyle.Normal, e.Color);
-            var content = new GUIContent(e.Label);
-            var size = style.CalcSize(content);
-            Vector2 mid = (start + end) / 2;
-            var labelRect = new Rect(mid.x - size.x / 2 - 3, mid.y - size.y / 2, size.x + 6, size.y);
-            EditorGUI.DrawRect(labelRect, new Color(0.13f, 0.13f, 0.13f, 0.9f));
-            GUI.Label(labelRect, content, style);
+            var labels = new List<KeyValuePair<Rect, KeyValuePair<GUIContent, GUIStyle>>>();
+            foreach (var e in visible)
+            {
+                Vector2 start = ports[PortKey(e, true)], end = ports[PortKey(e, false)];
+                Vector2 startDir = fromBottom[e] ? Vector2.up : Vector2.down;   // GUI座標は下が+y
+                Vector2 endDir = toTop[e] ? Vector2.down : Vector2.up;           // 終点の辺の外向き
+                float reach = Mathf.Max(40 * zoom, Mathf.Abs(end.y - start.y) * 0.5f);
+                Vector2 c1 = start + startDir * reach, c2 = end + endDir * reach;
+                Handles.BeginGUI();
+                Handles.DrawBezier(start, end, c1, c2, e.Color, null, 2f);
+                Handles.color = e.Color;
+                Vector2 into = -endDir;
+                Vector2 side = new Vector2(-into.y, into.x);
+                Handles.DrawAAConvexPolygon(end, end - into * 10 * zoom + side * 5 * zoom, end - into * 10 * zoom - side * 5 * zoom);
+                Handles.EndGUI();
+
+                var style = Style(10, FontStyle.Normal, e.Color);
+                var content = new GUIContent(e.Label);
+                var size = style.CalcSize(content);
+                // ラベルは線の中ほどに置き、ほかのラベルと重なるなら線に沿ってずらす。
+                Rect labelRect = default(Rect);
+                foreach (float t in LabelPositions)
+                {
+                    Vector2 p = Bezier(start, c1, c2, end, t);
+                    labelRect = new Rect(p.x - size.x / 2 - 3, p.y - size.y / 2, size.x + 6, size.y);
+                    bool hit = false;
+                    foreach (var other in labels) if (other.Key.Overlaps(labelRect)) { hit = true; break; }
+                    if (!hit) break;
+                }
+                labels.Add(new KeyValuePair<Rect, KeyValuePair<GUIContent, GUIStyle>>(labelRect, new KeyValuePair<GUIContent, GUIStyle>(content, style)));
+            }
+            // 線の上にラベルを描く。
+            foreach (var label in labels)
+            {
+                EditorGUI.DrawRect(label.Key, new Color(0.13f, 0.13f, 0.13f, 0.9f));
+                GUI.Label(label.Key, label.Value.Key, label.Value.Value);
+            }
         }
 
-        /// <summary>ノードの枠と、中心から target へ向かう線の交点。</summary>
-        private static Vector2 Edgepoint(Rect rect, Vector2 target)
+        private static readonly float[] LabelPositions = { 0.5f, 0.35f, 0.65f, 0.25f, 0.75f, 0.15f, 0.85f };
+
+        private static Vector2 Bezier(Vector2 a, Vector2 b, Vector2 c, Vector2 d, float t)
         {
-            Vector2 c = rect.center;
-            Vector2 d = target - c;
-            if (d.sqrMagnitude < 0.01f) return c;
-            float sx = d.x != 0 ? (rect.width / 2) / Mathf.Abs(d.x) : float.MaxValue;
-            float sy = d.y != 0 ? (rect.height / 2) / Mathf.Abs(d.y) : float.MaxValue;
-            return c + d * Mathf.Min(sx, sy);
+            float u = 1 - t;
+            return u * u * u * a + 3 * u * u * t * b + 3 * u * t * t * c + t * t * t * d;
+        }
+
+        private static void AddPort(Dictionary<string, List<KeyValuePair<Edge, bool>>> sides, string key, Edge e, bool isStart)
+        {
+            List<KeyValuePair<Edge, bool>> list;
+            if (!sides.TryGetValue(key, out list)) sides[key] = list = new List<KeyValuePair<Edge, bool>>();
+            list.Add(new KeyValuePair<Edge, bool>(e, isStart));
+        }
+
+        private float OtherX(KeyValuePair<Edge, bool> port)
+        {
+            return NodeRect(port.Value ? port.Key.To : port.Key.From).center.x;
+        }
+
+        private static string PortKey(Edge e, bool isStart)
+        {
+            return e.GetHashCode() + (isStart ? ">" : "<");
         }
 
         // ------------------------------------------------------------ 操作
@@ -343,15 +396,36 @@ namespace AX.UdonSlot.REV1_0.Editor.ReelRule
             Repaint();
         }
 
-        /// <summary>上段に「すべて」、中段に状態、下段に作動中のボーナス。</summary>
-        private void AutoLayout(List<Node> nodes)
+        /// <summary>
+        /// 上段に状態と「すべて」（右端）、下段に作動中のボーナス。
+        /// ボーナスは成立元のノードの真下あたりに並べ、線が交差しにくいようにする。
+        /// </summary>
+        private void AutoLayout(List<Node> nodes, List<Edge> edges)
         {
-            int states = 0, bonuses = 0;
+            int column = 0;
+            foreach (var n in nodes)
+                if (n.Key.StartsWith("s:")) positions[n.Key] = new Vector2(column++ * (NodeW + 70), 0);
+            foreach (var n in nodes)
+                if (n.Key == "any") positions[n.Key] = new Vector2(column++ * (NodeW + 70), 0);
+
+            var bonusNodes = new List<Node>();
+            var order = new Dictionary<string, float>();
             foreach (var n in nodes)
             {
-                if (n.Key == "any") positions[n.Key] = new Vector2(0, 0);
-                else if (n.Key.StartsWith("s:")) positions[n.Key] = new Vector2(states++ * (NodeW + 70), 130);
-                else positions[n.Key] = new Vector2(bonuses++ * (NodeW + 40), 280);
+                if (!n.Key.StartsWith("b:")) continue;
+                bonusNodes.Add(n);
+                float x = 0;
+                foreach (var e in edges)
+                    if (e.To == n.Key && positions.ContainsKey(e.From)) { x = positions[e.From].x; break; }
+                order[n.Key] = x;
+            }
+            bonusNodes.Sort((a, b) => order[a.Key].CompareTo(order[b.Key]));
+            float next = 0;
+            foreach (var n in bonusNodes)
+            {
+                float x = Mathf.Max(next, order[n.Key] - (NodeW + 40) * 0.5f);
+                positions[n.Key] = new Vector2(x, 170);
+                next = x + NodeW + 40;
             }
         }
 
