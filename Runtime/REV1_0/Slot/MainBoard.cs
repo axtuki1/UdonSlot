@@ -567,10 +567,12 @@ namespace AX.UdonSlot.REV1_0
             firstLeverOnTime = Networking.GetServerTimeInMilliseconds();
             // 疑似遊技中は再抽選せず、現在のフラグを維持する。
             if (!isMockPlay) reelOutputController.GenerateFlag(bet);
+            // Mainの処理（LeverOnLogic）を終えてからSubへ通知する。
+            bool startNow = LeverOnLogic();
             // 同期変数より先にイベントが届いても、全員が今回のフラグを読めるように引数で渡す。
             subBoard.SendCustomNetworkEvent(NetworkEventTarget.All, nameof(subBoard.LeverOn),
                 Utilities.IsValid(reelOutputController) ? reelOutputController.GetActiveBaseFlag() : "");
-            if (!LeverOnLogic()) return;
+            if (!startNow) return;
             subBoard.Wait();
             RequestGameStart();
         }
