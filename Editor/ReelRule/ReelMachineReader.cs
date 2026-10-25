@@ -7,7 +7,10 @@ namespace AX.UdonSlot.REV1_0.Editor.ReelRule
     /// <summary>シーン上の機種（ReelOutputController）から生成エンジン用の Machine を組み立てる。</summary>
     public static class ReelMachineReader
     {
-        public static Machine Read(ReelOutputController machine)
+        public static Machine Read(ReelOutputController machine) { return Read(machine, null); }
+
+        /// <summary>first を先に読む。同じ名前のフラグが複数の抽選表にあるときは first の当選役を使う。</summary>
+        public static Machine Read(ReelOutputController machine, LotteryTable first)
         {
             var m = new Machine();
             if (machine.reelDatas == null || machine.reelDatas.Length != 3) throw new InvalidOperationException("機種の reelDatas が3本ではありません");
@@ -50,7 +53,8 @@ namespace AX.UdonSlot.REV1_0.Editor.ReelRule
                 m.Roles.Add(role);
             }
 
-            foreach (var table in LotteryTablesOf(machine)) ReadFlags(m, table, payout);
+            if (first != null) ReadFlags(m, first, payout);
+            foreach (var table in LotteryTablesOf(machine)) if (table != first) ReadFlags(m, table, payout);
             var bonusTable = BonusTableOf(machine);
             if (bonusTable != null)
                 for (int b = 0; b < bonusTable.GetBonusCount(); b++)

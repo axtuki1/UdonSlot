@@ -153,7 +153,7 @@ namespace AX.UdonSlot.REV1_0.Editor.ReelRule
             }
             try
             {
-                machine = ReelMachineReader.Read(machineObject);
+                machine = ReelMachineReader.Read(machineObject, ViewLotteryTable);
                 var control = ReelMachineReader.ReelControlOf(machineObject);
                 registeredNames = control != null ? control.flagNames : null;
             }

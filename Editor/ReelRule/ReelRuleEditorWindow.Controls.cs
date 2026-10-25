@@ -78,6 +78,95 @@ namespace AX.UdonSlot.REV1_0.Editor.ReelRule
             return list;
         }
 
+        // ------------------------------------------------------------ 参照する抽選表（通常時・BB中など）
+
+        [SerializeField] private int viewLottery;
+
+        private sealed class ViewEntry
+        {
+            public LotteryTable Table;
+            public string Label;
+            /// <summary>この表を使う役物（作動中の表なら）。通常時・RTの表なら空。</summary>
+            public List<int> Bonuses = new List<int>();
+        }
+
+        /// <summary>選べる抽選表。通常時（RTの表を含む）と、役物の作動中の表。同じ表は1つにまとめる。</summary>
+        private List<ViewEntry> ViewEntries()
+        {
+            var list = new List<ViewEntry>();
+            if (machineObject == null) return list;
+            var main = ReelMachineReader.LotteryTableOf(machineObject);
+            if (main != null) list.Add(new ViewEntry { Table = main, Label = "通常時" });
+            var bonusTable = MachineBonusTable;
+            if (bonusTable == null) return list;
+            for (int s = 0; s < bonusTable.GetStateCount(); s++)
+            {
+                var t = bonusTable.GetStateLotteryTable(s);
+                if (t == null || list.Exists(v => v.Table == t)) continue;
+                list.Add(new ViewEntry { Table = t, Label = bonusTable.GetStateDisplayName(s) });
+            }
+            for (int b = 0; b < bonusTable.GetBonusCount(); b++)
+            {
+                var t = bonusTable.GetBonusLotteryTable(b);
+                // CB中は制御表を使わない（自動で止める）ので選べるようにしない。
+                if (t == null || bonusTable.GetBonusKind(b) == BonusKind.CB) continue;
+                var entry = list.Find(v => v.Table == t);
+                string label = bonusTable.GetBonusDisplayName(b) + "中";
+                if (entry == null) list.Add(entry = new ViewEntry { Table = t, Label = label });
+                else if (entry.Bonuses.Count > 0) entry.Label += "・" + label;
+                entry.Bonuses.Add(b);
+            }
+            return list;
+        }
+
+        private ViewEntry CurrentView
+        {
+            get
+            {
+                var list = ViewEntries();
+                if (list.Count == 0) return null;
+                return list[Mathf.Clamp(viewLottery, 0, list.Count - 1)];
+            }
+        }
+
+        private LotteryTable ViewLotteryTable { get { var v = CurrentView; return v != null ? v.Table : null; } }
+
+        private void DrawViewLotteryPopup()
+        {
+            var list = ViewEntries();
+            if (list.Count <= 1) return;
+            var labels = new string[list.Count];
+            for (int i = 0; i < list.Count; i++) labels[i] = list[i].Label;
+            int at = Mathf.Clamp(viewLottery, 0, list.Count - 1);
+            int next = EditorGUILayout.Popup(at, labels);
+            if (next != at) { viewLottery = next; Changed(); Poll(); }
+        }
+
+        /// <summary>選んでいる抽選表にあるフラグだけにする。</summary>
+        private List<string> ViewFlags(List<string> flags)
+        {
+            var table = ViewLotteryTable;
+            if (table == null) return flags;
+            var names = new HashSet<string>();
+            foreach (var e in LotteryModel.Load(table).Entries) names.Add(e.IsBonusRow ? e.Base : e.Name);
+            return flags.FindAll(f => names.Contains(f));
+        }
+
+        /// <summary>
+        /// 列にする成立中のボーナス。役物の作動中の表では成立中のボーナスは揃えないので、
+        /// 手動JACインの連続作動の役物（JACイン待ちで揃える）だけを出す。
+        /// </summary>
+        private List<KeyValuePair<string, string>> ViewBonuses(List<KeyValuePair<string, string>> bonuses)
+        {
+            var view = CurrentView;
+            var bonusTable = MachineBonusTable;
+            if (view == null || view.Bonuses.Count == 0 || bonusTable == null) return bonuses;
+            var children = new HashSet<string>();
+            foreach (int b in view.Bonuses)
+                if (bonusTable.IsBonusManualChild(b)) children.Add(bonusTable.GetBonusName(bonusTable.GetBonusChild(b)));
+            return bonuses.FindAll(p => children.Contains(p.Key));
+        }
+
         private float AssignGridWidth()
         {
             return 230;
@@ -285,8 +374,9 @@ namespace AX.UdonSlot.REV1_0.Editor.ReelRule
         private void DrawAssignGrid()
         {
             PanelHeader("割り当て");
-            var flags = GridFlags();
-            var bonuses = GridBonuses();
+            DrawViewLotteryPopup();
+            var flags = ViewFlags(GridFlags());
+            var bonuses = ViewBonuses(GridBonuses());
             var selected = SelectedControl;
             controlListScroll = EditorGUILayout.BeginScrollView(controlListScroll);
             foreach (string flag in flags)

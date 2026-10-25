@@ -47,6 +47,7 @@ namespace AX.UdonSlot.REV1_0.Editor.ReelRule
                     }
                 }
             }
+            CollectRoleConflicts(list);
             if (results != null)
                 foreach (var r in results)
                     if (r.Stats != null && r.Stats.ViolationPaths > 0)
@@ -57,6 +58,28 @@ namespace AX.UdonSlot.REV1_0.Editor.ReelRule
                     if (!IsRegistered(c.name) && !(machine != null && Design.IsUnusedCell(c, machine)))
                         list.Add(new Notice { Text = c.name + " はベイク時に作成されます", Screen = 0, Control = c.name });
             return list;
+        }
+
+        /// <summary>
+        /// 同じ名前のフラグが抽選表によって違う当選役を持っていないか。
+        /// 実機は作動中も同じ名前の制御を使うので、当選役が違うと片方の表で正しく止まらない。
+        /// </summary>
+        private void CollectRoleConflicts(List<Notice> list)
+        {
+            var seen = new Dictionary<string, KeyValuePair<string, string>>();
+            var reported = new HashSet<string>();
+            foreach (var view in ViewEntries())
+                foreach (var e in LotteryModel.Load(view.Table).Entries)
+                {
+                    if (e.IsBonusRow) continue;
+                    var roles = new List<string>(e.Roles);
+                    roles.Sort(StringComparer.Ordinal);
+                    string key = string.Join(",", roles.ToArray());
+                    KeyValuePair<string, string> first;
+                    if (!seen.TryGetValue(e.Name, out first)) { seen[e.Name] = new KeyValuePair<string, string>(key, view.Label); continue; }
+                    if (first.Key == key || !reported.Add(e.Name)) continue;
+                    list.Add(new Notice { Warning = true, Text = "フラグ「" + e.Name + "」の当選役が" + first.Value + "と" + view.Label + "で違います", Screen = 2 });
+                }
         }
 
         /// <summary>割り当て表に入っていない制御。</summary>
