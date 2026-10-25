@@ -52,6 +52,12 @@ namespace AX.UdonSlot.REV1_0
         private RectTransform waitValue;
         
         public SoundBoard soundBoard;
+
+        /// <summary>演出エディタのパターンを再生する。無くてもよい。</summary>
+        public EffectPlayer effectPlayer;
+
+        /// <summary>このゲームで止まったリールの数（各自の画面で数える）。</summary>
+        private int effectStopCount = 0;
         
         protected VRCPlayerApi localPlayer;
 
@@ -392,6 +398,8 @@ namespace AX.UdonSlot.REV1_0
             gameFlag = flag != null ? flag : "";
             gameWinningNames = new string[0];
             gamePayout = 0;
+            effectStopCount = 0;
+            if (Utilities.IsValid(effectPlayer)) effectPlayer.OnStep(EffectPlayer.StepLeverOn, false);
             LeverOnLogic();
         }
 
@@ -426,6 +434,7 @@ namespace AX.UdonSlot.REV1_0
             gameFlag = flag != null ? flag : "";
             gameWinningNames = winningNames != null ? winningNames : new string[0];
             gamePayout = payout;
+            if (Utilities.IsValid(effectPlayer)) effectPlayer.OnStep(EffectPlayer.StepGameEnd, gameWinningNames.Length > 0);
             GameEndLogic();
         }
 
@@ -437,7 +446,14 @@ namespace AX.UdonSlot.REV1_0
         [NetworkCallable]
         public void ReelStop(int reelIndex, int stopIndex, float accuracy, string[] possibleRoles)
         {
-            ReelStopLogic(reelIndex, stopIndex, accuracy, possibleRoles != null ? possibleRoles : new string[0]);
+            if (possibleRoles == null) possibleRoles = new string[0];
+            if (Utilities.IsValid(effectPlayer) && effectStopCount < 3)
+            {
+                effectStopCount++;
+                // 第三停止では possibleRoles が揃った役になる。
+                effectPlayer.OnStep(effectStopCount, effectStopCount == 3 && possibleRoles.Length > 0);
+            }
+            ReelStopLogic(reelIndex, stopIndex, accuracy, possibleRoles);
         }
 
         /// <summary>

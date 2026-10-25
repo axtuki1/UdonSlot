@@ -481,6 +481,35 @@ namespace AX.UdonSlot.REV1_0
             return pictureCount > 0 ? 360f / pictureCount : 0f;
         }
 
+        /// <summary>リール演出がゲーム開始を引き受けたか（LeverOn中だけ使う）。</summary>
+        private bool reelEffectStartsGame = false;
+
+        /// <summary>
+        /// 今、中段にあるコマの番号（下が1、リール配列の並びはReelMakerと同じ）。回転中は一番近いコマ。
+        /// </summary>
+        public int GetReelCenterFrame(int reelIndex)
+        {
+            int n = Mathf.Max(1, pictureCount);
+            float one = 360f / n;
+            int symbol = Mathf.RoundToInt(Mathf.Repeat(GetCurrentReelAngle(reelIndex) - REEL_ANGLEPOS_BASE, 360f) / one) % n;
+            int lower = (n - symbol + 2) % n;
+            int centerIndex = (lower - 1 + n) % n;
+            return n - centerIndex;
+        }
+
+        /// <summary>演出エディタのパターンを呼ぶ（メイン基板の所有者だけ）。SubBoardにEffectPlayerが無ければ何もしない。</summary>
+        public void CallEffectPattern(string patternName)
+        {
+            if (Utilities.IsValid(subBoard) && Utilities.IsValid(subBoard.effectPlayer)) subBoard.effectPlayer.CallEffectPattern(patternName);
+        }
+
+        /// <summary>CallEffectPatternのパラメータ付き版。</summary>
+        public void CallEffectPatternWithParameter(string patternName, int parameter)
+        {
+            if (Utilities.IsValid(subBoard) && Utilities.IsValid(subBoard.effectPlayer))
+                subBoard.effectPlayer.CallEffectPatternWithParameter(patternName, parameter);
+        }
+
         /// <summary>
         /// 指定秒数、操作を受け付けない状態にする
         /// </summary>
@@ -568,11 +597,13 @@ namespace AX.UdonSlot.REV1_0
             // 疑似遊技中は再抽選せず、現在のフラグを維持する。
             if (!isMockPlay) reelOutputController.GenerateFlag(bet);
             // Mainの処理（LeverOnLogic）を終えてからSubへ通知する。
+            reelEffectStartsGame = false;
             bool startNow = LeverOnLogic();
             // 同期変数より先にイベントが届いても、全員が今回のフラグを読めるように引数で渡す。
             subBoard.SendCustomNetworkEvent(NetworkEventTarget.All, nameof(subBoard.LeverOn),
                 Utilities.IsValid(reelOutputController) ? reelOutputController.GetActiveBaseFlag() : "");
-            if (!startNow) return;
+            // Subの演出（演出エディタのリールアクションなど）がゲーム開始を引き受けたときも、ここでは開始しない。
+            if (!startNow || reelEffectStartsGame) return;
             subBoard.Wait();
             RequestGameStart();
         }
@@ -1404,6 +1435,15 @@ namespace AX.UdonSlot.REV1_0
         /// <summary>PlayReelSequenceのリール別版。左・中・右のコマ数を別々に指定する。</summary>
         public int PlayReelSequenceEach(int[] durations, float[] left, float[] center, float[] right)
         {
+            return PlayReelEffect(durations, left, center, right, !isGaming);
+        }
+
+        /// <summary>
+        /// PlayReelSequenceEachと同じで、終わったらゲームを開始するかを指定する（演出エディタのリールアクション用）。
+        /// startGameがtrueのときは、LeverOnでのゲーム開始予約をこの演出の後へ回す。
+        /// </summary>
+        public int PlayReelEffect(int[] durations, float[] left, float[] center, float[] right, bool startGame)
+        {
             if (!IsOwner() || durations == null || left == null || center == null || right == null) return -1;
             int sections = durations.Length;
             if (sections == 0 || left.Length != sections || center.Length != sections || right.Length != sections) return -1;
@@ -1436,7 +1476,11 @@ namespace AX.UdonSlot.REV1_0
             SendCustomNetworkEvent(NetworkEventTarget.All, nameof(scheduleRollSequence),
                 Networking.GetServerTimeInMilliseconds(), startOffsets, endOffsets, startAngles, goalAngles);
             OffControllable(totalTime / 1000f);
-            if (!isGaming) SendCustomEventDelayedSeconds(nameof(RequestGameStart), totalTime / 1000f);
+            if (startGame)
+            {
+                reelEffectStartsGame = true;
+                SendCustomEventDelayedSeconds(nameof(RequestGameStart), totalTime / 1000f);
+            }
             return totalTime;
         }
 
