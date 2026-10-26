@@ -523,8 +523,8 @@ namespace AX.UdonSlot.REV1_0.Editor.Effect
                         Edit("アクション名の変更", () => action.Name = EffectModel.UniqueName(name.Trim(), used));
                     }
                     EditorGUI.BeginChangeCheck();
-                    int delay = EffectFields.Int("遅延 (ms)", action.DelayMs);
-                    if (EditorGUI.EndChangeCheck()) Edit("遅延の変更", () => action.DelayMs = Mathf.Max(0, delay));
+                    int delay = EffectFields.Int("再生開始遅延 (ms)", action.DelayMs);
+                    if (EditorGUI.EndChangeCheck()) Edit("再生開始遅延の変更", () => action.DelayMs = Mathf.Max(0, delay));
                     EditorGUI.BeginChangeCheck();
                     int lockMs = EffectFields.Int("操作禁止 (ms)", action.LockMs);
                     if (EditorGUI.EndChangeCheck()) Edit("操作禁止の変更", () => action.LockMs = Mathf.Max(0, lockMs));
