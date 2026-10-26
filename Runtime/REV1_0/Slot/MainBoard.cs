@@ -295,6 +295,8 @@ namespace AX.UdonSlot.REV1_0
         private float[] _scheduledRollBaseAngles = new float[3];
         private bool[] _scheduledRollBaseAngleInitialized = new bool[3];
         private bool[] _scheduledRollCompleted = new bool[3];
+        /// <summary>scheduleRollSequence の区間で、このリールには触らない印（開始・終了時刻に入れる）。</summary>
+        private const int ScheduledRollSkip = int.MinValue;
         
         public ReelData[] reelDatas;
 
@@ -972,6 +974,12 @@ namespace AX.UdonSlot.REV1_0
 
                 int startTime = rollStartTime[reelIndex];
                 int endTime = rollEndTime[reelIndex];
+                if (startTime == ScheduledRollSkip)
+                {
+                    // この区間では触らない（通常の回転・停止のまま）。
+                    _scheduledRollCompleted[reelIndex] = true;
+                    continue;
+                }
 
                 if (currentServerMs < startTime)
                 {
@@ -1448,7 +1456,8 @@ namespace AX.UdonSlot.REV1_0
         /// 回転中（PushStopButtonLogicから呼んでfalseを返す）は、終わると回転に戻る。
         /// </summary>
         /// <param name="durations">各区間の長さ(ms)。</param>
-        /// <param name="symbols">各区間の終わりに、元の位置から上方向へ何コマ動いているか。0で元の位置。durationsと同じ長さ。</param>
+        /// <param name="symbols">各区間の終わりに、元の位置から上方向へ何コマ動いているか。0で元の位置。durationsと同じ長さ。
+        /// float.NaN の区間はそのリールに触らない（回転中なら回ったまま）。</param>
         /// <returns>演出全体の長さ(ms)。入力が不正なら-1で、何もしない。</returns>
         /// <example>
         /// <code>
@@ -1499,6 +1508,12 @@ namespace AX.UdonSlot.REV1_0
                 {
                     float goal = reel == 0 ? left[section] : (reel == 1 ? center[section] : right[section]);
                     int index = section * 3 + reel;
+                    if (float.IsNaN(goal))
+                    {
+                        startOffsets[index] = -1;
+                        endOffsets[index] = -1;
+                        continue;
+                    }
                     startOffsets[index] = totalTime;
                     endOffsets[index] = totalTime + duration;
                     startAngles[index] = baseAngles[reel] - oneAngle * previous[reel];
@@ -1524,7 +1539,8 @@ namespace AX.UdonSlot.REV1_0
         /// nameof(scheduleRollSequence), baseTime, startOffsets, endOffsets, startAngles, goalAngles)で一度だけ呼ぶ。
         /// </summary>
         /// <param name="baseTime">全区間共通の基準絶対時刻(ms)。送信側でNetworking.GetServerTimeInMilliseconds()を取得する。</param>
-        /// <param name="startOffsets">各区間の開始時刻。baseTimeからの経過ms。[区間0左, 中, 右, 区間1左, 中, 右, ...]。</param>
+        /// <param name="startOffsets">各区間の開始時刻。baseTimeからの経過ms。[区間0左, 中, 右, 区間1左, 中, 右, ...]。
+        /// 開始・終了とも -1 のリールは、その区間では触らない。</param>
         /// <param name="endOffsets">各区間の終了時刻。baseTimeからの経過ms。配列順はstartOffsetsと同じ。</param>
         /// <param name="startAngles">各区間の開始絶対角度(度)。配列順はstartOffsetsと同じ。</param>
         /// <param name="goalAngles">各区間の目標絶対角度(度)。配列順はstartOffsetsと同じ。</param>
@@ -1566,6 +1582,7 @@ namespace AX.UdonSlot.REV1_0
             if (length == 0) return;
             for (int i = 0; i < length; i++)
             {
+                if (startOffsets[i] == -1 && endOffsets[i] == -1) continue;
                 if (startOffsets[i] < 0 || endOffsets[i] < startOffsets[i] ||
                     float.IsNaN(startAngles[i]) || float.IsInfinity(startAngles[i]) ||
                     float.IsNaN(goalAngles[i]) || float.IsInfinity(goalAngles[i]))
@@ -1580,11 +1597,19 @@ namespace AX.UdonSlot.REV1_0
             for (int section = 0; section < count; section++)
             {
                 int offset = section * 3;
+                int[] starts = new int[3];
+                int[] ends = new int[3];
+                for (int reel = 0; reel < 3; reel++)
+                {
+                    bool skip = startOffsets[offset + reel] == -1;
+                    starts[reel] = skip ? ScheduledRollSkip : baseTime + startOffsets[offset + reel];
+                    ends[reel] = skip ? ScheduledRollSkip : baseTime + endOffsets[offset + reel];
+                }
                 SetScheduledRoll(
                     firstIndex + section,
                     2,
-                    new int[] { baseTime + startOffsets[offset], baseTime + startOffsets[offset + 1], baseTime + startOffsets[offset + 2] },
-                    new int[] { baseTime + endOffsets[offset], baseTime + endOffsets[offset + 1], baseTime + endOffsets[offset + 2] },
+                    starts,
+                    ends,
                     new float[] { startAngles[offset], startAngles[offset + 1], startAngles[offset + 2] },
                     new float[] { goalAngles[offset], goalAngles[offset + 1], goalAngles[offset + 2] },
                     new float[3],

@@ -435,6 +435,14 @@ namespace AX.UdonSlot.REV1_0
 
             float[] resolved = ResolveReelKeys(start, count, symbolCount);
 
+            // キーのないリールには触らない。最後のキーを過ぎたリールは、そこで元の動きに戻す。
+            int[] lastTime = new int[] { -1, -1, -1 };
+            for (int i = start; i < start + count; i++)
+            {
+                int reel = reelKeyReel[i];
+                if (reel >= 0 && reel < 3) lastTime[reel] = Mathf.Max(lastTime[reel], Mathf.Max(0, reelKeyTime[i]));
+            }
+
             int sections = timeCount;
             int[] durations = new int[sections];
             float[] left = new float[sections];
@@ -444,12 +452,20 @@ namespace AX.UdonSlot.REV1_0
             for (int s = 0; s < sections; s++)
             {
                 durations[s] = times[s] - previous;
+                left[s] = SectionValue(start, count, 0, s, previous, times[s], lastTime[0], resolved);
+                center[s] = SectionValue(start, count, 1, s, previous, times[s], lastTime[1], resolved);
+                right[s] = SectionValue(start, count, 2, s, previous, times[s], lastTime[2], resolved);
                 previous = times[s];
-                left[s] = ValueAt(start, count, 0, times[s], resolved);
-                center[s] = ValueAt(start, count, 1, times[s], resolved);
-                right[s] = ValueAt(start, count, 2, times[s], resolved);
             }
             mainBoard.PlayReelEffect(durations, left, center, right, step == StepLeverOn);
+        }
+
+        /// <summary>区間の終わりの位置。キーがない、または最後のキーより後の区間は NaN（触らない）。</summary>
+        private float SectionValue(int start, int count, int reel, int section, int from, int to, int lastTime, float[] resolved)
+        {
+            if (lastTime < 0) return float.NaN;
+            if (section > 0 && from >= lastTime) return float.NaN;
+            return ValueAt(start, count, reel, to, resolved);
         }
 
         /// <summary>リール reel の時刻 t での位置（開始位置から上方向へのコマ数）。0ms は開始位置で、キーの間は等速。</summary>
