@@ -32,6 +32,29 @@ namespace AX.UdonSlot.REV1_0.Editor.Effect
             return TryParse(text, out parsed) ? parsed : value;
         }
 
+        /// <summary>確定して読めたときだけ true。値がばらばらのとき（showMixedValue）にも使える。</summary>
+        internal static bool EditInt(int value, out int result, params GUILayoutOption[] options)
+        {
+            EditorGUI.BeginChangeCheck();
+            string text = EditorGUILayout.DelayedTextField(value.ToString(CultureInfo.InvariantCulture), options);
+            float parsed;
+            result = value;
+            if (!EditorGUI.EndChangeCheck() || !TryParse(text, out parsed)) return false;
+            result = Mathf.RoundToInt(parsed);
+            return true;
+        }
+
+        internal static bool EditFloat(float value, out float result, params GUILayoutOption[] options)
+        {
+            EditorGUI.BeginChangeCheck();
+            string text = EditorGUILayout.DelayedTextField(value.ToString(CultureInfo.InvariantCulture), options);
+            float parsed;
+            result = value;
+            if (!EditorGUI.EndChangeCheck() || !TryParse(text, out parsed)) return false;
+            result = parsed;
+            return true;
+        }
+
         private static bool TryParse(string text, out float value)
         {
             string normalized = (text ?? "").Normalize(NormalizationForm.FormKC).Replace("ー", "-").Replace("−", "-").Trim();
