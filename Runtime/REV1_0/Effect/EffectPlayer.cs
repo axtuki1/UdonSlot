@@ -78,6 +78,8 @@ namespace AX.UdonSlot.REV1_0
         public bool[] reelKeyAbsolute = new bool[0];
         /// <summary>絶対キーの回り方。0=最短 1=順回転（図柄が下へ流れる） 2=逆回転。前のキーの位置から数える。</summary>
         public int[] reelKeyDirection = new int[0];
+        /// <summary>絶対キーで、そのコマに着くまでに余分に回る周回数（順回転・逆回転のとき）。</summary>
+        public int[] reelKeyTurns = new int[0];
 
         public const int ReelShortest = 0;
         public const int ReelForward = 1;
@@ -491,7 +493,8 @@ namespace AX.UdonSlot.REV1_0
                     }
                     if (next < 0) break;
                     float value = reelKeyAbsolute[next]
-                        ? ResolveAbsolute(previous, startFrame, reelKeyValue[next], reelKeyDirection.Length > next ? reelKeyDirection[next] : ReelShortest, symbolCount)
+                        ? ResolveAbsolute(previous, startFrame, reelKeyValue[next], reelKeyDirection.Length > next ? reelKeyDirection[next] : ReelShortest,
+                            reelKeyTurns.Length > next ? reelKeyTurns[next] : 0, symbolCount)
                         : reelKeyValue[next];
                     resolved[next - start] = value;
                     previous = value;
@@ -503,13 +506,14 @@ namespace AX.UdonSlot.REV1_0
         }
 
         /// <summary>中段に frame が来る位置のうち、previous から direction の向きで一番近いもの。上へ1コマ動くと中段のコマ番号は1つ下がる。</summary>
-        private float ResolveAbsolute(float previous, int startFrame, float frame, int direction, int symbolCount)
+        private float ResolveAbsolute(float previous, int startFrame, float frame, int direction, int turns, int symbolCount)
         {
             float delta = (startFrame - frame) - previous;
             float n = symbolCount;
             delta = delta - Mathf.Floor(delta / n) * n; // 0〜n
-            if (direction == ReelForward) { if (delta > 0f) delta -= n; }
-            else if (direction == ReelShortest) { if (delta > n / 2f) delta -= n; }
+            if (direction == ReelForward) { if (delta > 0f) delta -= n; delta -= turns * n; }
+            else if (direction == ReelBackward) delta += turns * n;
+            else if (delta > n / 2f) delta -= n;
             return previous + delta;
         }
 

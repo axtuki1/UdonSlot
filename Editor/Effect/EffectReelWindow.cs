@@ -211,19 +211,20 @@ namespace AX.UdonSlot.REV1_0.Editor.Effect
             float previous = 0f;
             foreach (var k in action.ReelKeys.Where(x => x.Reel == key.Reel).OrderBy(x => x.Time))
             {
-                float value = k.Absolute ? ResolveAbsolute(previous, startFrame[k.Reel], k.Value, k.Direction, n) : k.Value;
+                float value = k.Absolute ? ResolveAbsolute(previous, startFrame[k.Reel], k.Value, k.Direction, k.Turns, n) : k.Value;
                 if (k == key) return value;
                 previous = value;
             }
             return 0f;
         }
 
-        private static float ResolveAbsolute(float previous, int start, float frame, int direction, int n)
+        private static float ResolveAbsolute(float previous, int start, float frame, int direction, int turns, int n)
         {
             float delta = (start - frame) - previous;
             delta -= Mathf.Floor(delta / n) * n;
-            if (direction == EffectPlayer.ReelForward) { if (delta > 0f) delta -= n; }
-            else if (direction == EffectPlayer.ReelShortest) { if (delta > n / 2f) delta -= n; }
+            if (direction == EffectPlayer.ReelForward) { if (delta > 0f) delta -= n; delta -= turns * n; }
+            else if (direction == EffectPlayer.ReelBackward) delta += turns * n;
+            else if (delta > n / 2f) delta -= n;
             return previous + delta;
         }
 
@@ -952,6 +953,16 @@ namespace AX.UdonSlot.REV1_0.Editor.Effect
                         int direction = EditorGUILayout.Popup(first.Direction, DirectionNames, GUILayout.Width(80));
                         if (EditorGUI.EndChangeCheck()) Edit("リールキーの変更", () => { foreach (var k in selection) k.Direction = direction; });
                         EditorGUI.showMixedValue = false;
+                        if (selection.TrueForAll(k => k.Direction != EffectPlayer.ReelShortest))
+                        {
+                            GUILayout.Label("＋", GUILayout.Width(14));
+                            EditorGUI.showMixedValue = !selection.TrueForAll(k => k.Turns == first.Turns);
+                            int turns;
+                            if (EffectFields.EditInt(first.Turns, out turns, GUILayout.Width(36)))
+                                Edit("リールキーの変更", () => { foreach (var k in selection) k.Turns = Mathf.Max(0, turns); });
+                            EditorGUI.showMixedValue = false;
+                            GUILayout.Label("周", GUILayout.Width(20));
+                        }
                     }
                     else if (allRelative)
                     {
