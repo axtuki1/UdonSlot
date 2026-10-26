@@ -49,6 +49,7 @@ namespace AX.UdonSlot.REV1_0.Editor.Effect
     {
         public string Name = "";
         public int DelayMs;
+        public int LockMs;
         public List<EffectAnim> Anims = new List<EffectAnim>();
         public List<EffectActive> Actives = new List<EffectActive>();
         /// <summary>SoundType。-1 は音なし。</summary>
@@ -69,7 +70,7 @@ namespace AX.UdonSlot.REV1_0.Editor.Effect
 
         public EffectAction Copy(string name)
         {
-            var a = new EffectAction { Name = name, DelayMs = DelayMs, SoundType = SoundType, SoundClip = SoundClip };
+            var a = new EffectAction { Name = name, DelayMs = DelayMs, LockMs = LockMs, SoundType = SoundType, SoundClip = SoundClip };
             foreach (var x in Anims) a.Anims.Add(new EffectAnim { Target = x.Target, Name = x.Name, Kind = x.Kind, Value = x.Value });
             foreach (var x in Actives) a.Actives.Add(new EffectActive { Target = x.Target, Value = x.Value });
             foreach (var x in ReelKeys) a.ReelKeys.Add(x.Copy());
@@ -130,6 +131,7 @@ namespace AX.UdonSlot.REV1_0.Editor.Effect
 
             var names = so.FindProperty("actionNames");
             var delays = so.FindProperty("actionDelayMs");
+            var locks = so.FindProperty("actionLockMs");
             var animStart = so.FindProperty("actionAnimStart");
             var animCount = so.FindProperty("actionAnimCount");
             var animTargets = so.FindProperty("animTargets");
@@ -161,6 +163,7 @@ namespace AX.UdonSlot.REV1_0.Editor.Effect
                 {
                     Name = Str(names, a),
                     DelayMs = Int(delays, a),
+                    LockMs = Int(locks, a),
                     SoundType = a < soundType.arraySize ? soundType.GetArrayElementAtIndex(a).intValue : -1,
                     SoundClip = Int(soundClip, a)
                 };
@@ -217,6 +220,7 @@ namespace AX.UdonSlot.REV1_0.Editor.Effect
             int n = Actions.Count;
             var names = Resize(so, "actionNames", n);
             var delays = Resize(so, "actionDelayMs", n);
+            var locks = Resize(so, "actionLockMs", n);
             var animStart = Resize(so, "actionAnimStart", n);
             var animCount = Resize(so, "actionAnimCount", n);
             var activeStart = Resize(so, "actionActiveStart", n);
@@ -251,6 +255,7 @@ namespace AX.UdonSlot.REV1_0.Editor.Effect
                 var a = Actions[i];
                 names.GetArrayElementAtIndex(i).stringValue = a.Name;
                 delays.GetArrayElementAtIndex(i).intValue = Mathf.Max(0, a.DelayMs);
+                locks.GetArrayElementAtIndex(i).intValue = Mathf.Max(0, a.LockMs);
                 soundType.GetArrayElementAtIndex(i).intValue = a.SoundType;
                 soundClip.GetArrayElementAtIndex(i).intValue = a.SoundClip;
 

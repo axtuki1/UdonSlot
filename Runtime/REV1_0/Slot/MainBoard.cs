@@ -534,6 +534,19 @@ namespace AX.UdonSlot.REV1_0
             RequestSerialization();
         }
 
+        /// <summary>
+        /// 指定秒数、操作を受け付けない状態にする。すでにそれより長く禁止中なら短くしない（演出のフリーズ用）。
+        /// </summary>
+        /// <param name="duration">秒数</param>
+        public void OffControllableAtLeast(float duration)
+        {
+            if (!IsOwner()) return;
+            float until = Networking.GetServerTimeInMilliseconds() + duration * 1000f;
+            if (until <= nextControllableTime) return;
+            nextControllableTime = until;
+            RequestSerialization();
+        }
+
         public void AddCredit(int amount)
         {
             if (!isControllable) return;

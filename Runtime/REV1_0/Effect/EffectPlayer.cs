@@ -43,6 +43,8 @@ namespace AX.UdonSlot.REV1_0
 
         public string[] actionNames = new string[0];
         public int[] actionDelayMs = new int[0];
+        /// <summary>操作（停止ボタン・レバーなど）を受け付けない時間。リールは回ったまま（フリーズ）。</summary>
+        public int[] actionLockMs = new int[0];
 
         public int[] actionAnimStart = new int[0];
         public int[] actionAnimCount = new int[0];
@@ -390,6 +392,9 @@ namespace AX.UdonSlot.REV1_0
                 mainBoard.subBoard.soundBoard.RemotePlaySound((SoundType)soundType, actionSoundClip[action], true, false);
 
             if (actionReelCount[action] > 0) RunReel(action, step);
+
+            if (action < actionLockMs.Length && actionLockMs[action] > 0 && IsMainBoardOwner())
+                mainBoard.OffControllableAtLeast(actionLockMs[action] / 1000f);
 
             start = actionCodeStart[action];
             end = start + actionCodeCount[action];
