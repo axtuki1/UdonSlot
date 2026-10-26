@@ -70,8 +70,35 @@ namespace AX.UdonSlot.REV1_0.Editor.Effect
 
         internal void Reload()
         {
+            if (player != null) Link(player);
             model = player != null ? EffectModel.Load(player) : null;
             Repaint();
+        }
+
+        /// <summary>EffectPlayer とメイン基板・サブ基板のつながりが抜けていたら埋める。</summary>
+        private static void Link(EffectPlayer target)
+        {
+            var sub = target.GetComponentInParent<SubBoard>();
+            var mainBoard = target.mainBoard;
+            if (mainBoard == null)
+            {
+                var boards = FindObjectsOfType<MainBoard>();
+                mainBoard = boards.FirstOrDefault(m => m.subBoard != null && (m.subBoard == sub || m.subBoard.effectPlayer == target));
+                if (mainBoard == null && boards.Length == 1) mainBoard = boards[0];
+                if (mainBoard != null)
+                {
+                    var so = new SerializedObject(target);
+                    so.FindProperty("mainBoard").objectReferenceValue = mainBoard;
+                    so.ApplyModifiedProperties();
+                }
+            }
+            if (sub == null && mainBoard != null) sub = mainBoard.subBoard;
+            if (sub != null && sub.effectPlayer == null)
+            {
+                var so = new SerializedObject(sub);
+                so.FindProperty("effectPlayer").objectReferenceValue = target;
+                so.ApplyModifiedProperties();
+            }
         }
 
         /// <summary>変更してシーンへ書き込む。</summary>
@@ -141,10 +168,6 @@ namespace AX.UdonSlot.REV1_0.Editor.Effect
             go.transform.SetParent(sub.transform, false);
             var created = UdonSharpEditor.UdonSharpUndo.AddComponent<EffectPlayer>(go);
             var subSo = new SerializedObject(sub);
-            var mainBoard = subSo.FindProperty("mainBoard").objectReferenceValue as MainBoard;
-            var so = new SerializedObject(created);
-            so.FindProperty("mainBoard").objectReferenceValue = mainBoard;
-            so.ApplyModifiedProperties();
             subSo.FindProperty("effectPlayer").objectReferenceValue = created;
             subSo.ApplyModifiedProperties();
             player = created;
