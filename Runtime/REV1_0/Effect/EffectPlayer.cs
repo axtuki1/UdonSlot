@@ -76,6 +76,12 @@ namespace AX.UdonSlot.REV1_0
         /// <summary>相対なら開始位置から上方向へ何コマ（PlayReelSequenceと同じ）。絶対なら中段に来るコマ番号（下が1）。</summary>
         public float[] reelKeyValue = new float[0];
         public bool[] reelKeyAbsolute = new bool[0];
+        /// <summary>絶対キーの回り方。0=最短 1=順回転（図柄が下へ流れる） 2=逆回転。前のキーの位置から数える。</summary>
+        public int[] reelKeyDirection = new int[0];
+
+        public const int ReelShortest = 0;
+        public const int ReelForward = 1;
+        public const int ReelBackward = 2;
 
         // ---------------------------------------------------------------- パターン
 
@@ -420,6 +426,8 @@ namespace AX.UdonSlot.REV1_0
                 times[j + 1] = v;
             }
 
+            float[] resolved = ResolveReelKeys(start, count, symbolCount);
+
             int sections = timeCount;
             int[] durations = new int[sections];
             float[] left = new float[sections];
@@ -430,15 +438,15 @@ namespace AX.UdonSlot.REV1_0
             {
                 durations[s] = times[s] - previous;
                 previous = times[s];
-                left[s] = ValueAt(start, count, 0, times[s], symbolCount);
-                center[s] = ValueAt(start, count, 1, times[s], symbolCount);
-                right[s] = ValueAt(start, count, 2, times[s], symbolCount);
+                left[s] = ValueAt(start, count, 0, times[s], resolved);
+                center[s] = ValueAt(start, count, 1, times[s], resolved);
+                right[s] = ValueAt(start, count, 2, times[s], resolved);
             }
             mainBoard.PlayReelEffect(durations, left, center, right, step == StepLeverOn);
         }
 
         /// <summary>リール reel の時刻 t での位置（開始位置から上方向へのコマ数）。0ms は開始位置で、キーの間は等速。</summary>
-        private float ValueAt(int start, int count, int reel, int t, int symbolCount)
+        private float ValueAt(int start, int count, int reel, int t, float[] resolved)
         {
             // 0ms は開始位置（移動 0）。0ms にキーがあればそちらを使う。
             int beforeTime = 0, afterTime = int.MaxValue;
@@ -448,7 +456,7 @@ namespace AX.UdonSlot.REV1_0
             {
                 if (reelKeyReel[i] != reel) continue;
                 int time = reelKeyTime[i];
-                float value = RelativeValue(i, reel, symbolCount);
+                float value = resolved[i - start];
                 if (time <= t && time >= beforeTime) { beforeTime = time; beforeValue = value; hasBefore = true; }
                 if (time >= t && time < afterTime) { afterTime = time; afterValue = value; hasAfter = true; }
             }
@@ -458,16 +466,51 @@ namespace AX.UdonSlot.REV1_0
             return beforeValue + (afterValue - beforeValue) * (t - beforeTime) / (float)(afterTime - beforeTime);
         }
 
-        private float RelativeValue(int key, int reel, int symbolCount)
+        /// <summary>
+        /// 各キーを「開始位置から上方向へのコマ数」に直す。キーは時間順に見ていき、
+        /// 絶対キーは前のキーの位置から、向き（最短／順回転／逆回転）に従ってそのコマまでの移動にする。
+        /// </summary>
+        private float[] ResolveReelKeys(int start, int count, int symbolCount)
         {
-            if (!reelKeyAbsolute[key]) return reelKeyValue[key];
-            // 絶対：中段に来るコマ番号（下が1）。上へ1コマ動くと中段のコマ番号は1つ下がる。
-            int current = mainBoard.GetReelCenterFrame(reel);
-            float delta = current - reelKeyValue[key];
-            float half = symbolCount / 2f;
-            while (delta > half) delta -= symbolCount;
-            while (delta < -half) delta += symbolCount;
-            return delta;
+            float[] resolved = new float[count];
+            for (int reel = 0; reel < 3; reel++)
+            {
+                int startFrame = mainBoard.GetReelCenterFrame(reel);
+                float previous = 0f;
+                int lastTime = -1, lastIndex = -1;
+                while (true)
+                {
+                    // まだ見ていないキーのうち、時間（同じなら並び順）が一番早いもの
+                    int next = -1;
+                    for (int i = start; i < start + count; i++)
+                    {
+                        if (reelKeyReel[i] != reel) continue;
+                        int time = reelKeyTime[i];
+                        if (time < lastTime || (time == lastTime && i <= lastIndex)) continue;
+                        if (next < 0 || time < reelKeyTime[next] || (time == reelKeyTime[next] && i < next)) next = i;
+                    }
+                    if (next < 0) break;
+                    float value = reelKeyAbsolute[next]
+                        ? ResolveAbsolute(previous, startFrame, reelKeyValue[next], reelKeyDirection.Length > next ? reelKeyDirection[next] : ReelShortest, symbolCount)
+                        : reelKeyValue[next];
+                    resolved[next - start] = value;
+                    previous = value;
+                    lastTime = reelKeyTime[next];
+                    lastIndex = next;
+                }
+            }
+            return resolved;
+        }
+
+        /// <summary>中段に frame が来る位置のうち、previous から direction の向きで一番近いもの。上へ1コマ動くと中段のコマ番号は1つ下がる。</summary>
+        private float ResolveAbsolute(float previous, int startFrame, float frame, int direction, int symbolCount)
+        {
+            float delta = (startFrame - frame) - previous;
+            float n = symbolCount;
+            delta = delta - Mathf.Floor(delta / n) * n; // 0〜n
+            if (direction == ReelForward) { if (delta > 0f) delta -= n; }
+            else if (direction == ReelShortest) { if (delta > n / 2f) delta -= n; }
+            return previous + delta;
         }
 
         private bool IsMainBoardOwner()

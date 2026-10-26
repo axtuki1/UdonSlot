@@ -971,7 +971,8 @@ namespace AX.UdonSlot.REV1_0
                 switch (scheduledRollType[0])
                 {
                     case 0:
-                        if (!TryGetScheduledGoalAngle(reelIndex, currentServerMs, startTime, endTime, out scheduledAngle)) continue;
+                    case 2:
+                        if (!TryGetScheduledGoalAngle(reelIndex, currentServerMs, startTime, endTime, scheduledRollType[0] == 2, out scheduledAngle)) continue;
                         // 生の角度差で比較し、0度→360度などの追加周回を保持と誤判定しない。
                         isHoldingGoal = Mathf.Abs(scheduledRollGoalAngle[0][reelIndex] - scheduledRollStartAngle[0][reelIndex]) <= 0.1f;
                         _scheduledRollHolding[reelIndex] = currentServerMs < endTime && isHoldingGoal;
@@ -1002,7 +1003,8 @@ namespace AX.UdonSlot.REV1_0
             return activeReels;
         }
 
-        private bool TryGetScheduledGoalAngle(int reelIndex, double currentServerMs, int startTime, int endTime, out float angle)
+        /// <param name="exact">true なら角度の差をそのまま（向き・周回とも指定どおり）、各リール等速で動かす（PlayReelSequence 用）。</param>
+        private bool TryGetScheduledGoalAngle(int reelIndex, double currentServerMs, int startTime, int endTime, bool exact, out float angle)
         {
             angle = 0f;
             if (scheduledRollStartAngle.Length == 0 || scheduledRollGoalAngle.Length == 0) return false;
@@ -1021,6 +1023,12 @@ namespace AX.UdonSlot.REV1_0
             float start = startAngles[reelIndex];
             float goal = goalAngles[reelIndex];
             float globalProgress = Mathf.Clamp01((float)((currentServerMs - startTime) / (double)(endTime - startTime)));
+
+            if (exact)
+            {
+                angle = Mathf.Lerp(start, goal, globalProgress);
+                return true;
+            }
 
             int direction = GetScheduledDirection(reelIndex);
             float directedGoal = GetDirectedGoal(start, goal, direction);
@@ -1561,7 +1569,7 @@ namespace AX.UdonSlot.REV1_0
                 int offset = section * 3;
                 SetScheduledRoll(
                     firstIndex + section,
-                    0,
+                    2,
                     new int[] { baseTime + startOffsets[offset], baseTime + startOffsets[offset + 1], baseTime + startOffsets[offset + 2] },
                     new int[] { baseTime + endOffsets[offset], baseTime + endOffsets[offset + 1], baseTime + endOffsets[offset + 2] },
                     new float[] { startAngles[offset], startAngles[offset + 1], startAngles[offset + 2] },

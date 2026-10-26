@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using System.Linq;
 using AX.UdonSlot.REV1_0.Serialize;
 using UnityEditor;
 using UnityEngine;
@@ -28,6 +29,7 @@ namespace AX.UdonSlot.REV1_0.Editor.Effect
         private static readonly Color ReelLineColor = new Color(0.78f, 0.75f, 0.68f);
         private static readonly Color PlayheadColor = new Color(0.88f, 0.35f, 0.35f);
         private static readonly string[] ModeNames = { "相対", "絶対" };
+        private static readonly string[] DirectionNames = { "最短", "順回転", "逆回転" };
 
         private const float RowH = 18f;
         private const float StripW = 64f;
@@ -199,14 +201,30 @@ namespace AX.UdonSlot.REV1_0.Editor.Effect
             return m + 0.5f;
         }
 
+        /// <summary>
+        /// キーの位置（開始位置から上方向へのコマ数）。実行時（EffectPlayer.ResolveReelKeys）と同じく、
+        /// 時間順に見て、絶対キーは前のキーの位置から向きに従ってそのコマまで動く。
+        /// </summary>
         private float Relative(EffectReelKey key, int n)
         {
             if (!key.Absolute) return key.Value;
-            float delta = startFrame[key.Reel] - key.Value;
-            float half = n / 2f;
-            while (delta > half) delta -= n;
-            while (delta < -half) delta += n;
-            return delta;
+            float previous = 0f;
+            foreach (var k in action.ReelKeys.Where(x => x.Reel == key.Reel).OrderBy(x => x.Time))
+            {
+                float value = k.Absolute ? ResolveAbsolute(previous, startFrame[k.Reel], k.Value, k.Direction, n) : k.Value;
+                if (k == key) return value;
+                previous = value;
+            }
+            return 0f;
+        }
+
+        private static float ResolveAbsolute(float previous, int start, float frame, int direction, int n)
+        {
+            float delta = (start - frame) - previous;
+            delta -= Mathf.Floor(delta / n) * n;
+            if (direction == EffectPlayer.ReelForward) { if (delta > 0f) delta -= n; }
+            else if (direction == EffectPlayer.ReelShortest) { if (delta > n / 2f) delta -= n; }
+            return previous + delta;
         }
 
         private float RelativeAt(int reel, float t, int n)
@@ -928,6 +946,12 @@ namespace AX.UdonSlot.REV1_0.Editor.Effect
                             Edit("リールキーの変更", () => { foreach (var k in selection) k.Value = WrapFrame(frame, n); });
                         EditorGUI.showMixedValue = false;
                         if (sameReel) GUILayout.Label(SymbolAt(first.Reel, Mathf.RoundToInt(first.Value), n), GUILayout.Width(80));
+                        GUILayout.Space(8);
+                        EditorGUI.showMixedValue = !selection.TrueForAll(k => k.Direction == first.Direction);
+                        EditorGUI.BeginChangeCheck();
+                        int direction = EditorGUILayout.Popup(first.Direction, DirectionNames, GUILayout.Width(80));
+                        if (EditorGUI.EndChangeCheck()) Edit("リールキーの変更", () => { foreach (var k in selection) k.Direction = direction; });
+                        EditorGUI.showMixedValue = false;
                     }
                     else if (allRelative)
                     {
