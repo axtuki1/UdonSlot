@@ -22,6 +22,7 @@ namespace AX.UdonSlot.REV1_0.Editor.Effect
         };
         private static readonly Color GraphColor = new Color(0.16f, 0.16f, 0.16f);
         private static readonly Color RowLineColor = new Color(0.22f, 0.22f, 0.22f);
+        private static readonly Color SnapLineColor = new Color(0.19f, 0.19f, 0.19f);
         private static readonly Color TickColor = new Color(0.33f, 0.33f, 0.33f);
         private static readonly Color StripColor = new Color(0.2f, 0.2f, 0.2f);
         private static readonly Color StripEditableColor = new Color(0.26f, 0.26f, 0.26f);
@@ -39,7 +40,21 @@ namespace AX.UdonSlot.REV1_0.Editor.Effect
         private const float FaceW = 90f;
         private const float KeySize = 10f;
         private const float DimAlpha = 0.25f;
-        private const int TimeSnap = 10;
+        private static readonly int[] SnapSteps = { 1, 10, 50, 100, 500, 1000 };
+        private static readonly string[] SnapNames = { "1 ms", "10 ms", "50 ms", "100 ms", "500 ms", "1000 ms" };
+        private const string SnapPref = "AX.UdonSlot.EffectReel.Snap";
+
+        /// <summary>時間のスナップ（グリッド）間隔。個人設定として EditorPrefs に残す。</summary>
+        private static int TimeSnap
+        {
+            get { return Mathf.Max(1, EditorPrefs.GetInt(SnapPref, 10)); }
+            set { EditorPrefs.SetInt(SnapPref, value); }
+        }
+
+        private static float Snap(float t)
+        {
+            return Mathf.Max(0, Mathf.RoundToInt(t / TimeSnap) * TimeSnap);
+        }
 
         [SerializeField] private string actionName;
         [SerializeField] private bool[] shown = { true, true, true };
@@ -335,6 +350,10 @@ namespace AX.UdonSlot.REV1_0.Editor.Effect
             {
                 GUILayout.Label(action.Name, EditorStyles.boldLabel);
                 GUILayout.FlexibleSpace();
+                GUILayout.Label("スナップ", GUILayout.Width(50));
+                int snapIndex = System.Array.IndexOf(SnapSteps, TimeSnap);
+                int pickedSnap = EditorGUILayout.Popup(snapIndex, SnapNames, EditorStyles.toolbarPopup, GUILayout.Width(80));
+                if (pickedSnap != snapIndex && pickedSnap >= 0) TimeSnap = SnapSteps[pickedSnap];
             }
 
             DrawPreview(n);
@@ -643,7 +662,7 @@ namespace AX.UdonSlot.REV1_0.Editor.Effect
             {
                 mode = DragMode.Scrub;
                 playing = false;
-                time = TimeAt(rect, e.mousePosition.x);
+                time = Snap(TimeAt(rect, e.mousePosition.x));
                 e.Use();
             }
             else if (e.type == EventType.ScrollWheel && rect.Contains(e.mousePosition))
@@ -660,6 +679,12 @@ namespace AX.UdonSlot.REV1_0.Editor.Effect
             EditorGUI.DrawRect(rect, GraphColor);
             GUI.BeginClip(rect);
             for (int i = 1; i < n; i++) EditorGUI.DrawRect(new Rect(0, i * RowH, rect.width, 1), RowLineColor);
+            float snap = TimeSnap;
+            if (snap / (ViewEnd - ViewStart) * rect.width >= 8f)
+            {
+                for (float t = Mathf.Ceil(ViewStart / snap) * snap; t <= ViewEnd; t += snap)
+                    EditorGUI.DrawRect(new Rect(X(rect, t), 0, 1, rect.height), SnapLineColor);
+            }
             float step = TickStep(ViewEnd - ViewStart, rect.width);
             for (float t = Mathf.Ceil(ViewStart / step) * step; t <= ViewEnd; t += step)
                 EditorGUI.DrawRect(new Rect(X(rect, t), 0, 1, rect.height), RowLineColor);
@@ -862,7 +887,7 @@ namespace AX.UdonSlot.REV1_0.Editor.Effect
                     switch (mode)
                     {
                         case DragMode.Scrub:
-                            time = TimeAt(rect, e.mousePosition.x);
+                            time = Snap(TimeAt(rect, e.mousePosition.x));
                             break;
                         case DragMode.Pan:
                         {
@@ -878,13 +903,12 @@ namespace AX.UdonSlot.REV1_0.Editor.Effect
                         case DragMode.Move:
                         {
                             float dt = (e.mousePosition.x - dragStart.x) / rect.width * (ViewEnd - ViewStart);
-                            int shift = Mathf.RoundToInt(dt / TimeSnap) * TimeSnap;
                             // 下へ動かすとコマ番号は下がる＝上方向への移動は増える
                             int rows = Mathf.RoundToInt((e.mousePosition.y - dragStart.y) / RowH);
                             for (int i = 0; i < selection.Count; i++)
                             {
                                 var key = selection[i];
-                                int newTime = Mathf.Max(0, dragTimes[i] + shift);
+                                int newTime = (int)Snap(dragTimes[i] + dt);
                                 float value = key.Absolute ? WrapFrame(Mathf.RoundToInt(dragValues[i]) - rows, n) : dragValues[i] + rows;
                                 if (newTime != key.Time || value != key.Value) dragMoved = true;
                                 key.Time = newTime;
