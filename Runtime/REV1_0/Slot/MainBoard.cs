@@ -724,7 +724,23 @@ namespace AX.UdonSlot.REV1_0
         public virtual void PushStopButton(int reelIndex)
         {
             if (!isControllable) return;
+            // リール演出で動かしているリールは止められない（ほかのリールは止められる）。
+            if (IsReelInEffect(reelIndex)) return;
             if (PushStopButtonLogic(reelIndex)) StopReel(reelIndex);
+        }
+
+        /// <summary>リール演出（scheduleRoll系の予約）でこのリールを動かしている、またはこれから動かすか。</summary>
+        public bool IsReelInEffect(int reelIndex)
+        {
+            if (reelIndex < 0 || reelIndex >= 3) return false;
+            for (int q = 0; q < scheduledRollStartTime.Length; q++)
+            {
+                int[] starts = scheduledRollStartTime[q];
+                if (starts == null || starts.Length <= reelIndex || starts[reelIndex] == ScheduledRollSkip) continue;
+                if (q == 0 && _scheduledRollCompleted[reelIndex]) continue;
+                return true;
+            }
+            return false;
         }
 
         /// <summary>
@@ -1451,7 +1467,7 @@ namespace AX.UdonSlot.REV1_0
 
         /// <summary>
         /// リール演出（フリーズなど）を、所有者の今のリール位置からのコマ数で再生する。
-        /// 全員へ配信し、終わるまで操作を止める。
+        /// 全員へ配信する。動かしているリールは終わるまで止められない。レバーオン時は終わるまで操作を止める。
         /// レバーオン時（LeverOnLogicから呼んでfalseを返す）は、終わったらゲームを開始する。
         /// 回転中（PushStopButtonLogicから呼んでfalseを返す）は、終わると回転に戻る。
         /// </summary>
@@ -1524,7 +1540,9 @@ namespace AX.UdonSlot.REV1_0
             }
             SendCustomNetworkEvent(NetworkEventTarget.All, nameof(scheduleRollSequence),
                 Networking.GetServerTimeInMilliseconds(), startOffsets, endOffsets, startAngles, goalAngles);
-            OffControllable(totalTime / 1000f);
+            // 回転中は、動かしているリールの停止だけを受け付けない（IsReelInEffect）。
+            // 回転中でないとき（レバーオン時・全停止後）は、終わるまで操作を止める。
+            if (startGame || !(isRollingReel1 || isRollingReel2 || isRollingReel3)) OffControllable(totalTime / 1000f);
             if (startGame)
             {
                 reelEffectStartsGame = true;
