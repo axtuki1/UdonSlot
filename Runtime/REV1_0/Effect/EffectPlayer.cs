@@ -25,10 +25,13 @@ namespace AX.UdonSlot.REV1_0
         public const int StepGameEnd = 4;
         public const int StepCount = 5;
 
-        /// <summary>セルの分岐。共通・入賞時・非入賞時。</summary>
+        /// <summary>セルの分岐。共通・入賞時・非入賞時・押したリール（左・中・右）。</summary>
         public const int BranchCommon = 0;
         public const int BranchWin = 1;
         public const int BranchLose = 2;
+        public const int BranchLeft = 3;
+        public const int BranchCenter = 4;
+        public const int BranchRight = 5;
 
         /// <summary>Animator への書き込みの種類。</summary>
         public const int AnimTrigger = 0;
@@ -128,6 +131,8 @@ namespace AX.UdonSlot.REV1_0
         /// <summary>最後に処理したステップ。ゲームの外（終了〜次のレバー）は StepGameEnd。</summary>
         private int lastStep = StepGameEnd;
         private bool lastWon = false;
+        /// <summary>最後の停止で押したリール。停止以外のステップでは -1。</summary>
+        private int lastReel = -1;
         private bool joined = false;
 
         private int[] queueAction = new int[0];
@@ -242,7 +247,7 @@ namespace AX.UdonSlot.REV1_0
                 currentPattern[channel] = pattern;
                 currentParameter[channel] = parameter;
                 hasPending[channel] = false;
-                if (lastStep != StepGameEnd || fromStep == StepGameEnd) PlayStep(channel, lastStep, lastWon);
+                if (lastStep != StepGameEnd || fromStep == StepGameEnd) PlayStep(channel, lastStep, lastWon, lastReel);
                 if (lastStep == StepGameEnd) EndGame(channel);
                 return;
             }
@@ -255,9 +260,16 @@ namespace AX.UdonSlot.REV1_0
         /// <summary>ステップが来たことを伝える。SubBoard が全員の画面で呼ぶ。won は第三停止・ゲーム終了で入賞したか。</summary>
         public void OnStep(int step, bool won)
         {
+            OnReelStep(step, won, -1);
+        }
+
+        /// <summary>OnStep の停止版。reelIndex は押したリール（0=左 1=中 2=右）。</summary>
+        public void OnReelStep(int step, bool won, int reelIndex)
+        {
             if (step < 0 || step >= StepCount) return;
             lastStep = step;
             lastWon = won;
+            lastReel = reelIndex;
             for (int c = 0; c < ChannelCount; c++)
             {
                 if (hasPending[c] && pendingFromStep[c] == step)
@@ -266,7 +278,7 @@ namespace AX.UdonSlot.REV1_0
                     currentParameter[c] = pendingParameter[c];
                     hasPending[c] = false;
                 }
-                PlayStep(c, step, won);
+                PlayStep(c, step, won, reelIndex);
                 if (step == StepGameEnd) EndGame(c);
             }
         }
@@ -293,7 +305,7 @@ namespace AX.UdonSlot.REV1_0
             return step >= StepGameEnd ? StepLeverOn : step + 1;
         }
 
-        private void PlayStep(int channel, int step, bool won)
+        private void PlayStep(int channel, int step, bool won, int reel)
         {
             int pattern = currentPattern[channel];
             if (pattern < 0) return;
@@ -303,6 +315,7 @@ namespace AX.UdonSlot.REV1_0
                 int branch = entryBranch[i];
                 if (branch == BranchWin && !won) continue;
                 if (branch == BranchLose && won) continue;
+                if (branch >= BranchLeft && branch - BranchLeft != reel) continue;
                 StartAction(entryAction[i], step, currentParameter[channel]);
             }
         }

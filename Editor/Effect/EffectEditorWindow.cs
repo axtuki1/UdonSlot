@@ -30,7 +30,7 @@ namespace AX.UdonSlot.REV1_0.Editor.Effect
         private static readonly Color ChipColor = new Color(0.32f, 0.32f, 0.32f);
         private static readonly Color HeaderColor = new Color(0.16f, 0.16f, 0.16f);
         private static readonly string[] Tabs = { "パターン", "アクション" };
-        private static readonly string[] BranchNames = { "共通", "入賞", "非入賞" };
+        private static readonly string[] BranchNames = { "共通", "入賞", "非入賞", "左押し", "中押し", "右押し" };
         private static readonly string[] SoundTypeNames = Enum.GetNames(typeof(SoundType));
 
         [SerializeField] private EffectPlayer player;
@@ -327,7 +327,8 @@ namespace AX.UdonSlot.REV1_0.Editor.Effect
                 int max = 1;
                 for (int s = 0; s < EffectPlayer.StepCount; s++)
                 {
-                    int count = pattern.Cell(layer, s).Count + (pattern.IsSplit(layer, s) ? 1 : 0);
+                    int split = pattern.SplitOf(layer, s), count = 0;
+                    foreach (int b in EffectModel.BranchesOf(split)) count += Mathf.Max(split == EffectModel.SplitNone ? 0 : 1, CountBranch(pattern, layer, s, b));
                     max = Mathf.Max(max, count);
                 }
                 float height = Mathf.Max(52, max * 22 + 10);
@@ -368,7 +369,7 @@ namespace AX.UdonSlot.REV1_0.Editor.Effect
             float y = cell.y + 5;
             if (pattern.IsSplit(layer, step))
             {
-                for (int b = EffectPlayer.BranchWin; b <= EffectPlayer.BranchLose; b++)
+                foreach (int b in EffectModel.BranchesOf(pattern.SplitOf(layer, step)))
                 {
                     GUI.Label(new Rect(cell.x + 4, y, 44, 20), BranchNames[b], EditorStyles.miniLabel);
                     bool any = false;
@@ -435,22 +436,27 @@ namespace AX.UdonSlot.REV1_0.Editor.Effect
                 }
                 int layer = selectedLayer, step = selectedStep;
                 GUILayout.Label(pattern.Layers[layer] + " × " + EffectModel.StepNames[step], EditorStyles.boldLabel);
-                bool split = pattern.IsSplit(layer, step);
-                if (EffectModel.CanSplit(step))
+                var modes = new List<int> { EffectModel.SplitNone };
+                var labels = new List<string> { "共通" };
+                if (EffectModel.CanSplit(step)) { modes.Add(EffectModel.SplitResult); labels.Add("入賞／非入賞"); }
+                if (EffectModel.CanSplitReel(step)) { modes.Add(EffectModel.SplitReel); labels.Add("押したリール"); }
+                int split = pattern.SplitOf(layer, step);
+                if (modes.Count > 1)
                 {
-                    int mode = GUILayout.Toolbar(split ? 1 : 0, new[] { "共通", "入賞／非入賞" });
-                    if (mode != (split ? 1 : 0)) Edit("分岐の切り替え", () => SetSplit(pattern, layer, step, mode == 1));
-                    split = pattern.IsSplit(layer, step);
+                    int current = Mathf.Max(0, modes.IndexOf(split));
+                    int chosen = GUILayout.Toolbar(current, labels.ToArray());
+                    if (chosen != current) Edit("分岐の切り替え", () => SetSplit(pattern, layer, step, modes[chosen]));
+                    split = pattern.SplitOf(layer, step);
                 }
                 GUILayout.Space(6);
                 sideScroll = EditorGUILayout.BeginScrollView(sideScroll);
-                if (split)
+                bool first = true;
+                foreach (int b in EffectModel.BranchesOf(split))
                 {
-                    DrawBranchList(pattern, layer, step, EffectPlayer.BranchWin);
-                    GUILayout.Space(8);
-                    DrawBranchList(pattern, layer, step, EffectPlayer.BranchLose);
+                    if (!first) GUILayout.Space(8);
+                    first = false;
+                    DrawBranchList(pattern, layer, step, b);
                 }
-                else DrawBranchList(pattern, layer, step, EffectPlayer.BranchCommon);
                 EditorGUILayout.EndScrollView();
             }
         }
@@ -486,21 +492,28 @@ namespace AX.UdonSlot.REV1_0.Editor.Effect
             }
         }
 
-        private static void SetSplit(EffectPattern pattern, int layer, int step, bool split)
+        private static int CountBranch(EffectPattern pattern, int layer, int step, int branch)
         {
+            int count = 0;
+            foreach (var e in pattern.Entries) if (e.Layer == layer && e.Step == step && e.Branch == branch) count++;
+            return count;
+        }
+
+        /// <summary>セルの分け方を変える。アクションは新しい分け方の最初の分岐へ寄せ、共通に戻すときは重複をまとめる。</summary>
+        private static void SetSplit(EffectPattern pattern, int layer, int step, int split)
+        {
+            int key = layer * 16 + step;
+            pattern.EmptySplits.Remove(key);
+            if (split != EffectModel.SplitNone) pattern.EmptySplits[key] = split;
+            int target = EffectModel.BranchesOf(split)[0];
             var seen = new HashSet<EffectAction>();
             var remove = new List<EffectEntry>();
             foreach (var e in pattern.Cell(layer, step))
             {
-                if (split) e.Branch = EffectPlayer.BranchWin;
-                else
-                {
-                    e.Branch = EffectPlayer.BranchCommon;
-                    if (!seen.Add(e.Action)) remove.Add(e);
-                }
+                e.Branch = target;
+                if (!seen.Add(e.Action)) remove.Add(e);
             }
             foreach (var e in remove) pattern.Entries.Remove(e);
-            // 空のセルを分けたときも、分けた状態が残るように入賞側の目印は要らない（表示は IsSplit で判断）。
         }
 
         // ------------------------------------------------------------ アクション

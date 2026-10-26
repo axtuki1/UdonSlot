@@ -102,10 +102,24 @@ namespace AX.UdonSlot.REV1_0.Editor.Effect
             return list;
         }
 
+        /// <summary>空のまま分けたセルの分け方（ベイクしない。アクションがあればそちらから決まる）。</summary>
+        public Dictionary<int, int> EmptySplits = new Dictionary<int, int>();
+
+        /// <summary>セルの分け方。SplitNone／SplitResult／SplitReel。</summary>
+        public int SplitOf(int layer, int step)
+        {
+            foreach (var e in Entries)
+            {
+                if (e.Layer != layer || e.Step != step || e.Branch == EffectPlayer.BranchCommon) continue;
+                return e.Branch >= EffectPlayer.BranchLeft ? EffectModel.SplitReel : EffectModel.SplitResult;
+            }
+            int split;
+            return EmptySplits.TryGetValue(layer * 16 + step, out split) ? split : EffectModel.SplitNone;
+        }
+
         public bool IsSplit(int layer, int step)
         {
-            foreach (var e in Entries) if (e.Layer == layer && e.Step == step && e.Branch != EffectPlayer.BranchCommon) return true;
-            return false;
+            return SplitOf(layer, step) != EffectModel.SplitNone;
         }
     }
 
@@ -118,10 +132,28 @@ namespace AX.UdonSlot.REV1_0.Editor.Effect
         public List<EffectAction> Actions = new List<EffectAction>();
         public List<EffectPattern> Patterns = new List<EffectPattern>();
 
+        public const int SplitNone = 0;
+        public const int SplitResult = 1;
+        public const int SplitReel = 2;
+
         /// <summary>入賞／非入賞に分けられる列（第三停止・ゲーム終了）。</summary>
         public static bool CanSplit(int step)
         {
             return step == EffectPlayer.StepThirdStop || step == EffectPlayer.StepGameEnd;
+        }
+
+        /// <summary>押したリールで分けられる列（第一〜第三停止）。</summary>
+        public static bool CanSplitReel(int step)
+        {
+            return step >= EffectPlayer.StepFirstStop && step <= EffectPlayer.StepThirdStop;
+        }
+
+        /// <summary>分け方ごとの分岐。</summary>
+        public static int[] BranchesOf(int split)
+        {
+            if (split == SplitResult) return new[] { EffectPlayer.BranchWin, EffectPlayer.BranchLose };
+            if (split == SplitReel) return new[] { EffectPlayer.BranchLeft, EffectPlayer.BranchCenter, EffectPlayer.BranchRight };
+            return new[] { EffectPlayer.BranchCommon };
         }
 
         public static EffectModel Load(EffectPlayer player)

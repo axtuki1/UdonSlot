@@ -451,7 +451,7 @@ namespace AX.UdonSlot.REV1_0
             {
                 effectStopCount++;
                 // 第三停止では possibleRoles が揃った役になる。
-                effectPlayer.OnStep(effectStopCount, effectStopCount == 3 && possibleRoles.Length > 0);
+                effectPlayer.OnReelStep(effectStopCount, effectStopCount == 3 && possibleRoles.Length > 0, reelIndex);
             }
             ReelStopLogic(reelIndex, stopIndex, accuracy, possibleRoles);
         }
