@@ -382,7 +382,7 @@ namespace AX.UdonSlot.REV1_0.Editor.Effect
                 // 開始位置（再生前の停止出目）
                 using (new EditorGUILayout.VerticalScope(GUILayout.Width(FaceW * 3 + 12)))
                 {
-                    GUILayout.Label("開始", EditorStyles.miniBoldLabel);
+                    GUILayout.Label("開始時点の停止系", EditorStyles.miniBoldLabel);
                     using (new EditorGUILayout.HorizontalScope())
                     {
                         for (int r = 0; r < 3; r++)
@@ -406,7 +406,7 @@ namespace AX.UdonSlot.REV1_0.Editor.Effect
                 // 再生ヘッドの位置。動かすとその時間にキーを打つ。
                 using (new EditorGUILayout.VerticalScope(GUILayout.Width(FaceW * 3 + 12)))
                 {
-                    GUILayout.Label(Mathf.RoundToInt(time) + " ms", EditorStyles.miniBoldLabel);
+                    GUILayout.Label("プレビュー", EditorStyles.miniBoldLabel);
                     using (new EditorGUILayout.HorizontalScope())
                     {
                         for (int r = 0; r < 3; r++)
