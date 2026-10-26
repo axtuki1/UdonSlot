@@ -510,6 +510,19 @@ namespace AX.UdonSlot.REV1_0
                 subBoard.effectPlayer.CallEffectPatternWithParameter(patternName, parameter);
         }
 
+        /// <summary>チャンネルを指定してパターンを呼ぶ。0〜5（EffectPlayer.residentChannelCount より前）は常駐、それ以降はそのゲームだけ。</summary>
+        public void CallEffectPatternOnChannel(int channel, string patternName, int parameter)
+        {
+            if (Utilities.IsValid(subBoard) && Utilities.IsValid(subBoard.effectPlayer))
+                subBoard.effectPlayer.CallEffectPatternOnChannel(channel, patternName, parameter);
+        }
+
+        /// <summary>チャンネルのパターンを次のステップから止める。</summary>
+        public void StopEffectPattern(int channel)
+        {
+            if (Utilities.IsValid(subBoard) && Utilities.IsValid(subBoard.effectPlayer)) subBoard.effectPlayer.StopEffectPattern(channel);
+        }
+
         /// <summary>
         /// 指定秒数、操作を受け付けない状態にする
         /// </summary>

@@ -11,7 +11,8 @@ namespace AX.UdonSlot.REV1_0
     /// 演出エディタで作ったパターンを再生する。
     /// パターンは「レバーオン／第一停止／第二停止／第三停止／ゲーム終了」の5列に、アクション（映像・表示・音・リール・コード）を並べたもの。
     /// どのパターンを流すかは機種コードが決め、メイン基板の所有者が CallEffectPattern で呼ぶ。
-    /// 呼ぶと全員へ届き、次のステップから新しいパターンに差し替わる。差し替えられない限り、毎ゲーム同じパターンを繰り返す。
+    /// 呼ぶと全員へ届き、次のステップから新しいパターンに差し替わる。チャンネルごとに別のパターンを重ねて流せる。
+    /// 常駐チャンネル（residentChannelCount より前）は差し替えられない限り毎ゲーム繰り返し、それ以降はそのゲームで止まる。
     /// データは演出エディタ（UdonSlot/演出エディタ）が書き込む。手で編集しない。
     /// </summary>
     [UdonBehaviourSyncMode(BehaviourSyncMode.Manual)]
@@ -85,63 +86,109 @@ namespace AX.UdonSlot.REV1_0
 
         // ---------------------------------------------------------------- 再生状態
 
-        /// <summary>今のパターン。途中参加者向けに同期する。</summary>
-        [UdonSynced] private int syncedPattern = -1;
-        [UdonSynced] private int syncedParameter = 0;
+        /// <summary>チャンネルの数。チャンネルごとに今のパターンを1つ持ち、同時に重ねて流す。</summary>
+        public const int ChannelCount = 16;
 
-        private int currentPattern = -1;
-        private int currentParameter = 0;
-        private int pendingPattern = -1;
-        private int pendingParameter = 0;
-        private int pendingFromStep = -1;
+        /// <summary>
+        /// この番号より前のチャンネルは常駐（差し替えるまで毎ゲーム繰り返す）。
+        /// これ以降のチャンネルは、そのゲームで流し終えたら止まる（押し順ナビ、ペナルティ画面など）。
+        /// </summary>
+        public int residentChannelCount = 6;
+
+        /// <summary>チャンネルごとの今のパターン＋1（0 はなし）。途中参加者向けに同期する。</summary>
+        [UdonSynced] private int[] syncedPatterns = new int[ChannelCount];
+        [UdonSynced] private int[] syncedParameters = new int[ChannelCount];
+
+        private int[] currentPattern = new int[ChannelCount];
+        private int[] currentParameter = new int[ChannelCount];
+        private bool[] hasPending = new bool[ChannelCount];
+        /// <summary>-1 は止める。</summary>
+        private int[] pendingPattern = new int[ChannelCount];
+        private int[] pendingParameter = new int[ChannelCount];
+        private int[] pendingFromStep = new int[ChannelCount];
         /// <summary>最後に処理したステップ。ゲームの外（終了〜次のレバー）は StepGameEnd。</summary>
         private int lastStep = StepGameEnd;
         private bool lastWon = false;
+        private bool joined = false;
 
         private int[] queueAction = new int[0];
+        private int[] queueParameter = new int[0];
         private float[] queueTime = new float[0];
+
+        private bool[] received = new bool[ChannelCount];
 
         public void Start()
         {
-            currentPattern = syncedPattern;
-            currentParameter = syncedParameter;
+            if (joined) return;
+            for (int c = 0; c < ChannelCount; c++) currentPattern[c] = -1;
         }
 
         public override void OnDeserialization()
         {
-            // 途中参加者：次のレバーから今のパターンで再生する。
-            if (currentPattern < 0 && pendingPattern < 0)
+            ApplySynced();
+        }
+
+        /// <summary>途中参加者：常駐チャンネルだけ、次のレバーから今のパターンで再生する。</summary>
+        private void ApplySynced()
+        {
+            if (joined || Networking.IsOwner(gameObject)) return;
+            if (syncedPatterns == null || syncedPatterns.Length != ChannelCount) return;
+            joined = true;
+            for (int c = 0; c < ChannelCount; c++) if (!received[c]) currentPattern[c] = -1;
+            for (int c = 0; c < residentChannelCount && c < ChannelCount; c++)
             {
-                currentPattern = syncedPattern;
-                currentParameter = syncedParameter;
+                if (received[c]) continue;
+                currentPattern[c] = syncedPatterns[c] - 1;
+                currentParameter[c] = syncedParameters[c];
             }
         }
 
-        /// <summary>パターンを名前で呼ぶ。パラメータは 0。</summary>
+        /// <summary>チャンネル0（通常）のパターンを名前で呼ぶ。パラメータは 0。</summary>
         public void CallEffectPattern(string patternName)
         {
-            CallEffectPatternWithParameter(patternName, 0);
+            CallEffectPatternOnChannel(0, patternName, 0);
+        }
+
+        /// <summary>チャンネル0（通常）のパターンを、パラメータ付きで呼ぶ。</summary>
+        public void CallEffectPatternWithParameter(string patternName, int parameter)
+        {
+            CallEffectPatternOnChannel(0, patternName, parameter);
         }
 
         /// <summary>
-        /// パターンを名前で呼ぶ。メイン基板の所有者だけが呼べる（ほかの人が呼んでも何もしない）。
+        /// チャンネルを指定してパターンを呼ぶ。メイン基板の所有者だけが呼べる（ほかの人が呼んでも何もしない）。
         /// 全員へ届き、次のステップから差し替わる。ゲームの外で呼んだら次のレバーオンから。
         /// parameter は Animator の int パラメータとして各アクションへ渡す（キャラ違いなどの差し替え用）。
         /// </summary>
-        public void CallEffectPatternWithParameter(string patternName, int parameter)
+        public void CallEffectPatternOnChannel(int channel, string patternName, int parameter)
         {
-            if (!IsMainBoardOwner()) return;
+            if (!IsMainBoardOwner() || channel < 0 || channel >= ChannelCount) return;
             int pattern = FindPattern(patternName);
             if (pattern < 0)
             {
                 Debug.LogWarning("[EffectPlayer] パターンがありません: " + patternName);
                 return;
             }
-            if (!Networking.IsOwner(gameObject)) Networking.SetOwner(Networking.LocalPlayer, gameObject);
-            syncedPattern = pattern;
-            syncedParameter = parameter;
-            RequestSerialization();
-            SendCustomNetworkEvent(NetworkEventTarget.All, nameof(ReceivePattern), pattern, parameter, NextStep(lastStep));
+            Send(channel, pattern, parameter);
+        }
+
+        /// <summary>チャンネルのパターンを、次のステップから止める。</summary>
+        public void StopEffectPattern(int channel)
+        {
+            if (!IsMainBoardOwner() || channel < 0 || channel >= ChannelCount) return;
+            Send(channel, -1, 0);
+        }
+
+        private void Send(int channel, int pattern, int parameter)
+        {
+            if (channel < residentChannelCount)
+            {
+                if (!Networking.IsOwner(gameObject)) Networking.SetOwner(Networking.LocalPlayer, gameObject);
+                syncedPatterns[channel] = pattern + 1;
+                syncedParameters[channel] = parameter;
+                RequestSerialization();
+            }
+            SendCustomNetworkEvent(NetworkEventTarget.All, nameof(ReceivePattern), channel, pattern, parameter, NextStep(lastStep));
         }
 
         /// <summary>パターンの番号。ないときは -1。</summary>
@@ -151,48 +198,68 @@ namespace AX.UdonSlot.REV1_0
             return -1;
         }
 
-        /// <summary>今のパターンの名前。ないときは空。</summary>
+        /// <summary>チャンネル0の今のパターンの名前。ないときは空。</summary>
         public string GetCurrentPatternName()
         {
-            return currentPattern >= 0 && currentPattern < patternNames.Length ? patternNames[currentPattern] : "";
+            return GetChannelPatternName(0);
+        }
+
+        /// <summary>チャンネルの今のパターンの名前。ないときは空。</summary>
+        public string GetChannelPatternName(int channel)
+        {
+            if (channel < 0 || channel >= ChannelCount) return "";
+            int pattern = currentPattern[channel];
+            return pattern >= 0 && pattern < patternNames.Length ? patternNames[pattern] : "";
         }
 
         [NetworkCallable]
-        public void ReceivePattern(int pattern, int parameter, int fromStep)
+        public void ReceivePattern(int channel, int pattern, int parameter, int fromStep)
         {
-            if (pattern < 0 || pattern >= patternNames.Length) return;
+            if (channel < 0 || channel >= ChannelCount || pattern >= patternNames.Length) return;
+            received[channel] = true;
             if (HasPassed(fromStep))
             {
                 // 呼び出しより先にそのステップが届いていた：差し替えて、今のステップの列を1回だけ流して追いつく。
-                currentPattern = pattern;
-                currentParameter = parameter;
-                pendingPattern = -1;
-                if (lastStep != StepGameEnd || fromStep == StepGameEnd) PlayStep(lastStep, lastWon);
+                currentPattern[channel] = pattern;
+                currentParameter[channel] = parameter;
+                hasPending[channel] = false;
+                if (lastStep != StepGameEnd || fromStep == StepGameEnd) PlayStep(channel, lastStep, lastWon);
+                if (lastStep == StepGameEnd) EndGame(channel);
                 return;
             }
-            pendingPattern = pattern;
-            pendingParameter = parameter;
-            pendingFromStep = fromStep;
+            hasPending[channel] = true;
+            pendingPattern[channel] = pattern;
+            pendingParameter[channel] = parameter;
+            pendingFromStep[channel] = fromStep;
         }
 
         /// <summary>ステップが来たことを伝える。SubBoard が全員の画面で呼ぶ。won は第三停止・ゲーム終了で入賞したか。</summary>
         public void OnStep(int step, bool won)
         {
             if (step < 0 || step >= StepCount) return;
-            if (pendingPattern >= 0 && pendingFromStep == step)
-            {
-                currentPattern = pendingPattern;
-                currentParameter = pendingParameter;
-                pendingPattern = -1;
-            }
             lastStep = step;
             lastWon = won;
-            PlayStep(step, won);
-            if (step == StepGameEnd && pendingPattern < 0 && currentPattern >= 0 && currentPattern < patternNext.Length)
+            for (int c = 0; c < ChannelCount; c++)
             {
-                int next = patternNext[currentPattern];
-                if (next >= 0 && next < patternNames.Length) currentPattern = next;
+                if (hasPending[c] && pendingFromStep[c] == step)
+                {
+                    currentPattern[c] = pendingPattern[c];
+                    currentParameter[c] = pendingParameter[c];
+                    hasPending[c] = false;
+                }
+                PlayStep(c, step, won);
+                if (step == StepGameEnd) EndGame(c);
             }
+        }
+
+        /// <summary>ゲーム終了の後：次のパターンへ進む。常駐でないチャンネルは、次がなければ止まる。</summary>
+        private void EndGame(int channel)
+        {
+            int pattern = currentPattern[channel];
+            if (hasPending[channel] || pattern < 0) return;
+            int next = pattern < patternNext.Length ? patternNext[pattern] : -1;
+            if (next >= 0 && next < patternNames.Length) currentPattern[channel] = next;
+            else if (channel >= residentChannelCount) currentPattern[channel] = -1;
         }
 
         private bool HasPassed(int step)
@@ -207,36 +274,41 @@ namespace AX.UdonSlot.REV1_0
             return step >= StepGameEnd ? StepLeverOn : step + 1;
         }
 
-        private void PlayStep(int step, bool won)
+        private void PlayStep(int channel, int step, bool won)
         {
-            if (currentPattern < 0) return;
+            int pattern = currentPattern[channel];
+            if (pattern < 0) return;
             for (int i = 0; i < entryAction.Length; i++)
             {
-                if (entryPattern[i] != currentPattern || entryStep[i] != step) continue;
+                if (entryPattern[i] != pattern || entryStep[i] != step) continue;
                 int branch = entryBranch[i];
                 if (branch == BranchWin && !won) continue;
                 if (branch == BranchLose && won) continue;
-                StartAction(entryAction[i], step);
+                StartAction(entryAction[i], step, currentParameter[channel]);
             }
         }
 
-        private void StartAction(int action, int step)
+        private void StartAction(int action, int step, int parameter)
         {
             if (action < 0 || action >= actionNames.Length) return;
             int delay = actionDelayMs[action];
             if (delay <= 0)
             {
-                RunAction(action, step);
+                RunAction(action, step, parameter);
                 return;
             }
             int n = queueAction.Length;
             int[] actions = new int[n + 1];
+            int[] parameters = new int[n + 1];
             float[] times = new float[n + 1];
             System.Array.Copy(queueAction, actions, n);
+            System.Array.Copy(queueParameter, parameters, n);
             System.Array.Copy(queueTime, times, n);
             actions[n] = action;
+            parameters[n] = parameter;
             times[n] = Time.time + delay / 1000f;
             queueAction = actions;
+            queueParameter = parameters;
             queueTime = times;
         }
 
@@ -247,32 +319,35 @@ namespace AX.UdonSlot.REV1_0
             int kept = 0;
             for (int i = 0; i < queueAction.Length; i++)
             {
-                if (queueTime[i] <= now) RunAction(queueAction[i], lastStep);
+                if (queueTime[i] <= now) RunAction(queueAction[i], lastStep, queueParameter[i]);
                 else kept++;
             }
             if (kept == queueAction.Length) return;
             int[] actions = new int[kept];
+            int[] parameters = new int[kept];
             float[] times = new float[kept];
             int k = 0;
             for (int i = 0; i < queueAction.Length; i++)
             {
                 if (queueTime[i] <= now) continue;
                 actions[k] = queueAction[i];
+                parameters[k] = queueParameter[i];
                 times[k] = queueTime[i];
                 k++;
             }
             queueAction = actions;
+            queueParameter = parameters;
             queueTime = times;
         }
 
-        private void RunAction(int action, int step)
+        private void RunAction(int action, int step, int parameter)
         {
             int start = actionAnimStart[action], end = start + actionAnimCount[action];
             for (int i = start; i < end; i++)
             {
                 Animator animator = animTargets[i];
                 if (!Utilities.IsValid(animator)) continue;
-                if (animParameters[i].Length > 0) animator.SetInteger(animParameters[i], currentParameter);
+                if (animParameters[i].Length > 0) animator.SetInteger(animParameters[i], parameter);
                 if (animTriggers[i].Length > 0) animator.SetTrigger(animTriggers[i]);
             }
 

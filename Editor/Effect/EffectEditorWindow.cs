@@ -529,6 +529,16 @@ namespace AX.UdonSlot.REV1_0.Editor.Effect
         private void DrawAnimSection(EffectAction action)
         {
             if (SectionHeader("映像")) Edit("映像の追加", () => action.Anims.Add(new EffectAnim()));
+            if (action.Anims.Count > 0)
+            {
+                using (new EditorGUILayout.HorizontalScope())
+                {
+                    GUILayout.Label("Animator", EditorStyles.miniLabel, GUILayout.ExpandWidth(true));
+                    GUILayout.Label("トリガー", EditorStyles.miniLabel, GUILayout.Width(130));
+                    GUILayout.Label("パラメータ", EditorStyles.miniLabel, GUILayout.Width(130));
+                    GUILayout.Space(26);
+                }
+            }
             for (int i = 0; i < action.Anims.Count; i++)
             {
                 var anim = action.Anims[i];
@@ -539,7 +549,7 @@ namespace AX.UdonSlot.REV1_0.Editor.Effect
                     if (EditorGUI.EndChangeCheck()) Edit("Animator の変更", () => anim.Target = target);
 
                     string trigger = ParameterPopup(anim.Target, AnimatorControllerParameterType.Trigger, anim.Trigger, false, 130);
-                    if (trigger != anim.Trigger) Edit("Trigger の変更", () => anim.Trigger = trigger);
+                    if (trigger != anim.Trigger) Edit("トリガーの変更", () => anim.Trigger = trigger);
 
                     string parameter = ParameterPopup(anim.Target, AnimatorControllerParameterType.Int, anim.Parameter, true, 130);
                     if (parameter != anim.Parameter) Edit("パラメータの変更", () => anim.Parameter = parameter);
