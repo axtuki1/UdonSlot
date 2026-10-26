@@ -378,24 +378,55 @@ namespace AX.UdonSlot.REV1_0.Editor.Effect
             using (new EditorGUILayout.HorizontalScope())
             {
                 GUILayout.Space(8);
-                for (int r = 0; r < 3; r++)
+
+                // 開始位置（再生前の停止出目）
+                using (new EditorGUILayout.VerticalScope(GUILayout.Width(FaceW * 3 + 12)))
                 {
-                    using (new EditorGUILayout.VerticalScope(GUILayout.Width(FaceW)))
+                    GUILayout.Label("開始", EditorStyles.miniBoldLabel);
+                    using (new EditorGUILayout.HorizontalScope())
                     {
-                        var face = GUILayoutUtility.GetRect(FaceW, CellH * 3, GUILayout.Width(FaceW));
-                        DrawReelFace(face, r, n);
-                        HandleFaceInput(face, r, n);
-                        using (new EditorGUILayout.HorizontalScope())
+                        for (int r = 0; r < 3; r++)
                         {
-                            if (GUILayout.Button("−", EditorStyles.miniButtonLeft, GUILayout.Width(20))) startFrame[r] = WrapFrame(startFrame[r] - 1, n);
-                            GUILayout.Label(startFrame[r].ToString(), StripLabel, GUILayout.Width(FaceW - 40));
-                            if (GUILayout.Button("＋", EditorStyles.miniButtonRight, GUILayout.Width(20))) startFrame[r] = WrapFrame(startFrame[r] + 1, n);
+                            using (new EditorGUILayout.VerticalScope(GUILayout.Width(FaceW)))
+                            {
+                                var face = GUILayoutUtility.GetRect(FaceW, CellH * 3, GUILayout.Width(FaceW));
+                                DrawReelFace(face, r, startFrame[r], n);
+                                int rows = FaceInput(face, r, false);
+                                if (rows != 0) SetStart(r, startFrame[r] + rows, n);
+                                int step = StepButtons(startFrame[r].ToString());
+                                if (step != 0) SetStart(r, startFrame[r] + step, n);
+                            }
+                            if (r < 2) GUILayout.Space(6);
                         }
                     }
-                    GUILayout.Space(6);
                 }
 
-                GUILayout.Space(10);
+                GUILayout.Space(24);
+
+                // 再生ヘッドの位置。動かすとその時間にキーを打つ。
+                using (new EditorGUILayout.VerticalScope(GUILayout.Width(FaceW * 3 + 12)))
+                {
+                    GUILayout.Label(Mathf.RoundToInt(time) + " ms", EditorStyles.miniBoldLabel);
+                    using (new EditorGUILayout.HorizontalScope())
+                    {
+                        for (int r = 0; r < 3; r++)
+                        {
+                            using (new EditorGUILayout.VerticalScope(GUILayout.Width(FaceW)))
+                            {
+                                float center = CenterAt(r, time, n);
+                                var face = GUILayoutUtility.GetRect(FaceW, CellH * 3, GUILayout.Width(FaceW));
+                                DrawReelFace(face, r, center, n);
+                                int rows = FaceInput(face, r, true);
+                                if (rows != 0) KeyAtPlayhead(r, rows, n);
+                                int step = StepButtons(WrapFrame(Mathf.RoundToInt(center), n).ToString());
+                                if (step != 0) KeyAtPlayhead(r, step, n);
+                            }
+                            if (r < 2) GUILayout.Space(6);
+                        }
+                    }
+                }
+
+                GUILayout.Space(16);
                 using (new EditorGUILayout.VerticalScope())
                 {
                     GUILayout.FlexibleSpace();
@@ -414,43 +445,86 @@ namespace AX.UdonSlot.REV1_0.Editor.Effect
             GUILayout.Space(8);
         }
 
-        /// <summary>リール窓を上下にドラッグ、またはホイールで開始位置を変える（0ms に戻して見せる）。</summary>
-        private void HandleFaceInput(Rect face, int reel, int n)
+        /// <summary>−／＋。押した向き（−1／＋1）を返す。＋は中段のコマ番号が1つ上がる。</summary>
+        private static int StepButtons(string label)
+        {
+            int step = 0;
+            using (new EditorGUILayout.HorizontalScope())
+            {
+                if (GUILayout.Button("−", EditorStyles.miniButtonLeft, GUILayout.Width(20))) step = -1;
+                GUILayout.Label(label, StripLabel, GUILayout.Width(FaceW - 40));
+                if (GUILayout.Button("＋", EditorStyles.miniButtonRight, GUILayout.Width(20))) step = 1;
+            }
+            return step;
+        }
+
+        private void SetStart(int reel, int frame, int n)
+        {
+            startFrame[reel] = WrapFrame(frame, n);
+            playing = false;
+            time = 0f;
+        }
+
+        /// <summary>
+        /// リール窓の上下ドラッグとホイール。動いたコマ数を返す（下へ＝図柄が下へ流れる＝中段のコマ番号が上がる）。
+        /// </summary>
+        private int FaceInput(Rect face, int reel, bool preview)
         {
             var e = Event.current;
+            int id = preview ? reel + 3 : reel;
             EditorGUIUtility.AddCursorRect(face, MouseCursor.ResizeVertical);
             if (e.type == EventType.MouseDown && e.button == 0 && face.Contains(e.mousePosition))
             {
-                faceDragReel = reel;
+                faceDragReel = id;
                 faceDragY = e.mousePosition.y;
                 playing = false;
-                time = 0f;
                 e.Use();
             }
-            else if (e.type == EventType.MouseDrag && faceDragReel == reel)
+            else if (e.type == EventType.MouseDrag && faceDragReel == id)
             {
-                // 下へドラッグ＝図柄が下へ流れる＝中段のコマ番号が上がる
                 int rows = Mathf.RoundToInt((e.mousePosition.y - faceDragY) / CellH);
-                if (rows != 0)
-                {
-                    startFrame[reel] = WrapFrame(startFrame[reel] + rows, n);
-                    faceDragY += rows * CellH;
-                }
+                faceDragY += rows * CellH;
                 e.Use();
                 Repaint();
+                return rows;
             }
-            else if (e.rawType == EventType.MouseUp && faceDragReel == reel)
+            else if (e.rawType == EventType.MouseUp && faceDragReel == id)
             {
                 faceDragReel = -1;
             }
             else if (e.type == EventType.ScrollWheel && face.Contains(e.mousePosition))
             {
-                startFrame[reel] = WrapFrame(startFrame[reel] + (e.delta.y > 0 ? 1 : -1), n);
                 playing = false;
-                time = 0f;
                 e.Use();
                 Repaint();
+                return e.delta.y > 0 ? 1 : -1;
             }
+            return 0;
+        }
+
+        /// <summary>
+        /// 再生ヘッドの時間で、中段のコマ番号を frames だけずらすキーを打つ。
+        /// その時間にキーがあれば直し、なければ今の線の位置から相対キーを足す。
+        /// </summary>
+        private void KeyAtPlayhead(int reel, int frames, int n)
+        {
+            playing = false;
+            int at = Mathf.RoundToInt(time / TimeSnap) * TimeSnap;
+            time = at;
+            var key = action.ReelKeys.Find(k => k.Reel == reel && k.Time == at);
+            if (key != null)
+            {
+                Edit("リールキーの変更", delegate
+                {
+                    if (key.Absolute) key.Value = WrapFrame(Mathf.RoundToInt(key.Value) + frames, n);
+                    else key.Value -= frames;
+                });
+                SetSelection(key);
+                return;
+            }
+            var added = new EffectReelKey { Reel = reel, Time = at, Value = Mathf.Round(RelativeAt(reel, at, n)) - frames };
+            Edit("リールキーの追加", () => action.ReelKeys.Add(added));
+            SetSelection(added);
         }
 
         private void TogglePlay()
@@ -466,10 +540,9 @@ namespace AX.UdonSlot.REV1_0.Editor.Effect
             lastTick = EditorApplication.timeSinceStartup;
         }
 
-        private void DrawReelFace(Rect rect, int reel, int n)
+        private void DrawReelFace(Rect rect, int reel, float center, int n)
         {
             EditorGUI.DrawRect(rect, ReelFaceColor);
-            float center = CenterAt(reel, time, n);
             GUI.BeginClip(rect);
             int baseFrame = Mathf.FloorToInt(center);
             for (int k = baseFrame - 2; k <= baseFrame + 3; k++)
