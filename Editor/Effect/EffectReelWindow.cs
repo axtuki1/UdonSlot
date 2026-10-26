@@ -888,7 +888,7 @@ namespace AX.UdonSlot.REV1_0.Editor.Effect
 
                     GUILayout.Label("時間", GUILayout.Width(30));
                     EditorGUI.BeginChangeCheck();
-                    int t = EditorGUILayout.DelayedIntField(key.Time, GUILayout.Width(70));
+                    int t = EffectFields.Int(key.Time, GUILayout.Width(70));
                     if (EditorGUI.EndChangeCheck()) Edit("リールキーの変更", () => { key.Time = Mathf.Max(0, t); });
                     GUILayout.Label("ms", GUILayout.Width(24));
                     GUILayout.Space(12);
@@ -912,7 +912,7 @@ namespace AX.UdonSlot.REV1_0.Editor.Effect
                     {
                         GUILayout.Label("コマ番号", GUILayout.Width(52));
                         EditorGUI.BeginChangeCheck();
-                        int frame = EditorGUILayout.DelayedIntField(Mathf.RoundToInt(key.Value), GUILayout.Width(50));
+                        int frame = EffectFields.Int(Mathf.RoundToInt(key.Value), GUILayout.Width(50));
                         if (EditorGUI.EndChangeCheck()) Edit("リールキーの変更", () => { key.Value = WrapFrame(frame, n); });
                         GUILayout.Label(SymbolAt(key.Reel, Mathf.RoundToInt(key.Value), n), GUILayout.Width(80));
                     }
@@ -920,7 +920,7 @@ namespace AX.UdonSlot.REV1_0.Editor.Effect
                     {
                         GUILayout.Label("移動", GUILayout.Width(30));
                         EditorGUI.BeginChangeCheck();
-                        float value = EditorGUILayout.DelayedFloatField(key.Value, GUILayout.Width(60));
+                        float value = EffectFields.Float(key.Value, GUILayout.Width(60));
                         if (EditorGUI.EndChangeCheck()) Edit("リールキーの変更", () => { key.Value = value; });
                         GUILayout.Label("コマ", GUILayout.Width(30));
                     }

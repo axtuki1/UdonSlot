@@ -523,7 +523,7 @@ namespace AX.UdonSlot.REV1_0.Editor.Effect
                         Edit("アクション名の変更", () => action.Name = EffectModel.UniqueName(name.Trim(), used));
                     }
                     EditorGUI.BeginChangeCheck();
-                    int delay = EditorGUILayout.DelayedIntField("遅延 (ms)", action.DelayMs);
+                    int delay = EffectFields.Int("遅延 (ms)", action.DelayMs);
                     if (EditorGUI.EndChangeCheck()) Edit("遅延の変更", () => action.DelayMs = Mathf.Max(0, delay));
 
                     GUILayout.Space(8);
@@ -650,7 +650,7 @@ namespace AX.UdonSlot.REV1_0.Editor.Effect
                         if (!fromCall)
                         {
                             EditorGUI.BeginChangeCheck();
-                            int v = EditorGUILayout.DelayedIntField(Mathf.RoundToInt(anim.Value), GUILayout.Width(62));
+                            int v = EffectFields.Int(Mathf.RoundToInt(anim.Value), GUILayout.Width(62));
                             if (EditorGUI.EndChangeCheck()) Edit("設定値の変更", () => anim.Value = v);
                         }
                         break;
@@ -658,7 +658,7 @@ namespace AX.UdonSlot.REV1_0.Editor.Effect
                     case EffectPlayer.AnimFloat:
                     {
                         EditorGUI.BeginChangeCheck();
-                        float v = EditorGUILayout.DelayedFloatField(anim.Value, GUILayout.Width(176));
+                        float v = EffectFields.Float(anim.Value, GUILayout.Width(176));
                         if (EditorGUI.EndChangeCheck()) Edit("設定値の変更", () => anim.Value = v);
                         break;
                     }
@@ -735,7 +735,7 @@ namespace AX.UdonSlot.REV1_0.Editor.Effect
                     else
                     {
                         EditorGUI.BeginChangeCheck();
-                        int clip = EditorGUILayout.DelayedIntField(action.SoundClip);
+                        int clip = EffectFields.Int(action.SoundClip);
                         if (EditorGUI.EndChangeCheck()) Edit("サウンドの変更", () => action.SoundClip = Mathf.Max(0, clip));
                     }
                 }
