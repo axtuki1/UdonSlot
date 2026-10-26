@@ -90,7 +90,7 @@ namespace AX.UdonSlot.REV1_0.Editor.Effect
         {
             var window = GetWindow<EffectReelWindow>();
             window.titleContent = new GUIContent("リール");
-            window.minSize = new Vector2(820, 640);
+            window.minSize = new Vector2(900, 600);
             window.owner = owner;
             window.action = action;
             window.actionName = action.Name;
@@ -358,7 +358,6 @@ namespace AX.UdonSlot.REV1_0.Editor.Effect
 
             DrawPreview(n);
             DrawEditArea(n);
-            DrawInspector(n);
         }
 
         private void HandleKeyboard()
@@ -448,6 +447,8 @@ namespace AX.UdonSlot.REV1_0.Editor.Effect
                 GUILayout.Space(16);
                 using (new EditorGUILayout.VerticalScope())
                 {
+                    GUILayout.Space(16);
+                    DrawInspector(n);
                     GUILayout.FlexibleSpace();
                     using (new EditorGUILayout.HorizontalScope())
                     {
@@ -986,99 +987,111 @@ namespace AX.UdonSlot.REV1_0.Editor.Effect
             if (best >= 0) AddKey(best, at, n);
         }
 
+        /// <summary>選んだキーの欄。プレビューの右、再生ボタンの上に縦に並べる。</summary>
         private void DrawInspector(int n)
         {
-            GUILayout.Space(8);
             using (new EditorGUILayout.HorizontalScope())
             {
-                GUILayout.Space(8);
                 if (GUILayout.Button("キー＋", GUILayout.Width(70))) AddKeysAtPlayhead();
-                GUILayout.Space(16);
-
-                if (selection.Count > 0)
-                {
-                    var first = selection[0];
-                    bool sameReel = selection.TrueForAll(k => k.Reel == first.Reel);
-                    var label = new GUIStyle(EditorStyles.boldLabel);
-                    if (sameReel) label.normal.textColor = ReelColors[first.Reel];
-                    GUILayout.Label(sameReel ? EffectModel.ReelNames[first.Reel] : "", label, GUILayout.Width(24));
-
-                    // 時間
-                    GUILayout.Label("時間", GUILayout.Width(30));
-                    EditorGUI.showMixedValue = !selection.TrueForAll(k => k.Time == first.Time);
-                    int t;
-                    if (EffectFields.EditInt(first.Time, out t, GUILayout.Width(70)))
-                        Edit("リールキーの変更", () => { foreach (var k in selection) k.Time = Mathf.Max(0, t); });
-                    EditorGUI.showMixedValue = false;
-                    GUILayout.Label("ms", GUILayout.Width(24));
-                    GUILayout.Space(12);
-
-                    // 相対／絶対（揃っていなければどちらも選ばない）
-                    bool allAbsolute = selection.TrueForAll(k => k.Absolute);
-                    bool allRelative = selection.TrueForAll(k => !k.Absolute);
-                    int current = allAbsolute ? 1 : allRelative ? 0 : -1;
-                    int modeIndex = GUILayout.Toolbar(current, ModeNames, GUILayout.Width(110));
-                    if (modeIndex != current && modeIndex >= 0)
-                    {
-                        bool absolute = modeIndex == 1;
-                        var values = selection.ConvertAll(k => k.Absolute == absolute ? k.Value
-                            : absolute ? WrapFrame(Mathf.RoundToInt(startFrame[k.Reel] - k.Value), n) : Relative(k, n));
-                        Edit("リールキーの変更", delegate
-                        {
-                            for (int i = 0; i < selection.Count; i++)
-                            {
-                                selection[i].Absolute = absolute;
-                                selection[i].Value = values[i];
-                            }
-                        });
-                    }
-                    GUILayout.Space(12);
-
-                    // コマ数
-                    EditorGUI.showMixedValue = !selection.TrueForAll(k => k.Value == first.Value);
-                    if (allAbsolute)
-                    {
-                        GUILayout.Label("コマ番号", GUILayout.Width(52));
-                        int frame;
-                        if (EffectFields.EditInt(Mathf.RoundToInt(first.Value), out frame, GUILayout.Width(50)))
-                            Edit("リールキーの変更", () => { foreach (var k in selection) k.Value = WrapFrame(frame, n); });
-                        EditorGUI.showMixedValue = false;
-                        if (sameReel) GUILayout.Label(SymbolAt(first.Reel, Mathf.RoundToInt(first.Value), n), GUILayout.Width(80));
-                        GUILayout.Space(8);
-                        EditorGUI.showMixedValue = !selection.TrueForAll(k => k.Direction == first.Direction);
-                        EditorGUI.BeginChangeCheck();
-                        int direction = EditorGUILayout.Popup(first.Direction, DirectionNames, GUILayout.Width(80));
-                        if (EditorGUI.EndChangeCheck()) Edit("リールキーの変更", () => { foreach (var k in selection) k.Direction = direction; });
-                        EditorGUI.showMixedValue = false;
-                        if (selection.TrueForAll(k => k.Direction != EffectPlayer.ReelShortest))
-                        {
-                            GUILayout.Label("＋", GUILayout.Width(14));
-                            EditorGUI.showMixedValue = !selection.TrueForAll(k => k.Turns == first.Turns);
-                            int turns;
-                            if (EffectFields.EditInt(first.Turns, out turns, GUILayout.Width(36)))
-                                Edit("リールキーの変更", () => { foreach (var k in selection) k.Turns = Mathf.Max(0, turns); });
-                            EditorGUI.showMixedValue = false;
-                            GUILayout.Label("周", GUILayout.Width(20));
-                        }
-                    }
-                    else if (allRelative)
-                    {
-                        GUILayout.Label("移動", GUILayout.Width(30));
-                        float value;
-                        if (EffectFields.EditFloat(first.Value, out value, GUILayout.Width(60)))
-                            Edit("リールキーの変更", () => { foreach (var k in selection) k.Value = value; });
-                        GUILayout.Label("コマ", GUILayout.Width(30));
-                    }
-                    EditorGUI.showMixedValue = false;
-                    if (selection.Count > 1) GUILayout.Label(selection.Count + " キー", GUILayout.Width(60));
-                }
-
-                GUILayout.FlexibleSpace();
                 using (new EditorGUI.DisabledScope(selection.Count == 0))
                 {
                     if (GUILayout.Button("削除", GUILayout.Width(60))) DeleteSelected();
                 }
-                GUILayout.Space(8);
+                GUILayout.FlexibleSpace();
+            }
+            if (selection.Count == 0) return;
+
+            var first = selection[0];
+            bool sameReel = selection.TrueForAll(k => k.Reel == first.Reel);
+            bool allAbsolute = selection.TrueForAll(k => k.Absolute);
+            bool allRelative = selection.TrueForAll(k => !k.Absolute);
+
+            // リール・時間
+            using (new EditorGUILayout.HorizontalScope())
+            {
+                var label = new GUIStyle(EditorStyles.boldLabel);
+                if (sameReel) label.normal.textColor = ReelColors[first.Reel];
+                GUILayout.Label(sameReel ? EffectModel.ReelNames[first.Reel] : "", label, GUILayout.Width(24));
+                GUILayout.Label("時間", GUILayout.Width(30));
+                EditorGUI.showMixedValue = !selection.TrueForAll(k => k.Time == first.Time);
+                int t;
+                if (EffectFields.EditInt(first.Time, out t, GUILayout.Width(70)))
+                    Edit("リールキーの変更", () => { foreach (var k in selection) k.Time = Mathf.Max(0, t); });
+                EditorGUI.showMixedValue = false;
+                GUILayout.Label("ms", GUILayout.Width(24));
+                if (selection.Count > 1) GUILayout.Label(selection.Count + " キー", GUILayout.Width(60));
+                GUILayout.FlexibleSpace();
+            }
+
+            // 相対／絶対（揃っていなければどちらも選ばない）
+            using (new EditorGUILayout.HorizontalScope())
+            {
+                int current = allAbsolute ? 1 : allRelative ? 0 : -1;
+                int modeIndex = GUILayout.Toolbar(current, ModeNames, GUILayout.Width(110));
+                if (modeIndex != current && modeIndex >= 0)
+                {
+                    bool absolute = modeIndex == 1;
+                    var values = selection.ConvertAll(k => k.Absolute == absolute ? k.Value
+                        : absolute ? WrapFrame(Mathf.RoundToInt(startFrame[k.Reel] - k.Value), n) : Relative(k, n));
+                    Edit("リールキーの変更", delegate
+                    {
+                        for (int i = 0; i < selection.Count; i++)
+                        {
+                            selection[i].Absolute = absolute;
+                            selection[i].Value = values[i];
+                        }
+                    });
+                }
+                GUILayout.FlexibleSpace();
+            }
+
+            // コマ数
+            if (allAbsolute)
+            {
+                using (new EditorGUILayout.HorizontalScope())
+                {
+                    GUILayout.Label("コマ番号", GUILayout.Width(52));
+                    EditorGUI.showMixedValue = !selection.TrueForAll(k => k.Value == first.Value);
+                    int frame;
+                    if (EffectFields.EditInt(Mathf.RoundToInt(first.Value), out frame, GUILayout.Width(50)))
+                        Edit("リールキーの変更", () => { foreach (var k in selection) k.Value = WrapFrame(frame, n); });
+                    EditorGUI.showMixedValue = false;
+                    if (sameReel) GUILayout.Label(SymbolAt(first.Reel, Mathf.RoundToInt(first.Value), n), GUILayout.Width(80));
+                    GUILayout.FlexibleSpace();
+                }
+                using (new EditorGUILayout.HorizontalScope())
+                {
+                    EditorGUI.showMixedValue = !selection.TrueForAll(k => k.Direction == first.Direction);
+                    EditorGUI.BeginChangeCheck();
+                    int direction = EditorGUILayout.Popup(first.Direction, DirectionNames, GUILayout.Width(80));
+                    if (EditorGUI.EndChangeCheck()) Edit("リールキーの変更", () => { foreach (var k in selection) k.Direction = direction; });
+                    EditorGUI.showMixedValue = false;
+                    if (selection.TrueForAll(k => k.Direction != EffectPlayer.ReelShortest))
+                    {
+                        GUILayout.Label("＋", GUILayout.Width(14));
+                        EditorGUI.showMixedValue = !selection.TrueForAll(k => k.Turns == first.Turns);
+                        int turns;
+                        if (EffectFields.EditInt(first.Turns, out turns, GUILayout.Width(36)))
+                            Edit("リールキーの変更", () => { foreach (var k in selection) k.Turns = Mathf.Max(0, turns); });
+                        EditorGUI.showMixedValue = false;
+                        GUILayout.Label("周", GUILayout.Width(20));
+                    }
+                    GUILayout.FlexibleSpace();
+                }
+            }
+            else if (allRelative)
+            {
+                using (new EditorGUILayout.HorizontalScope())
+                {
+                    GUILayout.Label("移動", GUILayout.Width(30));
+                    EditorGUI.showMixedValue = !selection.TrueForAll(k => k.Value == first.Value);
+                    float value;
+                    if (EffectFields.EditFloat(first.Value, out value, GUILayout.Width(60)))
+                        Edit("リールキーの変更", () => { foreach (var k in selection) k.Value = value; });
+                    EditorGUI.showMixedValue = false;
+                    GUILayout.Label("コマ", GUILayout.Width(30));
+                    GUILayout.FlexibleSpace();
+                }
             }
         }
 
