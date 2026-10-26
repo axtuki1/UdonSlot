@@ -73,7 +73,7 @@ namespace AX.UdonSlot.REV1_0
         /// <summary>0=左 1=中 2=右。</summary>
         public int[] reelKeyReel = new int[0];
         public int[] reelKeyTime = new int[0];
-        /// <summary>相対なら開始位置から上方向へ何コマ（PlayReelSequenceと同じ）。絶対なら中段に来るコマ番号（下が1）。</summary>
+        /// <summary>相対なら前のキーから順回転の向きに何コマ（−は逆回転）。絶対なら中段に来るコマ番号（下が1）。</summary>
         public float[] reelKeyValue = new float[0];
         public bool[] reelKeyAbsolute = new bool[0];
         /// <summary>絶対キーの回り方。0=最短 1=順回転（図柄が下へ流れる） 2=逆回転。前のキーの位置から数える。</summary>
@@ -469,7 +469,8 @@ namespace AX.UdonSlot.REV1_0
         }
 
         /// <summary>
-        /// 各キーを「開始位置から上方向へのコマ数」に直す。キーは時間順に見ていき、
+        /// 各キーを「開始位置から上方向へのコマ数」（PlayReelSequence の値）に直す。キーは時間順に見ていき、
+        /// 相対キーは前のキーから順回転の向きに値の分（−は逆回転）、
         /// 絶対キーは前のキーの位置から、向き（最短／順回転／逆回転）に従ってそのコマまでの移動にする。
         /// </summary>
         private float[] ResolveReelKeys(int start, int count, int symbolCount)
@@ -495,7 +496,7 @@ namespace AX.UdonSlot.REV1_0
                     float value = reelKeyAbsolute[next]
                         ? ResolveAbsolute(previous, startFrame, reelKeyValue[next], reelKeyDirection.Length > next ? reelKeyDirection[next] : ReelShortest,
                             reelKeyTurns.Length > next ? reelKeyTurns[next] : 0, symbolCount)
-                        : reelKeyValue[next];
+                        : previous - reelKeyValue[next];
                     resolved[next - start] = value;
                     previous = value;
                     lastTime = reelKeyTime[next];

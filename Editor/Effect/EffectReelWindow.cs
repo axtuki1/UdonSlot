@@ -216,21 +216,67 @@ namespace AX.UdonSlot.REV1_0.Editor.Effect
             return m + 0.5f;
         }
 
+        private List<EffectReelKey> Ordered(int reel)
+        {
+            return action.ReelKeys.Where(x => x.Reel == reel).OrderBy(x => x.Time).ToList();
+        }
+
         /// <summary>
-        /// キーの位置（開始位置から上方向へのコマ数）。実行時（EffectPlayer.ResolveReelKeys）と同じく、
-        /// 時間順に見て、絶対キーは前のキーの位置から向きに従ってそのコマまで動く。
+        /// キーの位置を、前のキーの位置 previous から求める（実行時の EffectPlayer.ResolveReelKeys と同じ）。
+        /// 相対キーは前のキーから順回転の向きに Value コマ（−は逆回転）、絶対キーは向きに従ってそのコマまで。
+        /// 位置は「開始位置から上方向へのコマ数」（順回転すると減る）。
         /// </summary>
+        private float ResolveKey(EffectReelKey k, float previous, int n)
+        {
+            return k.Absolute ? ResolveAbsolute(previous, startFrame[k.Reel], k.Value, k.Direction, k.Turns, n) : previous - k.Value;
+        }
+
+        /// <summary>キーの位置（開始位置から上方向へのコマ数）。</summary>
         private float Relative(EffectReelKey key, int n)
         {
-            if (!key.Absolute) return key.Value;
             float previous = 0f;
-            foreach (var k in action.ReelKeys.Where(x => x.Reel == key.Reel).OrderBy(x => x.Time))
+            foreach (var k in Ordered(key.Reel))
             {
-                float value = k.Absolute ? ResolveAbsolute(previous, startFrame[k.Reel], k.Value, k.Direction, k.Turns, n) : k.Value;
+                float value = ResolveKey(k, previous, n);
                 if (k == key) return value;
                 previous = value;
             }
             return 0f;
+        }
+
+        /// <summary>key の一つ前のキーの位置（なければ開始位置 0）。</summary>
+        private float Previous(EffectReelKey key, int n)
+        {
+            float previous = 0f;
+            foreach (var k in Ordered(key.Reel))
+            {
+                if (k == key) return previous;
+                previous = ResolveKey(k, previous, n);
+            }
+            return previous;
+        }
+
+        /// <summary>今の全キーの位置。キーの増減の後、相対キーを付け直して他のキーの位置を保つのに使う。</summary>
+        private Dictionary<EffectReelKey, float> Positions(int n)
+        {
+            var map = new Dictionary<EffectReelKey, float>();
+            foreach (var k in action.ReelKeys) map[k] = Relative(k, n);
+            return map;
+        }
+
+        /// <summary>相対キーの値を、positions の位置になるように前のキーから付け直す。</summary>
+        private void Rebase(Dictionary<EffectReelKey, float> positions, int n)
+        {
+            for (int r = 0; r < 3; r++)
+            {
+                float previous = 0f;
+                foreach (var k in Ordered(r))
+                {
+                    float target;
+                    if (!k.Absolute && positions.TryGetValue(k, out target)) k.Value = Mathf.Round((previous - target) * 100f) / 100f;
+                    previous = ResolveKey(k, previous, n);
+                }
+            }
         }
 
         private static float ResolveAbsolute(float previous, int start, float frame, int direction, int turns, int n)
@@ -537,13 +583,19 @@ namespace AX.UdonSlot.REV1_0.Editor.Effect
                 Edit("リールキーの変更", delegate
                 {
                     if (key.Absolute) key.Value = WrapFrame(Mathf.RoundToInt(key.Value) + frames, n);
-                    else key.Value -= frames;
+                    else key.Value += frames;
                 });
                 SetSelection(key);
                 return;
             }
-            var added = new EffectReelKey { Reel = reel, Time = at, Value = Mathf.Round(RelativeAt(reel, at, n)) - frames };
-            Edit("リールキーの追加", () => action.ReelKeys.Add(added));
+            var added = new EffectReelKey { Reel = reel, Time = at };
+            var positions = Positions(n);
+            positions[added] = Mathf.Round(RelativeAt(reel, at, n)) - frames;
+            Edit("リールキーの追加", delegate
+            {
+                action.ReelKeys.Add(added);
+                Rebase(positions, n);
+            });
             SetSelection(added);
         }
 
@@ -904,13 +956,13 @@ namespace AX.UdonSlot.REV1_0.Editor.Effect
                         case DragMode.Move:
                         {
                             float dt = (e.mousePosition.x - dragStart.x) / rect.width * (ViewEnd - ViewStart);
-                            // 下へ動かすとコマ番号は下がる＝上方向への移動は増える
+                            // 下へ動かすとコマ番号は下がる（逆回転の向き）
                             int rows = Mathf.RoundToInt((e.mousePosition.y - dragStart.y) / RowH);
                             for (int i = 0; i < selection.Count; i++)
                             {
                                 var key = selection[i];
                                 int newTime = (int)Snap(dragTimes[i] + dt);
-                                float value = key.Absolute ? WrapFrame(Mathf.RoundToInt(dragValues[i]) - rows, n) : dragValues[i] + rows;
+                                float value = key.Absolute ? WrapFrame(Mathf.RoundToInt(dragValues[i]) - rows, n) : dragValues[i] - rows;
                                 if (newTime != key.Time || value != key.Value) dragMoved = true;
                                 key.Time = newTime;
                                 key.Value = value;
@@ -1040,7 +1092,7 @@ namespace AX.UdonSlot.REV1_0.Editor.Effect
                 {
                     bool absolute = modeIndex == 1;
                     var values = selection.ConvertAll(k => k.Absolute == absolute ? k.Value
-                        : absolute ? WrapFrame(Mathf.RoundToInt(startFrame[k.Reel] - k.Value), n) : Relative(k, n));
+                        : absolute ? WrapFrame(Mathf.RoundToInt(startFrame[k.Reel] - Relative(k, n)), n) : Previous(k, n) - Relative(k, n));
                     Edit("リールキーの変更", delegate
                     {
                         for (int i = 0; i < selection.Count; i++)
@@ -1141,10 +1193,16 @@ namespace AX.UdonSlot.REV1_0.Editor.Effect
                 if (!shown[r]) continue;
                 int reel = r;
                 if (action.ReelKeys.Exists(k => k.Reel == reel && k.Time == at)) continue;
-                added.Add(new EffectReelKey { Reel = r, Time = at, Value = Mathf.Round(RelativeAt(r, at, n) * 100f) / 100f });
+                added.Add(new EffectReelKey { Reel = r, Time = at });
             }
             if (added.Count == 0) return;
-            Edit("リールキーの追加", () => action.ReelKeys.AddRange(added));
+            var positions = Positions(n);
+            foreach (var k in added) positions[k] = Mathf.Round(RelativeAt(k.Reel, at, n) * 100f) / 100f;
+            Edit("リールキーの追加", delegate
+            {
+                action.ReelKeys.AddRange(added);
+                Rebase(positions, n);
+            });
             selection.Clear();
             selection.AddRange(added);
             RememberSelection();
@@ -1154,8 +1212,14 @@ namespace AX.UdonSlot.REV1_0.Editor.Effect
         private void AddKey(int reel, int at, int n)
         {
             if (action.ReelKeys.Exists(k => k.Reel == reel && k.Time == at)) return;
-            var key = new EffectReelKey { Reel = reel, Time = at, Value = Mathf.Round(RelativeAt(reel, at, n) * 100f) / 100f };
-            Edit("リールキーの追加", () => action.ReelKeys.Add(key));
+            var key = new EffectReelKey { Reel = reel, Time = at };
+            var positions = Positions(n);
+            positions[key] = Mathf.Round(RelativeAt(reel, at, n) * 100f) / 100f;
+            Edit("リールキーの追加", delegate
+            {
+                action.ReelKeys.Add(key);
+                Rebase(positions, n);
+            });
             SetSelection(key);
         }
 
@@ -1163,7 +1227,12 @@ namespace AX.UdonSlot.REV1_0.Editor.Effect
         {
             if (selection.Count == 0) return;
             var removed = new List<EffectReelKey>(selection);
-            Edit("リールキーの削除", () => action.ReelKeys.RemoveAll(removed.Contains));
+            var positions = Positions(SymbolCount);
+            Edit("リールキーの削除", delegate
+            {
+                action.ReelKeys.RemoveAll(removed.Contains);
+                Rebase(positions, SymbolCount);
+            });
             SetSelection(null);
         }
 

@@ -34,7 +34,7 @@ namespace AX.UdonSlot.REV1_0.Editor.Effect
         /// <summary>0=左 1=中 2=右。</summary>
         public int Reel;
         public int Time;
-        /// <summary>相対：開始位置から上方向へ何コマ。絶対：中段に来るコマ番号（下が1）。</summary>
+        /// <summary>相対：前のキーから順回転の向きに何コマ（−は逆回転）。絶対：中段に来るコマ番号（下が1）。</summary>
         public float Value;
         public bool Absolute;
         /// <summary>絶対キーの回り方（EffectPlayer.ReelShortest など）。前のキーの位置から数える。</summary>
