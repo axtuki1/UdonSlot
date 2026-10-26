@@ -994,10 +994,6 @@ namespace AX.UdonSlot.REV1_0.Editor.Effect
             using (new EditorGUILayout.HorizontalScope())
             {
                 if (GUILayout.Button("キー＋", GUILayout.Width(80))) AddKeysAtPlayhead();
-                using (new EditorGUI.DisabledScope(selection.Count == 0))
-                {
-                    if (GUILayout.Button("削除", GUILayout.Width(80))) DeleteSelected();
-                }
                 GUILayout.FlexibleSpace();
             }
             if (selection.Count == 0) return;
