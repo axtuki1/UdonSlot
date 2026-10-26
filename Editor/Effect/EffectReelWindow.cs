@@ -49,14 +49,22 @@ namespace AX.UdonSlot.REV1_0.Editor.Effect
         private bool playing;
         private double lastTick;
 
-        private EffectReelKey selected;
-        private int selectedReel = -1, selectedTime = -1;
+        private enum DragMode { None, Scrub, Move, Box, Pan }
 
-        private bool dragging, dragMoved, scrubbing;
-        private Vector2 dragStart;
-        private int dragTime;
-        private float dragValue;
-        private float dragTotal;
+        private readonly List<EffectReelKey> selection = new List<EffectReelKey>();
+        private readonly List<Vector2Int> selectionIds = new List<Vector2Int>();
+
+        private DragMode mode;
+        private bool dragMoved;
+        private Vector2 dragStart, boxStart, boxEnd;
+        private List<int> dragTimes = new List<int>();
+        private List<float> dragValues = new List<float>();
+        private int faceDragReel = -1;
+        private float faceDragY;
+
+        /// <summary>横の表示範囲（ms）。拡大・移動するまでは全体を自動で表示する。</summary>
+        private bool viewSet;
+        private float viewStart, viewEnd, panStart, panEnd;
 
         private Dictionary<string, Texture2D> pictures;
         private static GUIStyle stripLabel, faceLabel, tickLabel;
@@ -69,7 +77,9 @@ namespace AX.UdonSlot.REV1_0.Editor.Effect
             window.owner = owner;
             window.action = action;
             window.actionName = action.Name;
-            window.selected = null;
+            window.selection.Clear();
+            window.selectionIds.Clear();
+            window.viewSet = false;
             window.time = 0f;
             window.playing = false;
             window.Show();
@@ -125,12 +135,14 @@ namespace AX.UdonSlot.REV1_0.Editor.Effect
             if (action == null || !model.Actions.Contains(action)) action = model.Actions.Find(a => a.Name == actionName);
             if (action == null) return false;
             actionName = action.Name;
-            if (selected != null && !action.ReelKeys.Contains(selected))
-                selected = action.ReelKeys.Find(k => k.Reel == selectedReel && k.Time == selectedTime);
-            if (selected != null)
+            if (selection.Exists(k => !action.ReelKeys.Contains(k)))
             {
-                selectedReel = selected.Reel;
-                selectedTime = selected.Time;
+                selection.Clear();
+                foreach (var id in selectionIds)
+                {
+                    var key = action.ReelKeys.Find(k => k.Reel == id.x && k.Time == id.y);
+                    if (key != null && !selection.Contains(key)) selection.Add(key);
+                }
             }
             return true;
         }
@@ -199,9 +211,10 @@ namespace AX.UdonSlot.REV1_0.Editor.Effect
 
         private float RelativeAt(int reel, float t, int n)
         {
-            float beforeTime = float.MinValue, afterTime = float.MaxValue;
+            // 0ms は開始位置（移動 0）。0ms にキーがあればそちらを使う。
+            float beforeTime = 0f, afterTime = float.MaxValue;
             float beforeValue = 0f, afterValue = 0f;
-            bool hasBefore = false, hasAfter = false;
+            bool hasBefore = true, hasAfter = false;
             foreach (var k in action.ReelKeys)
             {
                 if (k.Reel != reel) continue;
@@ -221,14 +234,65 @@ namespace AX.UdonSlot.REV1_0.Editor.Effect
             return startFrame[reel] - RelativeAt(reel, t, n);
         }
 
-        private float Total
+
+        // ------------------------------------------------------------ 表示範囲
+
+        private float DefaultEnd
         {
-            get
+            get { return Mathf.Max(2000f, Mathf.Ceil((action.ReelLength + 500) / 1000f) * 1000f); }
+        }
+
+        private float ViewStart { get { return viewSet ? viewStart : 0f; } }
+        private float ViewEnd { get { return viewSet ? viewEnd : DefaultEnd; } }
+
+        /// <summary>グラフ内の x（左端 0）。</summary>
+        private float X(Rect rect, float t)
+        {
+            return (t - ViewStart) / (ViewEnd - ViewStart) * rect.width;
+        }
+
+        private float TimeAt(Rect rect, float windowX)
+        {
+            return Mathf.Max(0f, ViewStart + (windowX - rect.x) / rect.width * (ViewEnd - ViewStart));
+        }
+
+        private void SetView(float start, float end)
+        {
+            float span = Mathf.Clamp(end - start, 50f, 600000f);
+            if (start < 0f) start = 0f;
+            viewStart = start;
+            viewEnd = start + span;
+            viewSet = true;
+        }
+
+        private void Zoom(Rect rect, float windowX, float delta)
+        {
+            float t = ViewStart + (windowX - rect.x) / rect.width * (ViewEnd - ViewStart);
+            float f = delta > 0 ? 1.15f : 1f / 1.15f;
+            SetView(t - (t - ViewStart) * f, t + (ViewEnd - t) * f);
+        }
+
+        /// <summary>F：選んだキー（なければ全体）、A：全体を表示する。</summary>
+        private void Frame(bool selectionOnly)
+        {
+            var keys = selectionOnly && selection.Count > 0 ? selection : action.ReelKeys;
+            if (keys.Count == 0)
             {
-                if (dragging) return dragTotal;
-                int length = action.ReelLength;
-                return Mathf.Max(2000f, Mathf.Ceil((length + 500) / 1000f) * 1000f);
+                viewSet = false;
+                return;
             }
+            float min = float.MaxValue, max = 0f;
+            foreach (var k in keys) { min = Mathf.Min(min, k.Time); max = Mathf.Max(max, k.Time); }
+            if (!selectionOnly || selection.Count == 0) min = 0f;
+            float span = Mathf.Max(200f, max - min);
+            SetView(min - span * 0.05f, max + span * 0.05f);
+        }
+
+        private static float TickStep(float span, float width)
+        {
+            float[] steps = { 10, 20, 50, 100, 200, 500, 1000, 2000, 5000, 10000, 20000, 60000 };
+            foreach (float s in steps) if (s / span * width >= 60f) return s;
+            return 60000f;
         }
 
         // ------------------------------------------------------------ 画面
@@ -263,16 +327,30 @@ namespace AX.UdonSlot.REV1_0.Editor.Effect
         {
             var e = Event.current;
             if (e.type != EventType.KeyDown || EditorGUIUtility.editingTextField) return;
-            if ((e.keyCode == KeyCode.Delete || e.keyCode == KeyCode.Backspace) && selected != null)
+            switch (e.keyCode)
             {
-                DeleteSelected();
-                e.Use();
+                case KeyCode.Delete:
+                case KeyCode.Backspace:
+                    if (selection.Count == 0) return;
+                    DeleteSelected();
+                    break;
+                case KeyCode.Space:
+                    TogglePlay();
+                    break;
+                case KeyCode.F:
+                    Frame(true);
+                    break;
+                case KeyCode.A:
+                    Frame(false);
+                    break;
+                case KeyCode.K:
+                    AddKeysAtPlayhead();
+                    break;
+                default:
+                    return;
             }
-            else if (e.keyCode == KeyCode.Space)
-            {
-                TogglePlay();
-                e.Use();
-            }
+            e.Use();
+            Repaint();
         }
 
         private void DrawPreview(int n)
@@ -287,6 +365,7 @@ namespace AX.UdonSlot.REV1_0.Editor.Effect
                     {
                         var face = GUILayoutUtility.GetRect(FaceW, CellH * 3, GUILayout.Width(FaceW));
                         DrawReelFace(face, r, n);
+                        HandleFaceInput(face, r, n);
                         using (new EditorGUILayout.HorizontalScope())
                         {
                             if (GUILayout.Button("−", EditorStyles.miniButtonLeft, GUILayout.Width(20))) startFrame[r] = WrapFrame(startFrame[r] - 1, n);
@@ -314,6 +393,45 @@ namespace AX.UdonSlot.REV1_0.Editor.Effect
                 }
             }
             GUILayout.Space(8);
+        }
+
+        /// <summary>リール窓を上下にドラッグ、またはホイールで開始位置を変える（0ms に戻して見せる）。</summary>
+        private void HandleFaceInput(Rect face, int reel, int n)
+        {
+            var e = Event.current;
+            EditorGUIUtility.AddCursorRect(face, MouseCursor.ResizeVertical);
+            if (e.type == EventType.MouseDown && e.button == 0 && face.Contains(e.mousePosition))
+            {
+                faceDragReel = reel;
+                faceDragY = e.mousePosition.y;
+                playing = false;
+                time = 0f;
+                e.Use();
+            }
+            else if (e.type == EventType.MouseDrag && faceDragReel == reel)
+            {
+                // 下へドラッグ＝図柄が下へ流れる＝中段のコマ番号が上がる
+                int rows = Mathf.RoundToInt((e.mousePosition.y - faceDragY) / CellH);
+                if (rows != 0)
+                {
+                    startFrame[reel] = WrapFrame(startFrame[reel] + rows, n);
+                    faceDragY += rows * CellH;
+                }
+                e.Use();
+                Repaint();
+            }
+            else if (e.rawType == EventType.MouseUp && faceDragReel == reel)
+            {
+                faceDragReel = -1;
+            }
+            else if (e.type == EventType.ScrollWheel && face.Contains(e.mousePosition))
+            {
+                startFrame[reel] = WrapFrame(startFrame[reel] + (e.delta.y > 0 ? 1 : -1), n);
+                playing = false;
+                time = 0f;
+                e.Use();
+                Repaint();
+            }
         }
 
         private void TogglePlay()
@@ -365,7 +483,7 @@ namespace AX.UdonSlot.REV1_0.Editor.Effect
             var graph = new Rect(ruler.x, ruler.yMax, ruler.width, RowH * n);
 
             DrawStrips(stripsRect, n);
-            DrawRuler(ruler);
+            DrawRuler(ruler, graph);
             DrawGraph(graph, n);
         }
 
@@ -378,7 +496,9 @@ namespace AX.UdonSlot.REV1_0.Editor.Effect
                 var header = new Rect(x, rect.y, StripW, RulerH);
                 shown[r] = GUI.Toggle(header, shown[r], EffectModel.ReelNames[r]);
 
-                bool editable = shown[r] && selected != null && selected.Reel == r;
+                int reel = r;
+                var targets = shown[r] ? selection.FindAll(k => k.Reel == reel) : new List<EffectReelKey>();
+                bool editable = targets.Count > 0;
                 var old = GUI.color;
                 if (!shown[r]) GUI.color = new Color(1f, 1f, 1f, 0.3f);
                 for (int i = 0; i < n; i++)
@@ -392,11 +512,13 @@ namespace AX.UdonSlot.REV1_0.Editor.Effect
                         EditorGUIUtility.AddCursorRect(cell, MouseCursor.Link);
                         if (e.type == EventType.MouseDown && e.button == 0 && cell.Contains(e.mousePosition))
                         {
-                            var key = selected;
                             Edit("リールキーの変更", delegate
                             {
-                                key.Absolute = true;
-                                key.Value = frame;
+                                foreach (var key in targets)
+                                {
+                                    key.Absolute = true;
+                                    key.Value = frame;
+                                }
                             });
                             e.Use();
                         }
@@ -406,63 +528,68 @@ namespace AX.UdonSlot.REV1_0.Editor.Effect
             }
         }
 
-        private void DrawRuler(Rect rect)
+        /// <summary>目盛り。クリック・ドラッグで再生ヘッドを動かす。</summary>
+        private void DrawRuler(Rect rect, Rect graph)
         {
             var e = Event.current;
-            float total = Total;
+            float vs = ViewStart, ve = ViewEnd, span = ve - vs;
             EditorGUI.DrawRect(rect, new Color(0.2f, 0.2f, 0.2f));
-            for (int t = 0; t <= total; t += 1000)
+            GUI.BeginClip(rect);
+            float step = TickStep(span, rect.width);
+            for (float t = Mathf.Ceil(vs / step) * step; t <= ve; t += step)
             {
-                float x = rect.x + rect.width * t / total;
-                EditorGUI.DrawRect(new Rect(x, rect.y + 4, 1, rect.height - 4), TickColor);
-                GUI.Label(new Rect(x + 3, rect.y + 2, 60, rect.height - 2), t.ToString(), TickLabel);
+                float x = X(rect, t);
+                EditorGUI.DrawRect(new Rect(x, 6, 1, rect.height - 6), TickColor);
+                GUI.Label(new Rect(x + 3, 2, 60, rect.height - 2), Mathf.RoundToInt(t).ToString(), TickLabel);
             }
+            float head = X(rect, time);
+            EditorGUI.DrawRect(new Rect(head - 1, 0, 2, rect.height), PlayheadColor);
+            GUI.EndClip();
+
+            EditorGUIUtility.AddCursorRect(rect, MouseCursor.SlideArrow);
             if (e.type == EventType.MouseDown && e.button == 0 && rect.Contains(e.mousePosition))
             {
-                scrubbing = true;
+                mode = DragMode.Scrub;
                 playing = false;
-                time = TimeAt(rect, e.mousePosition.x, total);
+                time = TimeAt(rect, e.mousePosition.x);
                 e.Use();
             }
-            else if (scrubbing && e.type == EventType.MouseDrag)
+            else if (e.type == EventType.ScrollWheel && rect.Contains(e.mousePosition))
             {
-                time = TimeAt(rect, e.mousePosition.x, total);
+                Zoom(rect, e.mousePosition.x, e.delta.y);
                 e.Use();
                 Repaint();
             }
-            else if (scrubbing && e.rawType == EventType.MouseUp)
-            {
-                scrubbing = false;
-            }
-        }
-
-        private static float TimeAt(Rect rect, float x, float total)
-        {
-            return Mathf.Clamp((x - rect.x) / rect.width, 0f, 1f) * total;
         }
 
         private void DrawGraph(Rect rect, int n)
         {
             var e = Event.current;
-            float total = Total;
             EditorGUI.DrawRect(rect, GraphColor);
-            for (int i = 1; i < n; i++) EditorGUI.DrawRect(new Rect(rect.x, rect.y + i * RowH, rect.width, 1), RowLineColor);
-            for (int t = 1000; t < total; t += 1000) EditorGUI.DrawRect(new Rect(rect.x + rect.width * t / total, rect.y, 1, rect.height), RowLineColor);
-
-            // 線とキー（グラフ内の座標で描く）
             GUI.BeginClip(rect);
+            for (int i = 1; i < n; i++) EditorGUI.DrawRect(new Rect(0, i * RowH, rect.width, 1), RowLineColor);
+            float step = TickStep(ViewEnd - ViewStart, rect.width);
+            for (float t = Mathf.Ceil(ViewStart / step) * step; t <= ViewEnd; t += step)
+                EditorGUI.DrawRect(new Rect(X(rect, t), 0, 1, rect.height), RowLineColor);
+
             if (e.type == EventType.Repaint)
             {
-                for (int r = 0; r < 3; r++) DrawCurve(r, rect, n, total);
-                for (int r = 0; r < 3; r++) DrawKeys(r, rect, n, total);
+                for (int r = 0; r < 3; r++) DrawCurve(r, rect, n);
+                for (int r = 0; r < 3; r++) DrawKeys(r, rect, n);
+                if (mode == DragMode.Box)
+                {
+                    var box = BoxRect();
+                    box.position -= rect.position;
+                    EditorGUI.DrawRect(box, new Color(0.5f, 0.7f, 0.9f, 0.15f));
+                    Handles.color = new Color(0.5f, 0.7f, 0.9f, 0.8f);
+                    Handles.DrawSolidRectangleWithOutline(box, Color.clear, Handles.color);
+                }
             }
-            EditorGUI.DrawRect(new Rect(rect.width * time / total - 1, 0, 2, rect.height), PlayheadColor);
+            EditorGUI.DrawRect(new Rect(X(rect, time) - 1, 0, 2, rect.height), PlayheadColor);
             GUI.EndClip();
 
-            HandleGraphMouse(rect, n, total);
+            HandleGraphMouse(rect, n);
         }
-
-        private float X(Rect rect, float t, float total) { return rect.width * t / total; }
 
         private static float Y(float p, int n) { return (n + 0.5f - p) * RowH; }
 
@@ -473,34 +600,33 @@ namespace AX.UdonSlot.REV1_0.Editor.Effect
             return c;
         }
 
-        private void DrawCurve(int reel, Rect rect, int n, float total)
+        private void DrawCurve(int reel, Rect rect, int n)
         {
             var keys = action.ReelKeys.FindAll(k => k.Reel == reel);
             keys.Sort((a, b) => a.Time.CompareTo(b.Time));
             Handles.color = ReelColor(reel);
             float start = startFrame[reel];
+            float end = Mathf.Max(ViewEnd, action.ReelLength);
             if (keys.Count == 0)
             {
-                Segment(rect, 0, start, total, start, n, total);
+                Segment(rect, 0, start, end, start, n);
                 return;
             }
-            float first = start - Relative(keys[0], n);
-            if (keys[0].Time > 0) Segment(rect, 0, first, keys[0].Time, first, n, total);
+            // 0ms は開始位置から
+            if (keys[0].Time > 0) Segment(rect, 0, start, keys[0].Time, start - Relative(keys[0], n), n);
             for (int i = 1; i < keys.Count; i++)
-            {
-                Segment(rect, keys[i - 1].Time, start - Relative(keys[i - 1], n), keys[i].Time, start - Relative(keys[i], n), n, total);
-            }
+                Segment(rect, keys[i - 1].Time, start - Relative(keys[i - 1], n), keys[i].Time, start - Relative(keys[i], n), n);
             float last = start - Relative(keys[keys.Count - 1], n);
-            Segment(rect, keys[keys.Count - 1].Time, last, total, last, n, total);
+            Segment(rect, keys[keys.Count - 1].Time, last, end, last, n);
         }
 
         /// <summary>配列の上下端をまたぐ所で線を切り、反対側から続ける。</summary>
-        private void Segment(Rect rect, float ta, float pa, float tb, float pb, int n, float total)
+        private void Segment(Rect rect, float ta, float pa, float tb, float pb, int n)
         {
             float top = n + 0.5f, bottom = 0.5f;
             float current = WrapPosition(pa, n);
             float target = current + (pb - pa);
-            float xa = X(rect, ta, total), xb = X(rect, tb, total);
+            float xa = X(rect, ta), xb = X(rect, tb);
             int guard = 0;
             while ((target > top || target < bottom) && guard++ < 64)
             {
@@ -519,21 +645,21 @@ namespace AX.UdonSlot.REV1_0.Editor.Effect
             Handles.DrawAAPolyLine(2.5f, new Vector3(x1, y1), new Vector3(x2, y2));
         }
 
-        private Vector2 KeyPosition(EffectReelKey key, Rect rect, int n, float total)
+        private Vector2 KeyPosition(EffectReelKey key, Rect rect, int n)
         {
             float p = WrapPosition(startFrame[key.Reel] - Relative(key, n), n);
-            return new Vector2(X(rect, key.Time, total), Y(p, n));
+            return new Vector2(X(rect, key.Time), Y(p, n));
         }
 
-        private void DrawKeys(int reel, Rect rect, int n, float total)
+        private void DrawKeys(int reel, Rect rect, int n)
         {
             var color = ReelColor(reel);
             var outline = new Color(0.1f, 0.1f, 0.1f, color.a);
             foreach (var key in action.ReelKeys)
             {
                 if (key.Reel != reel) continue;
-                var c = KeyPosition(key, rect, n, total);
-                bool on = key == selected;
+                var c = KeyPosition(key, rect, n);
+                bool on = selection.Contains(key);
                 float size = on ? KeySize + 4 : KeySize;
                 Shape(c, size + 2, key.Absolute, on ? Color.white : outline);
                 Shape(c, on ? size - 2 : size, key.Absolute, color);
@@ -556,85 +682,159 @@ namespace AX.UdonSlot.REV1_0.Editor.Effect
                 new Vector3(c.x, c.y + h), new Vector3(c.x - h, c.y));
         }
 
-        private EffectReelKey HitKey(Vector2 mouse, Rect rect, int n, float total)
+        private EffectReelKey HitKey(Vector2 mouse, Rect rect, int n)
         {
             EffectReelKey hit = null;
             float best = KeySize;
             foreach (var key in action.ReelKeys)
             {
                 if (!shown[key.Reel]) continue;
-                var c = KeyPosition(key, rect, n, total) + rect.position;
+                var c = KeyPosition(key, rect, n) + rect.position;
                 float d = Vector2.Distance(c, mouse);
                 if (d <= best) { best = d; hit = key; }
             }
             return hit;
         }
 
-        private void HandleGraphMouse(Rect rect, int n, float total)
+        private Rect BoxRect()
+        {
+            return Rect.MinMaxRect(Mathf.Min(boxStart.x, boxEnd.x), Mathf.Min(boxStart.y, boxEnd.y),
+                Mathf.Max(boxStart.x, boxEnd.x), Mathf.Max(boxStart.y, boxEnd.y));
+        }
+
+        /// <summary>
+        /// Animation ウィンドウと同じ操作：
+        /// キーをクリックで選択（Shift／Ctrl で追加・解除）、ドラッグで選んだキーをまとめて移動、
+        /// 空いた所をドラッグで範囲選択、ダブルクリックで線の上にキーを追加、
+        /// ホイールで拡大縮小、中ボタン（または Alt＋左）ドラッグで横へ移動。
+        /// </summary>
+        private void HandleGraphMouse(Rect rect, int n)
         {
             var e = Event.current;
+            bool additive = e.shift || e.control || e.command;
             switch (e.type)
             {
+                case EventType.ScrollWheel:
+                    if (!rect.Contains(e.mousePosition)) break;
+                    Zoom(rect, e.mousePosition.x, e.delta.y);
+                    e.Use();
+                    Repaint();
+                    break;
+
                 case EventType.MouseDown:
                     if (!rect.Contains(e.mousePosition)) break;
-                    if (e.button == 0)
+                    if (e.button == 2 || (e.button == 0 && e.alt))
                     {
-                        var hit = HitKey(e.mousePosition, rect, n, total);
-                        playing = false;
+                        mode = DragMode.Pan;
+                        dragStart = e.mousePosition;
+                        panStart = ViewStart;
+                        panEnd = ViewEnd;
+                        e.Use();
+                        break;
+                    }
+                    if (e.button != 0) break;
+                    {
+                        var hit = HitKey(e.mousePosition, rect, n);
                         if (hit != null)
                         {
-                            Select(hit);
-                            time = hit.Time;
-                            dragging = true;
+                            if (additive && selection.Contains(hit))
+                            {
+                                selection.Remove(hit);
+                                e.Use();
+                                break;
+                            }
+                            if (additive) selection.Add(hit);
+                            else if (!selection.Contains(hit)) SetSelection(hit);
+                            GUI.FocusControl(null);
+                            mode = DragMode.Move;
                             dragMoved = false;
                             dragStart = e.mousePosition;
-                            dragTime = hit.Time;
-                            dragValue = hit.Value;
-                            dragTotal = total;
+                            dragTimes = selection.ConvertAll(k => k.Time);
+                            dragValues = selection.ConvertAll(k => k.Value);
+                        }
+                        else if (e.clickCount == 2)
+                        {
+                            AddKeyOnCurve(rect, e.mousePosition, n);
                         }
                         else
                         {
-                            Select(null);
-                            time = TimeAt(rect, e.mousePosition.x, total);
+                            if (!additive) SetSelection(null);
+                            mode = DragMode.Box;
+                            boxStart = boxEnd = e.mousePosition;
                         }
                         e.Use();
                     }
                     break;
 
                 case EventType.MouseDrag:
-                    if (!dragging || selected == null) break;
+                    switch (mode)
                     {
-                        float dt = (e.mousePosition.x - dragStart.x) / rect.width * total;
-                        int newTime = Mathf.Max(0, Mathf.RoundToInt((dragTime + dt) / TimeSnap) * TimeSnap);
-                        int rows = Mathf.RoundToInt((e.mousePosition.y - dragStart.y) / RowH);
-                        // 下へ動かすとコマ番号は下がる＝上方向への移動は増える
-                        float value = selected.Absolute ? WrapFrame(Mathf.RoundToInt(dragValue) - rows, n) : dragValue + rows;
-                        if (newTime != selected.Time || value != selected.Value) dragMoved = true;
-                        selected.Time = newTime;
-                        selected.Value = value;
-                        selectedTime = newTime;
-                        time = newTime;
-                        e.Use();
-                        Repaint();
+                        case DragMode.Scrub:
+                            time = TimeAt(rect, e.mousePosition.x);
+                            break;
+                        case DragMode.Pan:
+                        {
+                            float dt = (e.mousePosition.x - dragStart.x) / rect.width * (panEnd - panStart);
+                            float s0 = panStart - dt;
+                            if (s0 < 0f) s0 = 0f;
+                            SetView(s0, s0 + (panEnd - panStart));
+                            break;
+                        }
+                        case DragMode.Box:
+                            boxEnd = e.mousePosition;
+                            break;
+                        case DragMode.Move:
+                        {
+                            float dt = (e.mousePosition.x - dragStart.x) / rect.width * (ViewEnd - ViewStart);
+                            int shift = Mathf.RoundToInt(dt / TimeSnap) * TimeSnap;
+                            // 下へ動かすとコマ番号は下がる＝上方向への移動は増える
+                            int rows = Mathf.RoundToInt((e.mousePosition.y - dragStart.y) / RowH);
+                            for (int i = 0; i < selection.Count; i++)
+                            {
+                                var key = selection[i];
+                                int newTime = Mathf.Max(0, dragTimes[i] + shift);
+                                float value = key.Absolute ? WrapFrame(Mathf.RoundToInt(dragValues[i]) - rows, n) : dragValues[i] + rows;
+                                if (newTime != key.Time || value != key.Value) dragMoved = true;
+                                key.Time = newTime;
+                                key.Value = value;
+                            }
+                            RememberSelection();
+                            break;
+                        }
+                        default:
+                            return;
                     }
+                    e.Use();
+                    Repaint();
                     break;
 
                 case EventType.MouseUp:
-                    if (!dragging) break;
-                    dragging = false;
-                    if (dragMoved) Edit("リールキーの移動", delegate { });
+                    if (mode == DragMode.None) break;
+                    if (mode == DragMode.Move && dragMoved) Edit("リールキーの移動", delegate { });
+                    if (mode == DragMode.Box)
+                    {
+                        var box = BoxRect();
+                        foreach (var key in action.ReelKeys)
+                        {
+                            if (!shown[key.Reel] || selection.Contains(key)) continue;
+                            if (box.Contains(KeyPosition(key, rect, n) + rect.position)) selection.Add(key);
+                        }
+                        RememberSelection();
+                    }
+                    mode = DragMode.None;
                     e.Use();
+                    Repaint();
                     break;
 
                 case EventType.ContextClick:
                     if (!rect.Contains(e.mousePosition)) break;
                     {
-                        var hit = HitKey(e.mousePosition, rect, n, total);
-                        int at = Mathf.RoundToInt(TimeAt(rect, e.mousePosition.x, total) / TimeSnap) * TimeSnap;
+                        var hit = HitKey(e.mousePosition, rect, n);
+                        int at = Mathf.RoundToInt(TimeAt(rect, e.mousePosition.x) / TimeSnap) * TimeSnap;
                         var menu = new GenericMenu();
                         if (hit != null)
                         {
-                            Select(hit);
+                            if (!selection.Contains(hit)) SetSelection(hit);
                             menu.AddItem(new GUIContent("削除"), false, DeleteSelected);
                         }
                         else
@@ -653,20 +853,33 @@ namespace AX.UdonSlot.REV1_0.Editor.Effect
             }
         }
 
+        /// <summary>ダブルクリック：その時間で一番近い線（表示中のリール）の上にキーを置く。</summary>
+        private void AddKeyOnCurve(Rect rect, Vector2 mouse, int n)
+        {
+            int at = Mathf.RoundToInt(TimeAt(rect, mouse.x) / TimeSnap) * TimeSnap;
+            float localY = mouse.y - rect.y;
+            int best = -1;
+            float bestDistance = float.MaxValue;
+            for (int r = 0; r < 3; r++)
+            {
+                if (!shown[r]) continue;
+                float y = Y(WrapPosition(CenterAt(r, at, n), n), n);
+                float d = Mathf.Abs(y - localY);
+                if (d < bestDistance) { bestDistance = d; best = r; }
+            }
+            if (best >= 0) AddKey(best, at, n);
+        }
+
         private void DrawInspector(int n)
         {
             GUILayout.Space(8);
             using (new EditorGUILayout.HorizontalScope())
             {
                 GUILayout.Space(8);
-                if (GUILayout.Button("キー＋", GUILayout.Width(70)))
-                {
-                    int at = Mathf.RoundToInt(time / TimeSnap) * TimeSnap;
-                    for (int r = 0; r < 3; r++) if (shown[r]) AddKey(r, at, n);
-                }
+                if (GUILayout.Button("キー＋", GUILayout.Width(70))) AddKeysAtPlayhead();
                 GUILayout.Space(16);
 
-                var key = selected;
+                var key = selection.Count == 1 ? selection[0] : null;
                 if (key != null)
                 {
                     var label = new GUIStyle(EditorStyles.boldLabel);
@@ -680,10 +893,10 @@ namespace AX.UdonSlot.REV1_0.Editor.Effect
                     GUILayout.Label("ms", GUILayout.Width(24));
                     GUILayout.Space(12);
 
-                    int mode = GUILayout.Toolbar(key.Absolute ? 1 : 0, ModeNames, GUILayout.Width(110));
-                    if (mode != (key.Absolute ? 1 : 0))
+                    int modeIndex = GUILayout.Toolbar(key.Absolute ? 1 : 0, ModeNames, GUILayout.Width(110));
+                    if (modeIndex != (key.Absolute ? 1 : 0))
                     {
-                        bool absolute = mode == 1;
+                        bool absolute = modeIndex == 1;
                         float value = absolute
                             ? WrapFrame(Mathf.RoundToInt(startFrame[key.Reel] - key.Value), n)
                             : Relative(key, n);
@@ -711,13 +924,16 @@ namespace AX.UdonSlot.REV1_0.Editor.Effect
                         if (EditorGUI.EndChangeCheck()) Edit("リールキーの変更", () => { key.Value = value; });
                         GUILayout.Label("コマ", GUILayout.Width(30));
                     }
-
-                    GUILayout.FlexibleSpace();
-                    if (GUILayout.Button("削除", GUILayout.Width(60))) DeleteSelected();
                 }
-                else
+                else if (selection.Count > 1)
                 {
-                    GUILayout.FlexibleSpace();
+                    GUILayout.Label(selection.Count + " キー");
+                }
+
+                GUILayout.FlexibleSpace();
+                using (new EditorGUI.DisabledScope(selection.Count == 0))
+                {
+                    if (GUILayout.Button("削除", GUILayout.Width(60))) DeleteSelected();
                 }
                 GUILayout.Space(8);
             }
@@ -729,15 +945,41 @@ namespace AX.UdonSlot.REV1_0.Editor.Effect
         {
             if (owner == null) return;
             owner.Edit(label, change);
+            RememberSelection();
             Repaint();
         }
 
-        private void Select(EffectReelKey key)
+        private void SetSelection(EffectReelKey key)
         {
-            selected = key;
-            selectedReel = key != null ? key.Reel : -1;
-            selectedTime = key != null ? key.Time : -1;
+            selection.Clear();
+            if (key != null) selection.Add(key);
+            RememberSelection();
             GUI.FocusControl(null);
+        }
+
+        private void RememberSelection()
+        {
+            selectionIds.Clear();
+            foreach (var k in selection) selectionIds.Add(new Vector2Int(k.Reel, k.Time));
+        }
+
+        private void AddKeysAtPlayhead()
+        {
+            int n = SymbolCount;
+            int at = Mathf.RoundToInt(time / TimeSnap) * TimeSnap;
+            var added = new List<EffectReelKey>();
+            for (int r = 0; r < 3; r++)
+            {
+                if (!shown[r]) continue;
+                int reel = r;
+                if (action.ReelKeys.Exists(k => k.Reel == reel && k.Time == at)) continue;
+                added.Add(new EffectReelKey { Reel = r, Time = at, Value = Mathf.Round(RelativeAt(r, at, n) * 100f) / 100f });
+            }
+            if (added.Count == 0) return;
+            Edit("リールキーの追加", () => action.ReelKeys.AddRange(added));
+            selection.Clear();
+            selection.AddRange(added);
+            RememberSelection();
         }
 
         /// <summary>今の線の上にキーを置く（見た目は変わらない）。同じ時間のキーがあれば何もしない。</summary>
@@ -746,15 +988,15 @@ namespace AX.UdonSlot.REV1_0.Editor.Effect
             if (action.ReelKeys.Exists(k => k.Reel == reel && k.Time == at)) return;
             var key = new EffectReelKey { Reel = reel, Time = at, Value = Mathf.Round(RelativeAt(reel, at, n) * 100f) / 100f };
             Edit("リールキーの追加", () => action.ReelKeys.Add(key));
-            Select(key);
+            SetSelection(key);
         }
 
         private void DeleteSelected()
         {
-            var key = selected;
-            if (key == null) return;
-            Edit("リールキーの削除", () => action.ReelKeys.Remove(key));
-            Select(null);
+            if (selection.Count == 0) return;
+            var removed = new List<EffectReelKey>(selection);
+            Edit("リールキーの削除", () => action.ReelKeys.RemoveAll(removed.Contains));
+            SetSelection(null);
         }
 
         // ------------------------------------------------------------ 見た目

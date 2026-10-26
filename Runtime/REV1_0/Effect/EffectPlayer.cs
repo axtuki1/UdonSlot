@@ -437,12 +437,13 @@ namespace AX.UdonSlot.REV1_0
             mainBoard.PlayReelEffect(durations, left, center, right, step == StepLeverOn);
         }
 
-        /// <summary>リール reel の時刻 t での位置（開始位置から上方向へのコマ数）。キーの間は等速。</summary>
+        /// <summary>リール reel の時刻 t での位置（開始位置から上方向へのコマ数）。0ms は開始位置で、キーの間は等速。</summary>
         private float ValueAt(int start, int count, int reel, int t, int symbolCount)
         {
-            int beforeTime = int.MinValue, afterTime = int.MaxValue;
+            // 0ms は開始位置（移動 0）。0ms にキーがあればそちらを使う。
+            int beforeTime = 0, afterTime = int.MaxValue;
             float beforeValue = 0f, afterValue = 0f;
-            bool hasBefore = false, hasAfter = false;
+            bool hasBefore = true, hasAfter = false;
             for (int i = start; i < start + count; i++)
             {
                 if (reelKeyReel[i] != reel) continue;
