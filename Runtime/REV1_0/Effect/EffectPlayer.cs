@@ -30,6 +30,13 @@ namespace AX.UdonSlot.REV1_0
         public const int BranchWin = 1;
         public const int BranchLose = 2;
 
+        /// <summary>Animator への書き込みの種類。</summary>
+        public const int AnimTrigger = 0;
+        public const int AnimBool = 1;
+        public const int AnimInt = 2;
+        public const int AnimFloat = 3;
+        public const int AnimIntFromCall = 4;
+
         public MainBoard mainBoard;
 
         // ---------------------------------------------------------------- アクション
@@ -40,9 +47,11 @@ namespace AX.UdonSlot.REV1_0
         public int[] actionAnimStart = new int[0];
         public int[] actionAnimCount = new int[0];
         public Animator[] animTargets = new Animator[0];
-        public string[] animTriggers = new string[0];
-        /// <summary>パターンのパラメータを渡す Animator の int パラメータ名。空なら渡さない。</summary>
-        public string[] animParameters = new string[0];
+        /// <summary>Animator のパラメータ名。</summary>
+        public string[] animNames = new string[0];
+        /// <summary>0=トリガー 1=Bool 2=Int 3=Float 4=Int（呼び出し時の値を入れる）。</summary>
+        public int[] animKinds = new int[0];
+        public float[] animValues = new float[0];
 
         public int[] actionActiveStart = new int[0];
         public int[] actionActiveCount = new int[0];
@@ -347,8 +356,16 @@ namespace AX.UdonSlot.REV1_0
             {
                 Animator animator = animTargets[i];
                 if (!Utilities.IsValid(animator)) continue;
-                if (animParameters[i].Length > 0) animator.SetInteger(animParameters[i], parameter);
-                if (animTriggers[i].Length > 0) animator.SetTrigger(animTriggers[i]);
+                string name = animNames[i];
+                if (name.Length == 0) continue;
+                switch (animKinds[i])
+                {
+                    case AnimTrigger: animator.SetTrigger(name); break;
+                    case AnimBool: animator.SetBool(name, animValues[i] != 0f); break;
+                    case AnimInt: animator.SetInteger(name, Mathf.RoundToInt(animValues[i])); break;
+                    case AnimFloat: animator.SetFloat(name, animValues[i]); break;
+                    case AnimIntFromCall: animator.SetInteger(name, parameter); break;
+                }
             }
 
             start = actionActiveStart[action];

@@ -11,8 +11,10 @@ namespace AX.UdonSlot.REV1_0.Editor.Effect
     public sealed class EffectAnim
     {
         public Animator Target;
-        public string Trigger = "";
-        public string Parameter = "";
+        public string Name = "";
+        /// <summary>EffectPlayer.AnimTrigger など。</summary>
+        public int Kind;
+        public float Value;
     }
 
     public sealed class EffectActive
@@ -64,7 +66,7 @@ namespace AX.UdonSlot.REV1_0.Editor.Effect
         public EffectAction Copy(string name)
         {
             var a = new EffectAction { Name = name, DelayMs = DelayMs, SoundType = SoundType, SoundClip = SoundClip };
-            foreach (var x in Anims) a.Anims.Add(new EffectAnim { Target = x.Target, Trigger = x.Trigger, Parameter = x.Parameter });
+            foreach (var x in Anims) a.Anims.Add(new EffectAnim { Target = x.Target, Name = x.Name, Kind = x.Kind, Value = x.Value });
             foreach (var x in Actives) a.Actives.Add(new EffectActive { Target = x.Target, Value = x.Value });
             foreach (var x in ReelKeys) a.ReelKeys.Add(x.Copy());
             foreach (var x in Codes) a.Codes.Add(new EffectCode { Target = x.Target, Method = x.Method });
@@ -127,8 +129,9 @@ namespace AX.UdonSlot.REV1_0.Editor.Effect
             var animStart = so.FindProperty("actionAnimStart");
             var animCount = so.FindProperty("actionAnimCount");
             var animTargets = so.FindProperty("animTargets");
-            var animTriggers = so.FindProperty("animTriggers");
-            var animParams = so.FindProperty("animParameters");
+            var animNames = so.FindProperty("animNames");
+            var animKinds = so.FindProperty("animKinds");
+            var animValues = so.FindProperty("animValues");
             var activeStart = so.FindProperty("actionActiveStart");
             var activeCount = so.FindProperty("actionActiveCount");
             var activeTargets = so.FindProperty("activeTargets");
@@ -156,7 +159,7 @@ namespace AX.UdonSlot.REV1_0.Editor.Effect
                     SoundClip = Int(soundClip, a)
                 };
                 foreach (int i in Range(animStart, animCount, a, animTargets.arraySize))
-                    action.Anims.Add(new EffectAnim { Target = animTargets.GetArrayElementAtIndex(i).objectReferenceValue as Animator, Trigger = Str(animTriggers, i), Parameter = Str(animParams, i) });
+                    action.Anims.Add(new EffectAnim { Target = animTargets.GetArrayElementAtIndex(i).objectReferenceValue as Animator, Name = Str(animNames, i), Kind = Int(animKinds, i), Value = Float(animValues, i) });
                 foreach (int i in Range(activeStart, activeCount, a, activeTargets.arraySize))
                     action.Actives.Add(new EffectActive { Target = activeTargets.GetArrayElementAtIndex(i).objectReferenceValue as GameObject, Value = Bool(activeValues, i) });
                 foreach (int i in Range(codeStart, codeCount, a, codeTargets.arraySize))
@@ -222,8 +225,9 @@ namespace AX.UdonSlot.REV1_0.Editor.Effect
             int anims = 0, actives = 0, codes = 0, keys = 0;
             foreach (var a in Actions) { anims += a.Anims.Count; actives += a.Actives.Count; codes += a.Codes.Count; keys += a.ReelKeys.Count; }
             var animTargets = Resize(so, "animTargets", anims);
-            var animTriggers = Resize(so, "animTriggers", anims);
-            var animParams = Resize(so, "animParameters", anims);
+            var animNames = Resize(so, "animNames", anims);
+            var animKinds = Resize(so, "animKinds", anims);
+            var animValues = Resize(so, "animValues", anims);
             var activeTargets = Resize(so, "activeTargets", actives);
             var activeValues = Resize(so, "activeValues", actives);
             var codeTargets = Resize(so, "codeTargets", codes);
@@ -247,8 +251,9 @@ namespace AX.UdonSlot.REV1_0.Editor.Effect
                 foreach (var x in a.Anims)
                 {
                     animTargets.GetArrayElementAtIndex(anims).objectReferenceValue = x.Target;
-                    animTriggers.GetArrayElementAtIndex(anims).stringValue = x.Trigger ?? "";
-                    animParams.GetArrayElementAtIndex(anims).stringValue = x.Parameter ?? "";
+                    animNames.GetArrayElementAtIndex(anims).stringValue = x.Name ?? "";
+                    animKinds.GetArrayElementAtIndex(anims).intValue = x.Kind;
+                    animValues.GetArrayElementAtIndex(anims).floatValue = x.Value;
                     anims++;
                 }
                 activeStart.GetArrayElementAtIndex(i).intValue = actives;

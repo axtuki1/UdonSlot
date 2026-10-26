@@ -526,6 +526,10 @@ namespace AX.UdonSlot.REV1_0.Editor.Effect
             return GUI.Button(new Rect(rect.xMax - 28, rect.y + 2, 26, 18), "＋");
         }
 
+        private static readonly string[] KindNames = { "トリガー", "Bool", "Int", "Float" };
+        private static readonly string[] BoolNames = { "OFF", "ON" };
+        private static readonly string[] IntSourceNames = { "固定", "呼び出し時の値" };
+
         private void DrawAnimSection(EffectAction action)
         {
             if (SectionHeader("映像")) Edit("映像の追加", () => action.Anims.Add(new EffectAnim()));
@@ -534,8 +538,8 @@ namespace AX.UdonSlot.REV1_0.Editor.Effect
                 using (new EditorGUILayout.HorizontalScope())
                 {
                     GUILayout.Label("Animator", EditorStyles.miniLabel, GUILayout.ExpandWidth(true));
-                    GUILayout.Label("トリガー", EditorStyles.miniLabel, GUILayout.Width(130));
-                    GUILayout.Label("パラメータ", EditorStyles.miniLabel, GUILayout.Width(130));
+                    GUILayout.Label("パラメータ名", EditorStyles.miniLabel, GUILayout.Width(150));
+                    GUILayout.Label("設定値", EditorStyles.miniLabel, GUILayout.Width(180));
                     GUILayout.Space(26);
                 }
             }
@@ -548,11 +552,8 @@ namespace AX.UdonSlot.REV1_0.Editor.Effect
                     var target = (Animator)EditorGUILayout.ObjectField(anim.Target, typeof(Animator), true);
                     if (EditorGUI.EndChangeCheck()) Edit("Animator の変更", () => anim.Target = target);
 
-                    string trigger = ParameterPopup(anim.Target, AnimatorControllerParameterType.Trigger, anim.Trigger, false, 130);
-                    if (trigger != anim.Trigger) Edit("トリガーの変更", () => anim.Trigger = trigger);
-
-                    string parameter = ParameterPopup(anim.Target, AnimatorControllerParameterType.Int, anim.Parameter, true, 130);
-                    if (parameter != anim.Parameter) Edit("パラメータの変更", () => anim.Parameter = parameter);
+                    DrawAnimName(anim);
+                    DrawAnimValue(anim);
 
                     int index = i;
                     if (GUILayout.Button("×", GUILayout.Width(22))) Edit("映像の削除", () => action.Anims.RemoveAt(index));
@@ -560,22 +561,103 @@ namespace AX.UdonSlot.REV1_0.Editor.Effect
             }
         }
 
-        /// <summary>Animator のパラメータを選ぶ。コントローラが無いときは文字で入力する。</summary>
-        private static string ParameterPopup(Animator animator, AnimatorControllerParameterType type, string current, bool allowNone, float width)
+        /// <summary>パラメータ名。コントローラがあれば一覧から選び、種類も合わせる。無ければ名前と種類を手で入れる。</summary>
+        private void DrawAnimName(EffectAnim anim)
         {
-            var controller = ControllerOf(animator);
+            var controller = ControllerOf(anim.Target);
             if (controller == null)
             {
-                return EditorGUILayout.DelayedTextField(current, GUILayout.Width(width));
+                EditorGUI.BeginChangeCheck();
+                string typed = EditorGUILayout.DelayedTextField(anim.Name, GUILayout.Width(90));
+                int kind = EditorGUILayout.Popup(BaseKind(anim.Kind), KindNames, GUILayout.Width(56));
+                if (EditorGUI.EndChangeCheck())
+                {
+                    bool fromCall = anim.Kind == EffectPlayer.AnimIntFromCall && kind == EffectPlayer.AnimInt;
+                    Edit("パラメータの変更", delegate
+                    {
+                        anim.Name = typed;
+                        anim.Kind = fromCall ? EffectPlayer.AnimIntFromCall : kind;
+                    });
+                }
+                return;
             }
-            var names = controller.parameters.Where(p => p.type == type).Select(p => p.name).ToList();
-            if (allowNone) names.Insert(0, "パラメータなし");
-            if (current.Length > 0 && !names.Contains(current)) names.Add(current);
-            int index = current.Length == 0 ? (allowNone ? 0 : -1) : names.IndexOf(current);
-            int picked = EditorGUILayout.Popup(index, names.ToArray(), GUILayout.Width(width));
-            if (picked == index || picked < 0) return current;
-            if (allowNone && picked == 0) return "";
-            return names[picked];
+
+            var parameters = controller.parameters;
+            var names = parameters.Select(p => p.name).ToList();
+            if (anim.Name.Length > 0 && !names.Contains(anim.Name)) names.Add(anim.Name);
+            int index = names.IndexOf(anim.Name);
+            int picked = EditorGUILayout.Popup(index, names.ToArray(), GUILayout.Width(150));
+            if (picked == index || picked < 0 || picked >= parameters.Length) return;
+            var param = parameters[picked];
+            int newKind = KindOf(param.type);
+            if (newKind < 0) return;
+            float value = newKind == EffectPlayer.AnimBool ? (param.defaultBool ? 1f : 0f)
+                : newKind == EffectPlayer.AnimInt ? param.defaultInt
+                : newKind == EffectPlayer.AnimFloat ? param.defaultFloat : 0f;
+            Edit("パラメータの変更", delegate
+            {
+                anim.Name = param.name;
+                anim.Kind = newKind;
+                anim.Value = value;
+            });
+        }
+
+        private void DrawAnimValue(EffectAnim anim)
+        {
+            using (new EditorGUILayout.HorizontalScope(GUILayout.Width(180)))
+            {
+                switch (anim.Kind)
+                {
+                    case EffectPlayer.AnimTrigger:
+                        using (new EditorGUI.DisabledScope(true)) GUILayout.Label("トリガー", GUILayout.Width(176));
+                        break;
+                    case EffectPlayer.AnimBool:
+                    {
+                        int v = EditorGUILayout.Popup(anim.Value != 0f ? 1 : 0, BoolNames, GUILayout.Width(176));
+                        if (v != (anim.Value != 0f ? 1 : 0)) Edit("設定値の変更", () => anim.Value = v);
+                        break;
+                    }
+                    case EffectPlayer.AnimInt:
+                    case EffectPlayer.AnimIntFromCall:
+                    {
+                        bool fromCall = anim.Kind == EffectPlayer.AnimIntFromCall;
+                        int source = EditorGUILayout.Popup(fromCall ? 1 : 0, IntSourceNames, GUILayout.Width(fromCall ? 176 : 110));
+                        if (source != (fromCall ? 1 : 0))
+                            Edit("設定値の変更", () => anim.Kind = source == 1 ? EffectPlayer.AnimIntFromCall : EffectPlayer.AnimInt);
+                        if (!fromCall)
+                        {
+                            EditorGUI.BeginChangeCheck();
+                            int v = EditorGUILayout.DelayedIntField(Mathf.RoundToInt(anim.Value), GUILayout.Width(62));
+                            if (EditorGUI.EndChangeCheck()) Edit("設定値の変更", () => anim.Value = v);
+                        }
+                        break;
+                    }
+                    case EffectPlayer.AnimFloat:
+                    {
+                        EditorGUI.BeginChangeCheck();
+                        float v = EditorGUILayout.DelayedFloatField(anim.Value, GUILayout.Width(176));
+                        if (EditorGUI.EndChangeCheck()) Edit("設定値の変更", () => anim.Value = v);
+                        break;
+                    }
+                }
+            }
+        }
+
+        private static int BaseKind(int kind)
+        {
+            return kind == EffectPlayer.AnimIntFromCall ? EffectPlayer.AnimInt : kind;
+        }
+
+        private static int KindOf(AnimatorControllerParameterType type)
+        {
+            switch (type)
+            {
+                case AnimatorControllerParameterType.Trigger: return EffectPlayer.AnimTrigger;
+                case AnimatorControllerParameterType.Bool: return EffectPlayer.AnimBool;
+                case AnimatorControllerParameterType.Int: return EffectPlayer.AnimInt;
+                case AnimatorControllerParameterType.Float: return EffectPlayer.AnimFloat;
+            }
+            return -1;
         }
 
         private static AnimatorController ControllerOf(Animator animator)
