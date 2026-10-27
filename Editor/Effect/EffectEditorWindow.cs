@@ -78,6 +78,20 @@ namespace AX.UdonSlot.REV1_0.Editor.Effect
         /// <summary>EffectPlayer とメイン基板・サブ基板のつながりが抜けていたら埋める。</summary>
         private static void Link(EffectPlayer target)
         {
+            // プログラムアセットより先に作った EffectPlayer は、裏の UdonBehaviour にプログラムが入っていない。
+            // そのままだとビルド時のコピーが失敗し、つながっているほかのスクリプトの設定まで VRChat に届かない。
+            var backing = UdonSharpEditor.UdonSharpEditorUtility.GetBackingUdonBehaviour(target);
+            if (backing != null && backing.programSource == null)
+            {
+                var program = UdonSharpEditor.UdonSharpEditorUtility.GetUdonSharpProgramAsset(typeof(EffectPlayer));
+                if (program != null)
+                {
+                    Undo.RecordObject(backing, "EffectPlayer のプログラム設定");
+                    backing.programSource = program;
+                    EditorUtility.SetDirty(backing);
+                    UnityEditor.SceneManagement.EditorSceneManager.MarkSceneDirty(target.gameObject.scene);
+                }
+            }
             var sub = target.GetComponentInParent<SubBoard>();
             var mainBoard = target.mainBoard;
             if (mainBoard == null)
