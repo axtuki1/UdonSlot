@@ -1138,7 +1138,8 @@ namespace AX.UdonSlot.REV1_0
         /// <summary>現在成立しているフラグの内部使用名を返す。</summary>
         public virtual string GetActiveFlag()
         {
-            return activeFlag;
+            // 同期で受け取った空文字が null になる場合があるので、空文字にそろえる。
+            return activeFlag != null ? activeFlag : "";
         }
 
         /// <summary>
@@ -1174,16 +1175,16 @@ namespace AX.UdonSlot.REV1_0
         public string GetActiveFlagDisplayName()
         {
             LotteryTable table = GetCurrentLotteryTable();
-            if (!Utilities.IsValid(table)) return activeFlag;
-            return table.GetFlagDisplayName(activeFlag);
+            if (!Utilities.IsValid(table)) return GetActiveFlag();
+            return table.GetFlagDisplayName(GetActiveFlag());
         }
 
         /// <summary>ボーナス付きフラグ（Cherry_RedBB など）の元のフラグ名を返す。</summary>
         public string GetActiveBaseFlag()
         {
             LotteryTable table = GetCurrentLotteryTable();
-            if (!Utilities.IsValid(table)) return activeFlag;
-            return table.GetEntryBaseFlag(activeFlag);
+            if (!Utilities.IsValid(table)) return GetActiveFlag();
+            return table.GetEntryBaseFlag(GetActiveFlag());
         }
 
         private bool HasReelControl(string name)
