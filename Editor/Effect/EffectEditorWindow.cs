@@ -287,8 +287,8 @@ namespace AX.UdonSlot.REV1_0.Editor.Effect
                     }
                     GUILayout.FlexibleSpace();
                     EditorGUI.BeginChangeCheck();
-                    bool reset = GUILayout.Toggle(pattern.ResetOnLeave, "終了時に表示を戻す", GUILayout.Width(130));
-                    if (EditorGUI.EndChangeCheck()) Edit("終了時に表示を戻すの変更", () => pattern.ResetOnLeave = reset);
+                    bool reset = GUILayout.Toggle(pattern.ResetOnLeave, "切り替え時に表示を戻す", GUILayout.Width(150));
+                    if (EditorGUI.EndChangeCheck()) Edit("切り替え時に表示を戻すの変更", () => pattern.ResetOnLeave = reset);
                     GUILayout.Space(16);
                     GUILayout.Label("次ゲームの予定", GUILayout.Width(92));
                     var options = new List<string> { "なし" };
