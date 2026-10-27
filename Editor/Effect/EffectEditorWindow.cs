@@ -286,7 +286,7 @@ namespace AX.UdonSlot.REV1_0.Editor.Effect
                         Edit("パターン名の変更", () => pattern.Name = EffectModel.UniqueName(name.Trim(), used));
                     }
                     GUILayout.FlexibleSpace();
-                    GUILayout.Label("次", GUILayout.Width(16));
+                    GUILayout.Label("次ゲームの予定", GUILayout.Width(92));
                     var options = new List<string> { "なし" };
                     options.AddRange(model.PatternNames());
                     int current = pattern.Next != null ? model.Patterns.IndexOf(pattern.Next) + 1 : 0;
