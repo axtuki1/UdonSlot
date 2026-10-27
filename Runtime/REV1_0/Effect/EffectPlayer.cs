@@ -95,6 +95,8 @@ namespace AX.UdonSlot.REV1_0
         public string[] patternNames = new string[0];
         /// <summary>ゲーム終了時に差し替わる次のパターン。-1 はなし（同じパターンを繰り返す）。</summary>
         public int[] patternNext = new int[0];
+        /// <summary>true のパターンは、チャンネルから外れても表示（オブジェクトの ON/OFF）を戻さない。既定は戻す。</summary>
+        public bool[] patternKeepActive = new bool[0];
         public int[] patternLayerStart = new int[0];
         public int[] patternLayerCount = new int[0];
         public string[] layerNames = new string[0];
@@ -138,13 +140,56 @@ namespace AX.UdonSlot.REV1_0
         private int[] queueAction = new int[0];
         private int[] queueParameter = new int[0];
         private float[] queueTime = new float[0];
+        /// <summary>遅延待ちのアクションを流したチャンネル。パターンが外れたら取り消す。</summary>
+        private int[] queueChannel = new int[0];
 
         private bool[] received = new bool[ChannelCount];
+        /// <summary>activeTargets ごとの、ワールド開始時の ON/OFF。</summary>
+        private bool[] activeInitial = new bool[0];
+        private bool initialCaptured = false;
 
         public void Start()
         {
+            CaptureInitial();
             if (joined) return;
             for (int c = 0; c < ChannelCount; c++) currentPattern[c] = -1;
+        }
+
+        private void CaptureInitial()
+        {
+            if (initialCaptured) return;
+            initialCaptured = true;
+            activeInitial = new bool[activeTargets.Length];
+            for (int i = 0; i < activeTargets.Length; i++)
+                activeInitial[i] = Utilities.IsValid(activeTargets[i]) && activeTargets[i].activeSelf;
+        }
+
+        /// <summary>チャンネルのパターンを差し替える。外れたパターンが触ったオブジェクトは開始時の ON/OFF に戻す。</summary>
+        private void SetChannelPattern(int channel, int pattern)
+        {
+            int old = currentPattern[channel];
+            currentPattern[channel] = pattern;
+            if (old < 0 || old == pattern || old >= patternNames.Length) return;
+            if (old < patternKeepActive.Length && patternKeepActive[old]) return;
+            // 戻したあとで点かないよう、外れたパターンのまだ始まっていないアクションは流さない。
+            for (int i = 0; i < queueChannel.Length; i++) if (queueChannel[i] == channel) queueAction[i] = -1;
+            ResetPatternActives(old);
+        }
+
+        private void ResetPatternActives(int pattern)
+        {
+            CaptureInitial();
+            for (int e = 0; e < entryAction.Length; e++)
+            {
+                if (entryPattern[e] != pattern) continue;
+                int action = entryAction[e];
+                if (action < 0 || action >= actionNames.Length) continue;
+                int start = actionActiveStart[action], end = start + actionActiveCount[action];
+                for (int i = start; i < end && i < activeTargets.Length; i++)
+                {
+                    if (Utilities.IsValid(activeTargets[i]) && i < activeInitial.Length) activeTargets[i].SetActive(activeInitial[i]);
+                }
+            }
         }
 
         public override void OnDeserialization()
@@ -244,7 +289,7 @@ namespace AX.UdonSlot.REV1_0
             if (HasPassed(fromStep))
             {
                 // 呼び出しより先にそのステップが届いていた：差し替えて、今のステップの列を1回だけ流して追いつく。
-                currentPattern[channel] = pattern;
+                SetChannelPattern(channel, pattern);
                 currentParameter[channel] = parameter;
                 hasPending[channel] = false;
                 if (lastStep != StepGameEnd || fromStep == StepGameEnd) PlayStep(channel, lastStep, lastWon, lastReel);
@@ -274,7 +319,7 @@ namespace AX.UdonSlot.REV1_0
             {
                 if (hasPending[c] && pendingFromStep[c] == step)
                 {
-                    currentPattern[c] = pendingPattern[c];
+                    SetChannelPattern(c, pendingPattern[c]);
                     currentParameter[c] = pendingParameter[c];
                     hasPending[c] = false;
                 }
@@ -289,8 +334,8 @@ namespace AX.UdonSlot.REV1_0
             int pattern = currentPattern[channel];
             if (hasPending[channel] || pattern < 0) return;
             int next = pattern < patternNext.Length ? patternNext[pattern] : -1;
-            if (next >= 0 && next < patternNames.Length) currentPattern[channel] = next;
-            else if (channel >= residentChannelCount) currentPattern[channel] = -1;
+            if (next >= 0 && next < patternNames.Length) SetChannelPattern(channel, next);
+            else if (channel >= residentChannelCount) SetChannelPattern(channel, -1);
         }
 
         private bool HasPassed(int step)
@@ -316,11 +361,11 @@ namespace AX.UdonSlot.REV1_0
                 if (branch == BranchWin && !won) continue;
                 if (branch == BranchLose && won) continue;
                 if (branch >= BranchLeft && branch - BranchLeft != reel) continue;
-                StartAction(entryAction[i], step, currentParameter[channel]);
+                StartAction(channel, entryAction[i], step, currentParameter[channel]);
             }
         }
 
-        private void StartAction(int action, int step, int parameter)
+        private void StartAction(int channel, int action, int step, int parameter)
         {
             if (action < 0 || action >= actionNames.Length) return;
             int delay = actionDelayMs[action];
@@ -339,12 +384,16 @@ namespace AX.UdonSlot.REV1_0
             System.Array.Copy(queueAction, actions, n);
             System.Array.Copy(queueParameter, parameters, n);
             System.Array.Copy(queueTime, times, n);
+            int[] channels = new int[n + 1];
+            System.Array.Copy(queueChannel, channels, n);
+            channels[n] = channel;
             actions[n] = action;
             parameters[n] = parameter;
             times[n] = Time.time + delay / 1000f;
             queueAction = actions;
             queueParameter = parameters;
             queueTime = times;
+            queueChannel = channels;
         }
 
         public void Update()
@@ -354,13 +403,14 @@ namespace AX.UdonSlot.REV1_0
             int kept = 0;
             for (int i = 0; i < queueAction.Length; i++)
             {
-                if (queueTime[i] <= now) RunAction(queueAction[i], lastStep, queueParameter[i]);
+                if (queueTime[i] <= now) { if (queueAction[i] >= 0) RunAction(queueAction[i], lastStep, queueParameter[i]); }
                 else kept++;
             }
             if (kept == queueAction.Length) return;
             int[] actions = new int[kept];
             int[] parameters = new int[kept];
             float[] times = new float[kept];
+            int[] keptChannels = new int[kept];
             int k = 0;
             for (int i = 0; i < queueAction.Length; i++)
             {
@@ -368,11 +418,13 @@ namespace AX.UdonSlot.REV1_0
                 actions[k] = queueAction[i];
                 parameters[k] = queueParameter[i];
                 times[k] = queueTime[i];
+                keptChannels[k] = queueChannel[i];
                 k++;
             }
             queueAction = actions;
             queueParameter = parameters;
             queueTime = times;
+            queueChannel = keptChannels;
         }
 
         private void RunAction(int action, int step, int parameter)

@@ -92,6 +92,8 @@ namespace AX.UdonSlot.REV1_0.Editor.Effect
     {
         public string Name = "";
         public EffectPattern Next;
+        /// <summary>チャンネルから外れたら、触ったオブジェクトの ON/OFF を開始時に戻す。</summary>
+        public bool ResetOnLeave = true;
         public List<string> Layers = new List<string>();
         public List<EffectEntry> Entries = new List<EffectEntry>();
 
@@ -212,12 +214,13 @@ namespace AX.UdonSlot.REV1_0.Editor.Effect
 
             var pNames = so.FindProperty("patternNames");
             var pNext = so.FindProperty("patternNext");
+            var pKeep = so.FindProperty("patternKeepActive");
             var pLayerStart = so.FindProperty("patternLayerStart");
             var pLayerCount = so.FindProperty("patternLayerCount");
             var layerNames = so.FindProperty("layerNames");
             for (int p = 0; p < pNames.arraySize; p++)
             {
-                var pattern = new EffectPattern { Name = Str(pNames, p) };
+                var pattern = new EffectPattern { Name = Str(pNames, p), ResetOnLeave = !(pKeep != null && Bool(pKeep, p)) };
                 foreach (int i in Range(pLayerStart, pLayerCount, p, layerNames.arraySize)) pattern.Layers.Add(Str(layerNames, i));
                 m.Patterns.Add(pattern);
             }
@@ -334,6 +337,7 @@ namespace AX.UdonSlot.REV1_0.Editor.Effect
             int pc = Patterns.Count;
             var pNames = Resize(so, "patternNames", pc);
             var pNext = Resize(so, "patternNext", pc);
+            var pKeep = Resize(so, "patternKeepActive", pc);
             var pLayerStart = Resize(so, "patternLayerStart", pc);
             var pLayerCount = Resize(so, "patternLayerCount", pc);
             int layers = 0, entries = 0;
@@ -351,6 +355,7 @@ namespace AX.UdonSlot.REV1_0.Editor.Effect
                 var pattern = Patterns[p];
                 pNames.GetArrayElementAtIndex(p).stringValue = pattern.Name;
                 pNext.GetArrayElementAtIndex(p).intValue = pattern.Next != null ? Patterns.IndexOf(pattern.Next) : -1;
+                pKeep.GetArrayElementAtIndex(p).boolValue = !pattern.ResetOnLeave;
                 pLayerStart.GetArrayElementAtIndex(p).intValue = layers;
                 pLayerCount.GetArrayElementAtIndex(p).intValue = pattern.Layers.Count;
                 int baseLayer = layers;

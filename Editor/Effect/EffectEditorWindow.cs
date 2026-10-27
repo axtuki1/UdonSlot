@@ -239,7 +239,7 @@ namespace AX.UdonSlot.REV1_0.Editor.Effect
                 menu.AddItem(new GUIContent("複製"), false, () => Edit("パターンの複製", delegate
                 {
                     var src = model.Patterns[index];
-                    var p = new EffectPattern { Name = EffectModel.UniqueName(src.Name, model.PatternNames()), Next = src.Next, Layers = new List<string>(src.Layers) };
+                    var p = new EffectPattern { Name = EffectModel.UniqueName(src.Name, model.PatternNames()), Next = src.Next, ResetOnLeave = src.ResetOnLeave, Layers = new List<string>(src.Layers) };
                     foreach (var e in src.Entries) p.Entries.Add(new EffectEntry { Layer = e.Layer, Step = e.Step, Branch = e.Branch, Action = e.Action });
                     model.Patterns.Insert(index + 1, p);
                     patternIndex = index + 1;
@@ -286,6 +286,10 @@ namespace AX.UdonSlot.REV1_0.Editor.Effect
                         Edit("パターン名の変更", () => pattern.Name = EffectModel.UniqueName(name.Trim(), used));
                     }
                     GUILayout.FlexibleSpace();
+                    EditorGUI.BeginChangeCheck();
+                    bool reset = GUILayout.Toggle(pattern.ResetOnLeave, "終了時に表示を戻す", GUILayout.Width(130));
+                    if (EditorGUI.EndChangeCheck()) Edit("終了時に表示を戻すの変更", () => pattern.ResetOnLeave = reset);
+                    GUILayout.Space(16);
                     GUILayout.Label("次ゲームの予定", GUILayout.Width(92));
                     var options = new List<string> { "なし" };
                     options.AddRange(model.PatternNames());
