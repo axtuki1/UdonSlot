@@ -40,8 +40,7 @@ namespace AX.UdonSlot.REV1_0.Editor.Effect
         {
             var sb = new StringBuilder();
             sb.Append("// 演出エディタが書き出したファイルです。パターンを変えると書き直されます。\n");
-            sb.Append("using UdonSharp;\n\n");
-            sb.Append("public abstract class ").Append(className).Append(" : UdonSharpBehaviour\n{\n");
+            sb.Append("public static class ").Append(className).Append("\n{\n");
             var used = new HashSet<string>();
             foreach (var name in names)
             {
