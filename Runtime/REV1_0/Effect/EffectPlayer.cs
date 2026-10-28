@@ -108,6 +108,8 @@ namespace AX.UdonSlot.REV1_0
         public int[] patternNext = new int[0];
         /// <summary>true のパターンは、チャンネルから外れても表示（オブジェクトの ON/OFF）を戻さない。既定は戻す。</summary>
         public bool[] patternKeepActive = new bool[0];
+        /// <summary>パターン名の定数ファイルの書き出し先（エディタ用）。</summary>
+        public string constantsPath = "";
         public int[] patternLayerStart = new int[0];
         public int[] patternLayerCount = new int[0];
         public string[] layerNames = new string[0];

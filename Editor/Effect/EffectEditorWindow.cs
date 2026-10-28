@@ -121,6 +121,7 @@ namespace AX.UdonSlot.REV1_0.Editor.Effect
             if (model == null) return;
             change();
             model.Save(label);
+            EffectConstants.Write(player, model);
             Repaint();
         }
 
@@ -158,6 +159,12 @@ namespace AX.UdonSlot.REV1_0.Editor.Effect
                     Reload();
                 }
                 GUILayout.FlexibleSpace();
+                using (new EditorGUI.DisabledScope(player == null || model == null))
+                {
+                    string path = player != null ? player.constantsPath : "";
+                    if (!string.IsNullOrEmpty(path)) GUILayout.Label(path, EditorStyles.miniLabel);
+                    if (GUILayout.Button("定数ファイル", EditorStyles.toolbarButton, GUILayout.Width(90))) EffectConstants.Choose(player, model);
+                }
             }
         }
 

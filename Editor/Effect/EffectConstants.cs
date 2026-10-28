@@ -1,0 +1,85 @@
+using System.Collections.Generic;
+using System.IO;
+using System.Text;
+using UnityEditor;
+using UnityEngine;
+
+namespace AX.UdonSlot.REV1_0.Editor.Effect
+{
+    /// <summary>パターン名を定数にしたファイルを書き出す（機種コードで打ち間違えないように）。</summary>
+    internal static class EffectConstants
+    {
+        /// <summary>書き出し先を選んで書き出す。</summary>
+        public static void Choose(EffectPlayer player, EffectModel model)
+        {
+            string current = player.constantsPath ?? "";
+            string dir = current.Length > 0 ? Path.GetDirectoryName(current) : "Assets";
+            string name = current.Length > 0 ? Path.GetFileNameWithoutExtension(current) : "EffectPatterns";
+            string path = EditorUtility.SaveFilePanelInProject("定数ファイル", name, "cs", "", dir);
+            if (string.IsNullOrEmpty(path)) return;
+            var so = new SerializedObject(player);
+            so.FindProperty("constantsPath").stringValue = path;
+            so.ApplyModifiedProperties();
+            Write(player, model);
+        }
+
+        /// <summary>書き出し先が決まっていれば書き出す。中身が変わらなければ書かない（再コンパイルを避ける）。</summary>
+        public static void Write(EffectPlayer player, EffectModel model)
+        {
+            string path = player != null ? player.constantsPath : null;
+            if (string.IsNullOrEmpty(path) || model == null) return;
+            string text = Build(Identifier(Path.GetFileNameWithoutExtension(path), new HashSet<string>()), model.PatternNames());
+            if (File.Exists(path) && File.ReadAllText(path) == text) return;
+            string dir = Path.GetDirectoryName(path);
+            if (!string.IsNullOrEmpty(dir)) Directory.CreateDirectory(dir);
+            File.WriteAllText(path, text, new UTF8Encoding(true));
+            AssetDatabase.ImportAsset(path);
+        }
+
+        private static string Build(string className, List<string> names)
+        {
+            var sb = new StringBuilder();
+            sb.Append("// 演出エディタが書き出したファイルです。パターンを変えると書き直されます。\n");
+            sb.Append("using UdonSharp;\n\n");
+            sb.Append("public abstract class ").Append(className).Append(" : UdonSharpBehaviour\n{\n");
+            var used = new HashSet<string>();
+            foreach (var name in names)
+            {
+                sb.Append("    public const string ").Append(Identifier(name, used)).Append(" = \"")
+                  .Append(name.Replace("\\", "\\\\").Replace("\"", "\\\"")).Append("\";\n");
+            }
+            sb.Append("}\n");
+            return sb.ToString();
+        }
+
+        private static readonly HashSet<string> Keywords = new HashSet<string>
+        {
+            "abstract","as","base","bool","break","byte","case","catch","char","checked","class","const","continue",
+            "decimal","default","delegate","do","double","else","enum","event","explicit","extern","false","finally",
+            "fixed","float","for","foreach","goto","if","implicit","in","int","interface","internal","is","lock","long",
+            "namespace","new","null","object","operator","out","override","params","private","protected","public",
+            "readonly","ref","return","sbyte","sealed","short","sizeof","stackalloc","static","string","struct","switch",
+            "this","throw","true","try","typeof","uint","ulong","unchecked","unsafe","ushort","using","virtual","void",
+            "volatile","while"
+        };
+
+        /// <summary>C# の名前に使えない文字を _ にする。重なったら _2, _3 …。</summary>
+        private static string Identifier(string name, HashSet<string> used)
+        {
+            var sb = new StringBuilder();
+            foreach (char c in (name ?? "").Trim())
+            {
+                if (char.IsLetterOrDigit(c) || c == '_') sb.Append(c);
+                else if (sb.Length > 0 && sb[sb.Length - 1] != '_') sb.Append('_');
+            }
+            string id = sb.ToString().TrimEnd('_');
+            if (id.Length == 0) id = "_";
+            if (char.IsDigit(id[0])) id = "_" + id;
+            if (Keywords.Contains(id)) id += "_";
+            string unique = id;
+            for (int n = 2; used.Contains(unique); n++) unique = id + "_" + n;
+            used.Add(unique);
+            return unique;
+        }
+    }
+}
