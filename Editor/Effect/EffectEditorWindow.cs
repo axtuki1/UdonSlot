@@ -736,12 +736,43 @@ namespace AX.UdonSlot.REV1_0.Editor.Effect
                 {
                     EditorGUI.BeginChangeCheck();
                     var target = (GameObject)EditorGUILayout.ObjectField(active.Target, typeof(GameObject), true);
-                    if (EditorGUI.EndChangeCheck()) Edit("表示の変更", () => active.Target = target);
+                    if (EditorGUI.EndChangeCheck()) Edit("表示の変更", () => { active.Target = target; active.Component = null; });
+                    DrawComponentPopup(active);
                     int value = GUILayout.Toolbar(active.Value ? 0 : 1, new[] { "ON", "OFF" }, GUILayout.Width(100));
                     if (value != (active.Value ? 0 : 1)) Edit("表示の変更", () => active.Value = value == 0);
                     int index = i;
                     if (GUILayout.Button("×", GUILayout.Width(22))) Edit("表示の削除", () => action.Actives.RemoveAt(index));
                 }
+            }
+        }
+
+        /// <summary>オブジェクトごとか、その中のどのコンポーネントの有効／無効を切り替えるか。</summary>
+        private void DrawComponentPopup(EffectActive active)
+        {
+            var components = new List<Component>();
+            var labels = new List<string> { "オブジェクト" };
+            if (active.Target != null)
+            {
+                var counts = new Dictionary<string, int>();
+                foreach (var c in active.Target.GetComponents<Component>())
+                {
+                    if (!(c is Behaviour || c is Renderer || c is Collider)) continue;
+                    // UdonSharp の裏の UdonBehaviour は出さない
+                    if (c is VRC.Udon.UdonBehaviour && (c.hideFlags & HideFlags.HideInInspector) != 0) continue;
+                    string name = c.GetType().Name;
+                    int n;
+                    counts.TryGetValue(name, out n);
+                    counts[name] = ++n;
+                    components.Add(c);
+                    labels.Add(n > 1 ? name + " (" + n + ")" : name);
+                }
+            }
+            int current = active.Component != null ? components.IndexOf(active.Component) + 1 : 0;
+            if (current < 0) current = 0;
+            using (new EditorGUI.DisabledScope(active.Target == null))
+            {
+                int chosen = EditorGUILayout.Popup(current, labels.ToArray(), GUILayout.Width(150));
+                if (chosen != current) Edit("表示の変更", () => active.Component = chosen == 0 ? null : components[chosen - 1]);
             }
         }
 

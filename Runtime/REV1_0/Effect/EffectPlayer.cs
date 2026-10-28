@@ -66,6 +66,14 @@ namespace AX.UdonSlot.REV1_0
         public GameObject[] activeTargets = new GameObject[0];
         public bool[] activeValues = new bool[0];
 
+        /// <summary>コンポーネントの有効／無効。1件ごとに Behaviour・Renderer・Collider のどれか1つが入る。</summary>
+        public int[] actionEnableStart = new int[0];
+        public int[] actionEnableCount = new int[0];
+        public Behaviour[] enableBehaviours = new Behaviour[0];
+        public Renderer[] enableRenderers = new Renderer[0];
+        public Collider[] enableColliders = new Collider[0];
+        public bool[] enableValues = new bool[0];
+
         /// <summary>SoundType。-1 は音なし。</summary>
         public int[] actionSoundType = new int[0];
         public int[] actionSoundClip = new int[0];
@@ -151,6 +159,8 @@ namespace AX.UdonSlot.REV1_0
         private bool[] received = new bool[ChannelCount];
         /// <summary>activeTargets ごとの、ワールド開始時の ON/OFF。</summary>
         private bool[] activeInitial = new bool[0];
+        /// <summary>enable の各件の、ワールド開始時の有効／無効。</summary>
+        private bool[] enableInitial = new bool[0];
         private bool initialCaptured = false;
 
         public void Start()
@@ -176,6 +186,23 @@ namespace AX.UdonSlot.REV1_0
             activeInitial = new bool[activeTargets.Length];
             for (int i = 0; i < activeTargets.Length; i++)
                 activeInitial[i] = Utilities.IsValid(activeTargets[i]) && activeTargets[i].activeSelf;
+            enableInitial = new bool[enableValues.Length];
+            for (int i = 0; i < enableValues.Length; i++) enableInitial[i] = GetEnabled(i);
+        }
+
+        private bool GetEnabled(int i)
+        {
+            if (i < enableBehaviours.Length && Utilities.IsValid(enableBehaviours[i])) return enableBehaviours[i].enabled;
+            if (i < enableRenderers.Length && Utilities.IsValid(enableRenderers[i])) return enableRenderers[i].enabled;
+            if (i < enableColliders.Length && Utilities.IsValid(enableColliders[i])) return enableColliders[i].enabled;
+            return false;
+        }
+
+        private void SetEnabled(int i, bool value)
+        {
+            if (i < enableBehaviours.Length && Utilities.IsValid(enableBehaviours[i])) enableBehaviours[i].enabled = value;
+            else if (i < enableRenderers.Length && Utilities.IsValid(enableRenderers[i])) enableRenderers[i].enabled = value;
+            else if (i < enableColliders.Length && Utilities.IsValid(enableColliders[i])) enableColliders[i].enabled = value;
         }
 
         /// <summary>チャンネルのパターンを差し替える。外れたパターンが触ったオブジェクトは開始時の ON/OFF に戻す。</summary>
@@ -203,6 +230,10 @@ namespace AX.UdonSlot.REV1_0
                 {
                     if (Utilities.IsValid(activeTargets[i]) && i < activeInitial.Length) activeTargets[i].SetActive(activeInitial[i]);
                 }
+                if (action >= actionEnableStart.Length) continue;
+                start = actionEnableStart[action];
+                end = start + actionEnableCount[action];
+                for (int i = start; i < end && i < enableInitial.Length; i++) SetEnabled(i, enableInitial[i]);
             }
         }
 
@@ -466,6 +497,12 @@ namespace AX.UdonSlot.REV1_0
             for (int i = start; i < end; i++)
             {
                 if (Utilities.IsValid(activeTargets[i])) activeTargets[i].SetActive(activeValues[i]);
+            }
+            if (action < actionEnableStart.Length)
+            {
+                start = actionEnableStart[action];
+                end = start + actionEnableCount[action];
+                for (int i = start; i < end && i < enableValues.Length; i++) SetEnabled(i, enableValues[i]);
             }
 
             // 効果音は各自の画面で鳴らす（SoundBoard の全員送信は使わない）。

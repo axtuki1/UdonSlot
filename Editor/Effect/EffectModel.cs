@@ -20,6 +20,8 @@ namespace AX.UdonSlot.REV1_0.Editor.Effect
     public sealed class EffectActive
     {
         public GameObject Target;
+        /// <summary>null はオブジェクトごと（SetActive）。Behaviour・Renderer・Collider なら有効／無効を切り替える。</summary>
+        public Component Component;
         public bool Value = true;
     }
 
@@ -72,7 +74,7 @@ namespace AX.UdonSlot.REV1_0.Editor.Effect
         {
             var a = new EffectAction { Name = name, DelayMs = DelayMs, LockMs = LockMs, SoundType = SoundType, SoundClip = SoundClip };
             foreach (var x in Anims) a.Anims.Add(new EffectAnim { Target = x.Target, Name = x.Name, Kind = x.Kind, Value = x.Value });
-            foreach (var x in Actives) a.Actives.Add(new EffectActive { Target = x.Target, Value = x.Value });
+            foreach (var x in Actives) a.Actives.Add(new EffectActive { Target = x.Target, Component = x.Component, Value = x.Value });
             foreach (var x in ReelKeys) a.ReelKeys.Add(x.Copy());
             foreach (var x in Codes) a.Codes.Add(new EffectCode { Target = x.Target, Method = x.Method });
             return a;
@@ -173,6 +175,12 @@ namespace AX.UdonSlot.REV1_0.Editor.Effect
             var animKinds = so.FindProperty("animKinds");
             var animValues = so.FindProperty("animValues");
             var activeStart = so.FindProperty("actionActiveStart");
+            var enableStart = so.FindProperty("actionEnableStart");
+            var enableCount = so.FindProperty("actionEnableCount");
+            var enableBehaviours = so.FindProperty("enableBehaviours");
+            var enableRenderers = so.FindProperty("enableRenderers");
+            var enableColliders = so.FindProperty("enableColliders");
+            var enableValues = so.FindProperty("enableValues");
             var activeCount = so.FindProperty("actionActiveCount");
             var activeTargets = so.FindProperty("activeTargets");
             var activeValues = so.FindProperty("activeValues");
@@ -205,6 +213,12 @@ namespace AX.UdonSlot.REV1_0.Editor.Effect
                     action.Anims.Add(new EffectAnim { Target = animTargets.GetArrayElementAtIndex(i).objectReferenceValue as Animator, Name = Str(animNames, i), Kind = Int(animKinds, i), Value = Float(animValues, i) });
                 foreach (int i in Range(activeStart, activeCount, a, activeTargets.arraySize))
                     action.Actives.Add(new EffectActive { Target = activeTargets.GetArrayElementAtIndex(i).objectReferenceValue as GameObject, Value = Bool(activeValues, i) });
+                foreach (int i in Range(enableStart, enableCount, a, enableValues.arraySize))
+                {
+                    var c = Obj(enableBehaviours, i) ?? Obj(enableRenderers, i) ?? Obj(enableColliders, i);
+                    var component = c as Component;
+                    action.Actives.Add(new EffectActive { Target = component != null ? component.gameObject : null, Component = component, Value = Bool(enableValues, i) });
+                }
                 foreach (int i in Range(codeStart, codeCount, a, codeTargets.arraySize))
                     action.Codes.Add(new EffectCode { Target = codeTargets.GetArrayElementAtIndex(i).objectReferenceValue as UdonSharpBehaviour, Method = Str(codeMethods, i) });
                 foreach (int i in Range(reelStart, reelCount, a, keyReel.arraySize))
@@ -261,6 +275,8 @@ namespace AX.UdonSlot.REV1_0.Editor.Effect
             var animStart = Resize(so, "actionAnimStart", n);
             var animCount = Resize(so, "actionAnimCount", n);
             var activeStart = Resize(so, "actionActiveStart", n);
+            var enableStart = Resize(so, "actionEnableStart", n);
+            var enableCount = Resize(so, "actionEnableCount", n);
             var activeCount = Resize(so, "actionActiveCount", n);
             var soundType = Resize(so, "actionSoundType", n);
             var soundClip = Resize(so, "actionSoundClip", n);
@@ -270,7 +286,17 @@ namespace AX.UdonSlot.REV1_0.Editor.Effect
             var reelCount = Resize(so, "actionReelCount", n);
 
             int anims = 0, actives = 0, codes = 0, keys = 0;
-            foreach (var a in Actions) { anims += a.Anims.Count; actives += a.Actives.Count; codes += a.Codes.Count; keys += a.ReelKeys.Count; }
+            int enables = 0;
+            foreach (var a in Actions)
+            {
+                anims += a.Anims.Count; codes += a.Codes.Count; keys += a.ReelKeys.Count;
+                foreach (var x in a.Actives) { if (x.Component != null) enables++; else actives++; }
+            }
+            var enableBehaviours = Resize(so, "enableBehaviours", enables);
+            var enableRenderers = Resize(so, "enableRenderers", enables);
+            var enableColliders = Resize(so, "enableColliders", enables);
+            var enableValues = Resize(so, "enableValues", enables);
+            enables = 0;
             var animTargets = Resize(so, "animTargets", anims);
             var animNames = Resize(so, "animNames", anims);
             var animKinds = Resize(so, "animKinds", anims);
@@ -307,13 +333,27 @@ namespace AX.UdonSlot.REV1_0.Editor.Effect
                     anims++;
                 }
                 activeStart.GetArrayElementAtIndex(i).intValue = actives;
-                activeCount.GetArrayElementAtIndex(i).intValue = a.Actives.Count;
+                enableStart.GetArrayElementAtIndex(i).intValue = enables;
+                int activeN = 0, enableN = 0;
                 foreach (var x in a.Actives)
                 {
+                    if (x.Component != null)
+                    {
+                        enableBehaviours.GetArrayElementAtIndex(enables).objectReferenceValue = x.Component as Behaviour;
+                        enableRenderers.GetArrayElementAtIndex(enables).objectReferenceValue = x.Component as Renderer;
+                        enableColliders.GetArrayElementAtIndex(enables).objectReferenceValue = x.Component as Collider;
+                        enableValues.GetArrayElementAtIndex(enables).boolValue = x.Value;
+                        enables++;
+                        enableN++;
+                        continue;
+                    }
                     activeTargets.GetArrayElementAtIndex(actives).objectReferenceValue = x.Target;
                     activeValues.GetArrayElementAtIndex(actives).boolValue = x.Value;
                     actives++;
+                    activeN++;
                 }
+                activeCount.GetArrayElementAtIndex(i).intValue = activeN;
+                enableCount.GetArrayElementAtIndex(i).intValue = enableN;
                 codeStart.GetArrayElementAtIndex(i).intValue = codes;
                 codeCount.GetArrayElementAtIndex(i).intValue = a.Codes.Count;
                 foreach (var x in a.Codes)
@@ -445,6 +485,13 @@ namespace AX.UdonSlot.REV1_0.Editor.Effect
         private static int OldStep(int step, bool old)
         {
             return old && step >= EffectPlayer.StepReelStart ? step + 1 : step;
+        }
+
+        private static Object Obj(SerializedProperty array, int index)
+        {
+            if (array == null || index >= array.arraySize) return null;
+            var value = array.GetArrayElementAtIndex(index).objectReferenceValue;
+            return value != null ? value : null;
         }
 
         private static int Int(SerializedProperty array, int index)
