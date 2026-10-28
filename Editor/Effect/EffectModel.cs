@@ -127,7 +127,7 @@ namespace AX.UdonSlot.REV1_0.Editor.Effect
 
     public sealed class EffectModel
     {
-        public static readonly string[] StepNames = { "レバーオン", "第一停止", "第二停止", "第三停止", "ゲーム終了" };
+        public static readonly string[] StepNames = { "レバーオン", "リール回転開始", "第一停止", "第二停止", "第三停止", "ゲーム終了" };
         public static readonly string[] ReelNames = { "左", "中", "右" };
 
         public EffectPlayer Player;
@@ -233,6 +233,8 @@ namespace AX.UdonSlot.REV1_0.Editor.Effect
             var ePattern = so.FindProperty("entryPattern");
             var eLayer = so.FindProperty("entryLayer");
             var eStep = so.FindProperty("entryStep");
+            var stepVersion = so.FindProperty("stepVersion");
+            bool oldSteps = stepVersion != null && stepVersion.intValue < EffectPlayer.CurrentStepVersion;
             var eBranch = so.FindProperty("entryBranch");
             var eAction = so.FindProperty("entryAction");
             for (int i = 0; i < ePattern.arraySize; i++)
@@ -243,7 +245,7 @@ namespace AX.UdonSlot.REV1_0.Editor.Effect
                 // レイヤーはパターン内の番号で持つ（配列上は通し番号）。
                 int layer = Int(eLayer, i) - (p < pLayerStart.arraySize ? pLayerStart.GetArrayElementAtIndex(p).intValue : 0);
                 if (layer < 0 || layer >= pattern.Layers.Count) continue;
-                pattern.Entries.Add(new EffectEntry { Layer = layer, Step = Int(eStep, i), Branch = Int(eBranch, i), Action = m.Actions[action] });
+                pattern.Entries.Add(new EffectEntry { Layer = layer, Step = OldStep(Int(eStep, i), oldSteps), Branch = Int(eBranch, i), Action = m.Actions[action] });
             }
             return m;
         }
@@ -346,6 +348,7 @@ namespace AX.UdonSlot.REV1_0.Editor.Effect
             var ePattern = Resize(so, "entryPattern", entries);
             var eLayer = Resize(so, "entryLayer", entries);
             var eStep = Resize(so, "entryStep", entries);
+            so.FindProperty("stepVersion").intValue = EffectPlayer.CurrentStepVersion;
             var eBranch = Resize(so, "entryBranch", entries);
             var eAction = Resize(so, "entryAction", entries);
 
@@ -436,6 +439,12 @@ namespace AX.UdonSlot.REV1_0.Editor.Effect
         private static string Str(SerializedProperty array, int index)
         {
             return index < array.arraySize ? array.GetArrayElementAtIndex(index).stringValue ?? "" : "";
+        }
+
+        /// <summary>「リール回転開始」の列が無かったころのデータは、レバーオンより後の列を1つずらす。</summary>
+        private static int OldStep(int step, bool old)
+        {
+            return old && step >= EffectPlayer.StepReelStart ? step + 1 : step;
         }
 
         private static int Int(SerializedProperty array, int index)

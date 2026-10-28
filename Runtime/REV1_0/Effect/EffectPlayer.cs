@@ -19,11 +19,14 @@ namespace AX.UdonSlot.REV1_0
     public class EffectPlayer : UdonSharpBehaviour
     {
         public const int StepLeverOn = 0;
-        public const int StepFirstStop = 1;
-        public const int StepSecondStop = 2;
-        public const int StepThirdStop = 3;
-        public const int StepGameEnd = 4;
-        public const int StepCount = 5;
+        public const int StepReelStart = 1;
+        public const int StepFirstStop = 2;
+        public const int StepSecondStop = 3;
+        public const int StepThirdStop = 4;
+        public const int StepGameEnd = 5;
+        public const int StepCount = 6;
+        /// <summary>今の列の並び。1 未満は「リール回転開始」の列が無かったころのデータ。</summary>
+        public const int CurrentStepVersion = 1;
 
         /// <summary>セルの分岐。共通・入賞時・非入賞時・押したリール（左・中・右）。</summary>
         public const int BranchCommon = 0;
@@ -105,6 +108,8 @@ namespace AX.UdonSlot.REV1_0
         public int[] entryPattern = new int[0];
         public int[] entryLayer = new int[0];
         public int[] entryStep = new int[0];
+        /// <summary>entryStep の列の並びの版。古いデータは Start で読み替える。</summary>
+        public int stepVersion = 0;
         public int[] entryBranch = new int[0];
         public int[] entryAction = new int[0];
 
@@ -150,9 +155,18 @@ namespace AX.UdonSlot.REV1_0
 
         public void Start()
         {
+            MigrateSteps();
             CaptureInitial();
             if (joined) return;
             for (int c = 0; c < ChannelCount; c++) currentPattern[c] = -1;
+        }
+
+        /// <summary>「リール回転開始」の列が無かったころのデータは、レバーオンより後の列を1つずらす。</summary>
+        private void MigrateSteps()
+        {
+            if (stepVersion >= CurrentStepVersion) return;
+            for (int i = 0; i < entryStep.Length; i++) if (entryStep[i] >= StepReelStart) entryStep[i]++;
+            stepVersion = CurrentStepVersion;
         }
 
         private void CaptureInitial()
@@ -317,7 +331,8 @@ namespace AX.UdonSlot.REV1_0
             lastReel = reelIndex;
             for (int c = 0; c < ChannelCount; c++)
             {
-                if (hasPending[c] && pendingFromStep[c] == step)
+                // 途中のステップが届かなかった（回転開始より先に停止が届いたなど）ときも、追い越したら差し替える。
+                if (hasPending[c] && pendingFromStep[c] <= step)
                 {
                     SetChannelPattern(c, pendingPattern[c]);
                     currentParameter[c] = pendingParameter[c];

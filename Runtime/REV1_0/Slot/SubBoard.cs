@@ -58,6 +58,9 @@ namespace AX.UdonSlot.REV1_0
 
         /// <summary>このゲームで止まったリールの数（各自の画面で数える）。</summary>
         private int effectStopCount = 0;
+        /// <summary>最後に見たゲーム開始時刻。変わったらリール回転開始（ネットワークを増やさず同期変数で知る）。</summary>
+        private float effectSeenGameStart = 0f;
+        private bool effectGameStartSeen = false;
         
         protected VRCPlayerApi localPlayer;
 
@@ -264,6 +267,7 @@ namespace AX.UdonSlot.REV1_0
             BetButtonEffect();
             UpdateWaitView();
             RestoreStateOnJoin();
+            NotifyEffectReelStart();
             UpdateLogic();
         }
 
@@ -384,6 +388,25 @@ namespace AX.UdonSlot.REV1_0
         
         public virtual void UpdateLogic(){}
 
+        /// <summary>メイン基板のゲーム開始時刻が変わったら、演出へリール回転開始を伝える。各自の画面で動く。</summary>
+        private void NotifyEffectReelStart()
+        {
+            if (!Utilities.IsValid(mainBoard)) return;
+            float start = mainBoard.gameStartTime;
+            if (!effectGameStartSeen)
+            {
+                // 参加した時点のゲームは数えない。
+                effectGameStartSeen = true;
+                effectSeenGameStart = start;
+                return;
+            }
+            if (start == effectSeenGameStart) return;
+            effectSeenGameStart = start;
+            // 同期が遅れて先に停止が届いていたら、このゲームの回転開始は流さない。
+            if (!mainBoard.isGaming || effectStopCount > 0) return;
+            if (Utilities.IsValid(effectPlayer)) effectPlayer.OnStep(EffectPlayer.StepReelStart, false);
+        }
+
         public virtual void FixedUpdate()
         {
             FixedUpdateLogic();
@@ -451,7 +474,7 @@ namespace AX.UdonSlot.REV1_0
             {
                 effectStopCount++;
                 // 第三停止では possibleRoles が揃った役になる。
-                effectPlayer.OnReelStep(effectStopCount, effectStopCount == 3 && possibleRoles.Length > 0, reelIndex);
+                effectPlayer.OnReelStep(EffectPlayer.StepFirstStop + effectStopCount - 1, effectStopCount == 3 && possibleRoles.Length > 0, reelIndex);
             }
             ReelStopLogic(reelIndex, stopIndex, accuracy, possibleRoles);
         }
