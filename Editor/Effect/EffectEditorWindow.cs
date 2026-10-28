@@ -10,7 +10,7 @@ using UnityEngine;
 namespace AX.UdonSlot.REV1_0.Editor.Effect
 {
     /// <summary>
-    /// 演出エディタ。パターン（1ゲームの流れ）とアクション（映像・表示・音・リール・コードの箱）を編集し、
+    /// 演出エディタ。パターン（1ゲームの流れ）とアクション（Animator・表示・音・リール・コードの箱）を編集し、
     /// シーンの EffectPlayer に直接書き込む。
     /// </summary>
     public sealed class EffectEditorWindow : EditorWindow
@@ -589,7 +589,7 @@ namespace AX.UdonSlot.REV1_0.Editor.Effect
 
         private void DrawAnimSection(EffectAction action)
         {
-            if (SectionHeader("映像")) Edit("映像の追加", () => action.Anims.Add(new EffectAnim()));
+            if (SectionHeader("Animator")) Edit("Animator の追加", () => action.Anims.Add(new EffectAnim()));
             if (action.Anims.Count > 0)
             {
                 using (new EditorGUILayout.HorizontalScope())
@@ -613,7 +613,7 @@ namespace AX.UdonSlot.REV1_0.Editor.Effect
                     DrawAnimValue(anim);
 
                     int index = i;
-                    if (GUILayout.Button("×", GUILayout.Width(22))) Edit("映像の削除", () => action.Anims.RemoveAt(index));
+                    if (GUILayout.Button("×", GUILayout.Width(22))) Edit("Animator の削除", () => action.Anims.RemoveAt(index));
                 }
             }
         }
