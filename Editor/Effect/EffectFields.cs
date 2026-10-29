@@ -6,7 +6,7 @@ using UnityEngine;
 namespace AX.UdonSlot.REV1_0.Editor.Effect
 {
     /// <summary>
-    /// 数値の入力欄。全角数字（IME が全角のまま）でも読めるようにする。
+    /// 数値の入力欄。全角数字（IME が全角のまま）や計算式でも読めるようにする。
     /// 読めない入力は元の値のまま（0 にしない）。
     /// </summary>
     internal static class EffectFields
@@ -57,8 +57,11 @@ namespace AX.UdonSlot.REV1_0.Editor.Effect
 
         private static bool TryParse(string text, out float value)
         {
-            string normalized = (text ?? "").Normalize(NormalizationForm.FormKC).Replace("ー", "-").Replace("−", "-").Trim();
-            return float.TryParse(normalized, NumberStyles.Float, CultureInfo.InvariantCulture, out value);
+            string normalized = (text ?? "").Normalize(NormalizationForm.FormKC)
+                .Replace("ー", "-").Replace("−", "-").Replace("×", "*").Replace("÷", "/").Trim();
+            if (float.TryParse(normalized, NumberStyles.Float, CultureInfo.InvariantCulture, out value)) return true;
+            // 1000+350 や 21*2 などの計算式（Unity の数値欄と同じ）
+            return ExpressionEvaluator.Evaluate(normalized, out value) && !float.IsNaN(value) && !float.IsInfinity(value);
         }
     }
 }
