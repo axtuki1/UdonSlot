@@ -51,6 +51,8 @@ namespace AX.UdonSlot.REV1_0
         public int[] actionDelayMs = new int[0];
         /// <summary>操作（停止ボタン・レバーなど）を受け付けない時間。セルのタイミングから数える（再生開始遅延とは同時に始まる）。リールは回ったまま（フリーズ）。</summary>
         public int[] actionLockMs = new int[0];
+        /// <summary>true のアクションを停止の列で流すと、その停止の停止音を鳴らさない（アクション側で音を出すとき）。</summary>
+        public bool[] actionMuteStopSound = new bool[0];
 
         public int[] actionAnimStart = new int[0];
         public int[] actionAnimCount = new int[0];
@@ -118,8 +120,6 @@ namespace AX.UdonSlot.REV1_0
         public int[] patternNext = new int[0];
         /// <summary>true のパターンは、チャンネルから外れても表示（オブジェクトの ON/OFF）を戻さない。既定は戻す。</summary>
         public bool[] patternKeepActive = new bool[0];
-        /// <summary>true のパターンを流している間は、リールの停止音を鳴らさない（パターン側で音を出すとき）。</summary>
-        public bool[] patternMuteStopSound = new bool[0];
         /// <summary>パターン名の定数ファイルの書き出し先（エディタ用）。</summary>
         public string constantsPath = "";
         public int[] patternLayerStart = new int[0];
@@ -336,16 +336,13 @@ namespace AX.UdonSlot.REV1_0
             return -1;
         }
 
-        /// <summary>今流しているパターンのどれかが「停止音なし」か。SubBoard.ReelStopLogic が見る。</summary>
+        /// <summary>今の停止で「停止音なし」のアクションが流れたか。SubBoard.ReelStopLogic が見る。</summary>
         public bool IsStopSoundMuted()
         {
-            for (int c = 0; c < ChannelCount; c++)
-            {
-                int pattern = currentPattern[c];
-                if (pattern >= 0 && pattern < patternMuteStopSound.Length && patternMuteStopSound[pattern]) return true;
-            }
-            return false;
+            return stopSoundMuted;
         }
+
+        private bool stopSoundMuted;
 
         /// <summary>チャンネル0の今のパターンの内部名。ないときは空。</summary>
         public string GetCurrentPatternName()
@@ -392,6 +389,7 @@ namespace AX.UdonSlot.REV1_0
         public void OnReelStep(int step, bool won, int reelIndex)
         {
             if (step < 0 || step >= StepCount) return;
+            stopSoundMuted = false;
             lastStep = step;
             lastWon = won;
             lastReel = reelIndex;
@@ -457,6 +455,7 @@ namespace AX.UdonSlot.REV1_0
         {
             if (action < 0 || action >= actionNames.Length) return;
             int delay = actionDelayMs[action];
+            if (step >= StepFirstStop && step <= StepThirdStop && action < actionMuteStopSound.Length && actionMuteStopSound[action]) stopSoundMuted = true;
             // 操作禁止は再生開始遅延と関係なく、セルのタイミングから数える。
             if (action < actionLockMs.Length && actionLockMs[action] > 0 && IsMainBoardOwner())
                 mainBoard.OffControllableAtLeast(actionLockMs[action] / 1000f);

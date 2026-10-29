@@ -54,6 +54,8 @@ namespace AX.UdonSlot.REV1_0.Editor.Effect
         public string Name = "";
         public int DelayMs;
         public int LockMs;
+        /// <summary>停止の列で流すと、その停止の停止音を鳴らさない。</summary>
+        public bool MuteStopSound;
         public List<EffectAnim> Anims = new List<EffectAnim>();
         public List<EffectActive> Actives = new List<EffectActive>();
         /// <summary>SoundType。-1 は音なし。</summary>
@@ -74,7 +76,7 @@ namespace AX.UdonSlot.REV1_0.Editor.Effect
 
         public EffectAction Copy(string name)
         {
-            var a = new EffectAction { Name = name, DelayMs = DelayMs, LockMs = LockMs, SoundType = SoundType, SoundClip = SoundClip };
+            var a = new EffectAction { Name = name, DelayMs = DelayMs, LockMs = LockMs, MuteStopSound = MuteStopSound, SoundType = SoundType, SoundClip = SoundClip };
             foreach (var x in Anims) a.Anims.Add(new EffectAnim { Target = x.Target, Name = x.Name, Kind = x.Kind, Value = x.Value });
             foreach (var x in Actives) a.Actives.Add(new EffectActive { Target = x.Target, Component = x.Component, Value = x.Value });
             foreach (var x in ReelKeys) a.ReelKeys.Add(x.Copy());
@@ -100,8 +102,6 @@ namespace AX.UdonSlot.REV1_0.Editor.Effect
         public EffectPattern Next;
         /// <summary>チャンネルから外れたら、触ったオブジェクトの ON/OFF を開始時に戻す。</summary>
         public bool ResetOnLeave = true;
-        /// <summary>流している間はリールの停止音を鳴らさない。</summary>
-        public bool MuteStopSound;
         public List<string> Layers = new List<string>();
         public List<EffectEntry> Entries = new List<EffectEntry>();
 
@@ -174,6 +174,7 @@ namespace AX.UdonSlot.REV1_0.Editor.Effect
             var names = so.FindProperty("actionNames");
             var delays = so.FindProperty("actionDelayMs");
             var locks = so.FindProperty("actionLockMs");
+            var mutes = so.FindProperty("actionMuteStopSound");
             var animStart = so.FindProperty("actionAnimStart");
             var animCount = so.FindProperty("actionAnimCount");
             var animTargets = so.FindProperty("animTargets");
@@ -213,6 +214,7 @@ namespace AX.UdonSlot.REV1_0.Editor.Effect
                     Name = Str(names, a),
                     DelayMs = Int(delays, a),
                     LockMs = Int(locks, a),
+                    MuteStopSound = mutes != null && Bool(mutes, a),
                     SoundType = a < soundType.arraySize ? soundType.GetArrayElementAtIndex(a).intValue : -1,
                     SoundClip = Int(soundClip, a)
                 };
@@ -237,13 +239,12 @@ namespace AX.UdonSlot.REV1_0.Editor.Effect
             var pIds = so.FindProperty("patternIds");
             var pNext = so.FindProperty("patternNext");
             var pKeep = so.FindProperty("patternKeepActive");
-            var pMute = so.FindProperty("patternMuteStopSound");
             var pLayerStart = so.FindProperty("patternLayerStart");
             var pLayerCount = so.FindProperty("patternLayerCount");
             var layerNames = so.FindProperty("layerNames");
             for (int p = 0; p < pNames.arraySize; p++)
             {
-                var pattern = new EffectPattern { Name = Str(pNames, p), Id = Str(pIds, p), ResetOnLeave = !(pKeep != null && Bool(pKeep, p)), MuteStopSound = pMute != null && Bool(pMute, p) };
+                var pattern = new EffectPattern { Name = Str(pNames, p), Id = Str(pIds, p), ResetOnLeave = !(pKeep != null && Bool(pKeep, p))};
                 foreach (int i in Range(pLayerStart, pLayerCount, p, layerNames.arraySize)) pattern.Layers.Add(Str(layerNames, i));
                 m.Patterns.Add(pattern);
             }
@@ -292,6 +293,7 @@ namespace AX.UdonSlot.REV1_0.Editor.Effect
             var names = Resize(so, "actionNames", n);
             var delays = Resize(so, "actionDelayMs", n);
             var locks = Resize(so, "actionLockMs", n);
+            var mutes = Resize(so, "actionMuteStopSound", n);
             var animStart = Resize(so, "actionAnimStart", n);
             var animCount = Resize(so, "actionAnimCount", n);
             var activeStart = Resize(so, "actionActiveStart", n);
@@ -340,6 +342,7 @@ namespace AX.UdonSlot.REV1_0.Editor.Effect
                 names.GetArrayElementAtIndex(i).stringValue = a.Name;
                 delays.GetArrayElementAtIndex(i).intValue = Mathf.Max(0, a.DelayMs);
                 locks.GetArrayElementAtIndex(i).intValue = Mathf.Max(0, a.LockMs);
+                mutes.GetArrayElementAtIndex(i).boolValue = a.MuteStopSound;
                 soundType.GetArrayElementAtIndex(i).intValue = a.SoundType;
                 soundClip.GetArrayElementAtIndex(i).intValue = a.SoundClip;
 
@@ -403,7 +406,6 @@ namespace AX.UdonSlot.REV1_0.Editor.Effect
             var pIds = Resize(so, "patternIds", pc);
             var pNext = Resize(so, "patternNext", pc);
             var pKeep = Resize(so, "patternKeepActive", pc);
-            var pMute = Resize(so, "patternMuteStopSound", pc);
             var pLayerStart = Resize(so, "patternLayerStart", pc);
             var pLayerCount = Resize(so, "patternLayerCount", pc);
             int layers = 0, entries = 0;
@@ -424,7 +426,6 @@ namespace AX.UdonSlot.REV1_0.Editor.Effect
                 pIds.GetArrayElementAtIndex(p).stringValue = pattern.Id;
                 pNext.GetArrayElementAtIndex(p).intValue = pattern.Next != null ? Patterns.IndexOf(pattern.Next) : -1;
                 pKeep.GetArrayElementAtIndex(p).boolValue = !pattern.ResetOnLeave;
-                pMute.GetArrayElementAtIndex(p).boolValue = pattern.MuteStopSound;
                 pLayerStart.GetArrayElementAtIndex(p).intValue = layers;
                 pLayerCount.GetArrayElementAtIndex(p).intValue = pattern.Layers.Count;
                 int baseLayer = layers;
