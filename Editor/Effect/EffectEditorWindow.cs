@@ -72,6 +72,12 @@ namespace AX.UdonSlot.REV1_0.Editor.Effect
         {
             if (player != null) Link(player);
             model = player != null ? EffectModel.Load(player) : null;
+            if (model != null && model.IdsAdded)
+            {
+                model.Save("内部名の追加");
+                EffectConstants.Write(player, model);
+                model.IdsAdded = false;
+            }
             Repaint();
         }
 
@@ -239,7 +245,7 @@ namespace AX.UdonSlot.REV1_0.Editor.Effect
             if (tab == 0)
                 Edit("パターンの追加", delegate
                 {
-                    var p = new EffectPattern { Name = EffectModel.UniqueName("パターン", model.PatternNames()) };
+                    var p = new EffectPattern { Name = EffectModel.UniqueName("パターン", model.PatternNames()), Id = EffectModel.UniqueId("Pattern1", model.PatternIds()) };
                     p.Layers.Add("レイヤー");
                     model.Patterns.Add(p);
                     patternIndex = model.Patterns.Count - 1;
@@ -260,7 +266,7 @@ namespace AX.UdonSlot.REV1_0.Editor.Effect
                 menu.AddItem(new GUIContent("複製"), false, () => Edit("パターンの複製", delegate
                 {
                     var src = model.Patterns[index];
-                    var p = new EffectPattern { Name = EffectModel.UniqueName(src.Name, model.PatternNames()), Next = src.Next, ResetOnLeave = src.ResetOnLeave, Layers = new List<string>(src.Layers) };
+                    var p = new EffectPattern { Name = EffectModel.UniqueName(src.Name, model.PatternNames()), Id = EffectModel.UniqueId(src.Id, model.PatternIds()), Next = src.Next, ResetOnLeave = src.ResetOnLeave, Layers = new List<string>(src.Layers) };
                     foreach (var e in src.Entries) p.Entries.Add(new EffectEntry { Layer = e.Layer, Step = e.Step, Branch = e.Branch, Action = e.Action });
                     model.Patterns.Insert(index + 1, p);
                     patternIndex = index + 1;
@@ -305,6 +311,16 @@ namespace AX.UdonSlot.REV1_0.Editor.Effect
                         var used = model.PatternNames();
                         used.Remove(pattern.Name);
                         Edit("パターン名の変更", () => pattern.Name = EffectModel.UniqueName(name.Trim(), used));
+                    }
+                    GUILayout.Space(16);
+                    GUILayout.Label("内部名", GUILayout.Width(44));
+                    EditorGUI.BeginChangeCheck();
+                    string id = EditorGUILayout.DelayedTextField(pattern.Id, GUILayout.Width(160));
+                    if (EditorGUI.EndChangeCheck() && id.Trim().Length > 0 && id != pattern.Id)
+                    {
+                        var used = model.PatternIds();
+                        used.Remove(pattern.Id);
+                        Edit("内部名の変更", () => pattern.Id = EffectModel.UniqueId(id, used));
                     }
                     GUILayout.FlexibleSpace();
                     EditorGUI.BeginChangeCheck();

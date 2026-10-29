@@ -110,7 +110,10 @@ namespace AX.UdonSlot.REV1_0
 
         // ---------------------------------------------------------------- パターン
 
+        /// <summary>エディタに出す名前。</summary>
         public string[] patternNames = new string[0];
+        /// <summary>コードから呼ぶときの名前（英数字）。</summary>
+        public string[] patternIds = new string[0];
         /// <summary>ゲーム終了時に差し替わる次のパターン。-1 はなし（同じパターンを繰り返す）。</summary>
         public int[] patternNext = new int[0];
         /// <summary>true のパターンは、チャンネルから外れても表示（オブジェクトの ON/OFF）を戻さない。既定は戻す。</summary>
@@ -314,25 +317,28 @@ namespace AX.UdonSlot.REV1_0
             SendCustomNetworkEvent(NetworkEventTarget.All, nameof(ReceivePattern), channel, pattern, parameter, NextStep(lastStep));
         }
 
-        /// <summary>パターンの番号。ないときは -1。</summary>
+        /// <summary>内部名からパターンの番号を探す。ないときは -1。</summary>
         public int FindPattern(string patternName)
         {
-            for (int i = 0; i < patternNames.Length; i++) if (patternNames[i] == patternName) return i;
+            for (int i = 0; i < patternIds.Length; i++) if (patternIds[i] == patternName) return i;
+            // 内部名をまだ持たない古いデータ（演出エディタで開けば付く）
+            for (int i = 0; i < patternNames.Length; i++)
+                if ((i >= patternIds.Length || patternIds[i].Length == 0) && patternNames[i] == patternName) return i;
             return -1;
         }
 
-        /// <summary>チャンネル0の今のパターンの名前。ないときは空。</summary>
+        /// <summary>チャンネル0の今のパターンの内部名。ないときは空。</summary>
         public string GetCurrentPatternName()
         {
             return GetChannelPatternName(0);
         }
 
-        /// <summary>チャンネルの今のパターンの名前。ないときは空。</summary>
+        /// <summary>チャンネルの今のパターンの内部名。ないときは空。</summary>
         public string GetChannelPatternName(int channel)
         {
             if (channel < 0 || channel >= ChannelCount) return "";
             int pattern = currentPattern[channel];
-            return pattern >= 0 && pattern < patternNames.Length ? patternNames[pattern] : "";
+            return pattern >= 0 && pattern < patternIds.Length ? patternIds[pattern] : "";
         }
 
         [NetworkCallable]

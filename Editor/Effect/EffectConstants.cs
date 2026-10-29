@@ -6,7 +6,7 @@ using UnityEngine;
 
 namespace AX.UdonSlot.REV1_0.Editor.Effect
 {
-    /// <summary>パターン名を定数にしたファイルを書き出す（機種コードで打ち間違えないように）。</summary>
+    /// <summary>パターンの内部名を定数にしたファイルを書き出す（機種コードで打ち間違えないように）。</summary>
     internal static class EffectConstants
     {
         /// <summary>書き出し先を選んで書き出す。</summary>
@@ -28,7 +28,7 @@ namespace AX.UdonSlot.REV1_0.Editor.Effect
         {
             string path = player != null ? player.constantsPath : null;
             if (string.IsNullOrEmpty(path) || model == null) return;
-            string text = Build(Identifier(Path.GetFileNameWithoutExtension(path), new HashSet<string>()), model.PatternNames());
+            string text = Build(Identifier(Path.GetFileNameWithoutExtension(path), new HashSet<string>()), model.Patterns);
             if (File.Exists(path) && File.ReadAllText(path) == text) return;
             string dir = Path.GetDirectoryName(path);
             if (!string.IsNullOrEmpty(dir)) Directory.CreateDirectory(dir);
@@ -36,16 +36,18 @@ namespace AX.UdonSlot.REV1_0.Editor.Effect
             AssetDatabase.ImportAsset(path);
         }
 
-        private static string Build(string className, List<string> names)
+        private static string Build(string className, List<EffectPattern> patterns)
         {
             var sb = new StringBuilder();
             sb.Append("// 演出エディタが書き出したファイルです。パターンを変えると書き直されます。\n");
             sb.Append("public static class ").Append(className).Append("\n{\n");
             var used = new HashSet<string>();
-            foreach (var name in names)
+            foreach (var pattern in patterns)
             {
-                sb.Append("    public const string ").Append(Identifier(name, used)).Append(" = \"")
-                  .Append(name.Replace("\\", "\\\\").Replace("\"", "\\\"")).Append("\";\n");
+                string name = (pattern.Name ?? "").Replace("\r", " ").Replace("\n", " ").Replace("&", "&amp;").Replace("<", "&lt;").Replace(">", "&gt;");
+                sb.Append("    /// <summary>").Append(name).Append("</summary>\n");
+                sb.Append("    public const string ").Append(Identifier(pattern.Id, used)).Append(" = \"")
+                  .Append(pattern.Id.Replace("\\", "\\\\").Replace("\"", "\\\"")).Append("\";\n");
             }
             sb.Append("}\n");
             return sb.ToString();

@@ -95,6 +95,8 @@ namespace AX.UdonSlot.REV1_0.Editor.Effect
     public sealed class EffectPattern
     {
         public string Name = "";
+        /// <summary>コードから呼ぶときの名前（英数字と _）。</summary>
+        public string Id = "";
         public EffectPattern Next;
         /// <summary>チャンネルから外れたら、触ったオブジェクトの ON/OFF を開始時に戻す。</summary>
         public bool ResetOnLeave = true;
@@ -230,6 +232,7 @@ namespace AX.UdonSlot.REV1_0.Editor.Effect
             }
 
             var pNames = so.FindProperty("patternNames");
+            var pIds = so.FindProperty("patternIds");
             var pNext = so.FindProperty("patternNext");
             var pKeep = so.FindProperty("patternKeepActive");
             var pLayerStart = so.FindProperty("patternLayerStart");
@@ -237,9 +240,20 @@ namespace AX.UdonSlot.REV1_0.Editor.Effect
             var layerNames = so.FindProperty("layerNames");
             for (int p = 0; p < pNames.arraySize; p++)
             {
-                var pattern = new EffectPattern { Name = Str(pNames, p), ResetOnLeave = !(pKeep != null && Bool(pKeep, p)) };
+                var pattern = new EffectPattern { Name = Str(pNames, p), Id = Str(pIds, p), ResetOnLeave = !(pKeep != null && Bool(pKeep, p)) };
                 foreach (int i in Range(pLayerStart, pLayerCount, p, layerNames.arraySize)) pattern.Layers.Add(Str(layerNames, i));
                 m.Patterns.Add(pattern);
+            }
+            // 内部名がない古いデータは、名前の英数字か Pattern1 などを付ける。
+            var usedIds = new List<string>();
+            foreach (var pattern in m.Patterns)
+            {
+                if (pattern.Id.Length == 0 || usedIds.Contains(pattern.Id))
+                {
+                    pattern.Id = UniqueId(pattern.Name, usedIds);
+                    m.IdsAdded = true;
+                }
+                usedIds.Add(pattern.Id);
             }
             for (int p = 0; p < m.Patterns.Count; p++)
             {
@@ -383,6 +397,7 @@ namespace AX.UdonSlot.REV1_0.Editor.Effect
 
             int pc = Patterns.Count;
             var pNames = Resize(so, "patternNames", pc);
+            var pIds = Resize(so, "patternIds", pc);
             var pNext = Resize(so, "patternNext", pc);
             var pKeep = Resize(so, "patternKeepActive", pc);
             var pLayerStart = Resize(so, "patternLayerStart", pc);
@@ -402,6 +417,7 @@ namespace AX.UdonSlot.REV1_0.Editor.Effect
             {
                 var pattern = Patterns[p];
                 pNames.GetArrayElementAtIndex(p).stringValue = pattern.Name;
+                pIds.GetArrayElementAtIndex(p).stringValue = pattern.Id;
                 pNext.GetArrayElementAtIndex(p).intValue = pattern.Next != null ? Patterns.IndexOf(pattern.Next) : -1;
                 pKeep.GetArrayElementAtIndex(p).boolValue = !pattern.ResetOnLeave;
                 pLayerStart.GetArrayElementAtIndex(p).intValue = layers;
@@ -434,6 +450,42 @@ namespace AX.UdonSlot.REV1_0.Editor.Effect
         }
 
         /// <summary>同じ名前があれば「名前 (1)」のように番号を付ける。</summary>
+        /// <summary>読み込み時に内部名を付けたパターンがある（書き戻しが要る）。</summary>
+        public bool IdsAdded;
+
+        public List<string> PatternIds()
+        {
+            var list = new List<string>();
+            foreach (var p in Patterns) list.Add(p.Id);
+            return list;
+        }
+
+        /// <summary>
+        /// 内部名に直す。英数字と _ だけ残し（ほかは _）、数字から始まるなら前に _。何も残らなければ Pattern。
+        /// 重なれば後ろに 2, 3 … を付ける。
+        /// </summary>
+        public static string UniqueId(string name, ICollection<string> used)
+        {
+            var sb = new System.Text.StringBuilder();
+            foreach (char c in (name ?? "").Trim())
+            {
+                bool ok = (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '_';
+                if (ok) sb.Append(c);
+                else if (sb.Length > 0 && sb[sb.Length - 1] != '_') sb.Append('_');
+            }
+            string id = sb.ToString().Trim('_');
+            if (id.Length == 0) id = "Pattern";
+            if (char.IsDigit(id[0])) id = "_" + id;
+            if (!used.Contains(id)) return id;
+            string root = System.Text.RegularExpressions.Regex.Replace(id, @"\d+$", "");
+            if (root.Length == 0 || root == "_") root = id;
+            for (int i = 2; ; i++)
+            {
+                string candidate = root + i;
+                if (!used.Contains(candidate)) return candidate;
+            }
+        }
+
         public static string UniqueName(string name, ICollection<string> used)
         {
             if (!used.Contains(name)) return name;
