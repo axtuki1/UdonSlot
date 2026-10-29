@@ -75,9 +75,9 @@ namespace AX.UdonSlot.REV1_0.Editor.Effect
             if (model != null && model.IdsAdded)
             {
                 model.Save("内部名の追加");
-                EffectConstants.Write(player, model);
                 model.IdsAdded = false;
             }
+            constantsStale = EffectConstants.IsStale(player, model);
             Repaint();
         }
 
@@ -127,11 +127,14 @@ namespace AX.UdonSlot.REV1_0.Editor.Effect
             if (model == null) return;
             change();
             model.Save(label);
-            EffectConstants.Write(player, model);
+            constantsStale = EffectConstants.IsStale(player, model);
             Repaint();
         }
 
         internal EffectModel Model { get { return model; } }
+
+        /// <summary>定数ファイルの書き出し先があり、中身が今のパターンと違う。</summary>
+        private bool constantsStale;
 
         private void OnGUI()
         {
@@ -168,8 +171,24 @@ namespace AX.UdonSlot.REV1_0.Editor.Effect
                 using (new EditorGUI.DisabledScope(player == null || model == null))
                 {
                     string path = player != null ? player.constantsPath : "";
+                    if (constantsStale)
+                    {
+                        var warn = new GUIStyle(EditorStyles.miniLabel);
+                        warn.normal.textColor = new Color(0.95f, 0.75f, 0.3f);
+                        GUILayout.Label("⚠ 定数ファイルが古い", warn);
+                    }
                     if (!string.IsNullOrEmpty(path)) GUILayout.Label(path, EditorStyles.miniLabel);
-                    if (GUILayout.Button("定数ファイル", EditorStyles.toolbarButton, GUILayout.Width(90))) EffectConstants.Choose(player, model);
+                    if (GUILayout.Button("定数ファイル書き出し", EditorStyles.toolbarButton, GUILayout.Width(120)))
+                    {
+                        if (string.IsNullOrEmpty(path)) EffectConstants.Choose(player, model);
+                        else EffectConstants.Write(player, model);
+                        constantsStale = EffectConstants.IsStale(player, model);
+                    }
+                    if (GUILayout.Button(new GUIContent("…", "書き出し先"), EditorStyles.toolbarButton, GUILayout.Width(22)))
+                    {
+                        EffectConstants.Choose(player, model);
+                        constantsStale = EffectConstants.IsStale(player, model);
+                    }
                 }
             }
         }

@@ -23,12 +23,25 @@ namespace AX.UdonSlot.REV1_0.Editor.Effect
             Write(player, model);
         }
 
+        /// <summary>書き出し先があり、ファイルの中身が今のパターンと違う（未書き出しを含む）。</summary>
+        public static bool IsStale(EffectPlayer player, EffectModel model)
+        {
+            string path = player != null ? player.constantsPath : null;
+            if (string.IsNullOrEmpty(path) || model == null) return false;
+            return !File.Exists(path) || File.ReadAllText(path) != Text(path, model);
+        }
+
+        private static string Text(string path, EffectModel model)
+        {
+            return Build(Identifier(Path.GetFileNameWithoutExtension(path), new HashSet<string>()), model.Patterns);
+        }
+
         /// <summary>書き出し先が決まっていれば書き出す。中身が変わらなければ書かない（再コンパイルを避ける）。</summary>
         public static void Write(EffectPlayer player, EffectModel model)
         {
             string path = player != null ? player.constantsPath : null;
             if (string.IsNullOrEmpty(path) || model == null) return;
-            string text = Build(Identifier(Path.GetFileNameWithoutExtension(path), new HashSet<string>()), model.Patterns);
+            string text = Text(path, model);
             if (File.Exists(path) && File.ReadAllText(path) == text) return;
             string dir = Path.GetDirectoryName(path);
             if (!string.IsNullOrEmpty(dir)) Directory.CreateDirectory(dir);
@@ -39,7 +52,7 @@ namespace AX.UdonSlot.REV1_0.Editor.Effect
         private static string Build(string className, List<EffectPattern> patterns)
         {
             var sb = new StringBuilder();
-            sb.Append("// 演出エディタが書き出したファイルです。パターンを変えると書き直されます。\n");
+            sb.Append("// 演出エディタが書き出したファイルです。演出エディタの「定数ファイル書き出し」で書き直されます。\n");
             sb.Append("public static class ").Append(className).Append("\n{\n");
             var used = new HashSet<string>();
             foreach (var pattern in patterns)
