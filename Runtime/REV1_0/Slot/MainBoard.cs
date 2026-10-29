@@ -616,8 +616,9 @@ namespace AX.UdonSlot.REV1_0
         public virtual void LeverOn()
         {
             if (!isControllable || requestGameStart) return;
-            if (bet == 0 || bet < requiredBet) return;
-            if (Utilities.IsValid(reelOutputController) && bet < reelOutputController.GetRequiredBet()) return;
+            // ボーナス作動中は規定BET（RBの2枚など）で回せる。通常時は requiredBet。
+            int bonusBet = Utilities.IsValid(reelOutputController) ? reelOutputController.GetRequiredBet() : 0;
+            if (bet == 0 || bet < (bonusBet > 0 ? bonusBet : requiredBet)) return;
             if (isRollingReel1 || isRollingReel2 || isRollingReel3) return;
             SetOwner();
             OffControllable(0.75f);
