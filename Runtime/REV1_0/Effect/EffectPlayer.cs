@@ -12,7 +12,7 @@ namespace AX.UdonSlot.REV1_0
     /// パターンは「レバーオン／第一停止／第二停止／第三停止／ゲーム終了」の5列に、アクション（映像・表示・音・リール・コード）を並べたもの。
     /// どのパターンを流すかは機種コードが決め、メイン基板の所有者が CallEffectPattern で呼ぶ。
     /// 呼ぶと全員へ届き、次のステップから新しいパターンに差し替わる。チャンネルごとに別のパターンを重ねて流せる。
-    /// 常駐チャンネル（residentChannelCount より前）は差し替えられない限り毎ゲーム繰り返し、それ以降はそのゲームで止まる。
+    /// チャンネル0（CallEffectPattern）はそのゲームだけ。常駐チャンネル（1〜residentChannelCount）は差し替えられない限り毎ゲーム繰り返し、それより後はそのゲームで止まる。
     /// データは演出エディタ（UdonSlot/演出エディタ）が書き込む。手で編集しない。
     /// </summary>
     [UdonBehaviourSyncMode(BehaviourSyncMode.Manual)]
@@ -139,10 +139,16 @@ namespace AX.UdonSlot.REV1_0
         public const int ChannelCount = 16;
 
         /// <summary>
-        /// この番号より前のチャンネルは常駐（差し替えるまで毎ゲーム繰り返す）。
-        /// これ以降のチャンネルは、そのゲームで流し終えたら止まる（押し順ナビ、ペナルティ画面など）。
+        /// チャンネル1からこの数だけが常駐（差し替えるまで毎ゲーム繰り返す）。
+        /// チャンネル0とそれより後のチャンネルは、そのゲームで流し終えたら止まる（押し順ナビ、ペナルティ画面など）。
         /// </summary>
         public int residentChannelCount = 6;
+
+        /// <summary>常駐チャンネル（1〜residentChannelCount）か。</summary>
+        public bool IsResidentChannel(int channel)
+        {
+            return channel >= 1 && channel <= residentChannelCount;
+        }
 
         /// <summary>チャンネルごとの今のパターン＋1（0 はなし）。途中参加者向けに同期する。</summary>
         [UdonSynced] private int[] syncedPatterns = new int[ChannelCount];
@@ -261,21 +267,22 @@ namespace AX.UdonSlot.REV1_0
             if (syncedPatterns == null || syncedPatterns.Length != ChannelCount) return;
             joined = true;
             for (int c = 0; c < ChannelCount; c++) if (!received[c]) currentPattern[c] = -1;
-            for (int c = 0; c < residentChannelCount && c < ChannelCount; c++)
+            for (int c = 0; c < ChannelCount; c++)
             {
-                if (received[c]) continue;
+                if (received[c] || !IsResidentChannel(c)) continue;
                 currentPattern[c] = syncedPatterns[c] - 1;
                 currentParameter[c] = syncedParameters[c];
             }
         }
 
-        /// <summary>チャンネル0（通常）のパターンを名前で呼ぶ。パラメータは 0。</summary>
+        /// <summary>チャンネル0のパターンを内部名で呼ぶ（そのゲームだけ）。パラメータは 0。null や空なら止める。</summary>
         public void CallEffectPattern(string patternName)
         {
-            CallEffectPatternOnChannel(0, patternName, 0);
+            if (patternName == null || patternName.Length == 0) StopEffectPattern(0);
+            else CallEffectPatternOnChannel(0, patternName, 0);
         }
 
-        /// <summary>チャンネル0（通常）のパターンを、パラメータ付きで呼ぶ。</summary>
+        /// <summary>チャンネル0のパターンを、パラメータ付きで呼ぶ（そのゲームだけ）。</summary>
         public void CallEffectPatternWithParameter(string patternName, int parameter)
         {
             CallEffectPatternOnChannel(0, patternName, parameter);
@@ -307,7 +314,7 @@ namespace AX.UdonSlot.REV1_0
 
         private void Send(int channel, int pattern, int parameter)
         {
-            if (channel < residentChannelCount)
+            if (IsResidentChannel(channel))
             {
                 if (!Networking.IsOwner(gameObject)) Networking.SetOwner(Networking.LocalPlayer, gameObject);
                 syncedPatterns[channel] = pattern + 1;
@@ -396,7 +403,7 @@ namespace AX.UdonSlot.REV1_0
             if (hasPending[channel] || pattern < 0) return;
             int next = pattern < patternNext.Length ? patternNext[pattern] : -1;
             if (next >= 0 && next < patternNames.Length) SetChannelPattern(channel, next);
-            else if (channel >= residentChannelCount) SetChannelPattern(channel, -1);
+            else if (!IsResidentChannel(channel)) SetChannelPattern(channel, -1);
         }
 
         private bool HasPassed(int step)

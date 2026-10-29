@@ -499,7 +499,7 @@ namespace AX.UdonSlot.REV1_0
             return n - centerIndex;
         }
 
-        /// <summary>演出エディタのパターンを呼ぶ（メイン基板の所有者だけ）。SubBoardにEffectPlayerが無ければ何もしない。</summary>
+        /// <summary>演出エディタのパターンを内部名で呼ぶ（チャンネル0、そのゲームだけ。メイン基板の所有者だけ）。null なら止める。SubBoardにEffectPlayerが無ければ何もしない。</summary>
         public void CallEffectPattern(string patternName)
         {
             if (Utilities.IsValid(subBoard) && Utilities.IsValid(subBoard.effectPlayer)) subBoard.effectPlayer.CallEffectPattern(patternName);
@@ -512,7 +512,7 @@ namespace AX.UdonSlot.REV1_0
                 subBoard.effectPlayer.CallEffectPatternWithParameter(patternName, parameter);
         }
 
-        /// <summary>チャンネルを指定してパターンを呼ぶ。0〜5（EffectPlayer.residentChannelCount より前）は常駐、それ以降はそのゲームだけ。</summary>
+        /// <summary>チャンネルを指定してパターンを呼ぶ。1〜6（EffectPlayer.residentChannelCount まで）は常駐、0 とそれより後はそのゲームだけ。</summary>
         public void CallEffectPatternOnChannel(int channel, string patternName, int parameter)
         {
             if (Utilities.IsValid(subBoard) && Utilities.IsValid(subBoard.effectPlayer))
