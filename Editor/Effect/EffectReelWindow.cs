@@ -561,6 +561,7 @@ namespace AX.UdonSlot.REV1_0.Editor.Effect
                 faceDragReel = id;
                 faceDragY = e.mousePosition.y;
                 playing = false;
+                if (preview) PickKeyAtPlayhead(reel, e.clickCount >= 2, e.shift || EditorGUI.actionKey);
                 e.Use();
             }
             else if (e.type == EventType.MouseDrag && faceDragReel == id)
@@ -614,6 +615,25 @@ namespace AX.UdonSlot.REV1_0.Editor.Effect
                 Rebase(positions, n);
             });
             SetSelection(added);
+        }
+
+        /// <summary>プレビューのクリック。再生ヘッドの時間にあるキーを選ぶ。なければ、ダブルクリックで今の線の上に作る。</summary>
+        private void PickKeyAtPlayhead(int reel, bool create, bool add)
+        {
+            int at = Mathf.RoundToInt(time / TimeSnap) * TimeSnap;
+            var key = action.ReelKeys.Find(k => k.Reel == reel && k.Time == at);
+            if (key == null && create)
+            {
+                time = at;
+                AddKey(reel, at, SymbolCount);
+                return;
+            }
+            if (add)
+            {
+                if (key != null && !selection.Contains(key)) selection.Add(key);
+                RememberSelection();
+            }
+            else SetSelection(key);
         }
 
         private void TogglePlay()
