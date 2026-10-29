@@ -1009,7 +1009,8 @@ namespace AX.UdonSlot.REV1_0
                 {
                     case 0:
                     case 2:
-                        if (!TryGetScheduledGoalAngle(reelIndex, currentServerMs, startTime, endTime, scheduledRollType[0] == 2, out scheduledAngle)) continue;
+                    case 3:
+                        if (!TryGetScheduledGoalAngle(reelIndex, currentServerMs, startTime, endTime, scheduledRollType[0] >= 2, out scheduledAngle)) continue;
                         // 生の角度差で比較し、0度→360度などの追加周回を保持と誤判定しない。
                         isHoldingGoal = Mathf.Abs(scheduledRollGoalAngle[0][reelIndex] - scheduledRollStartAngle[0][reelIndex]) <= 0.1f;
                         _scheduledRollHolding[reelIndex] = currentServerMs < endTime && isHoldingGoal;
@@ -1063,6 +1064,7 @@ namespace AX.UdonSlot.REV1_0
 
             if (exact)
             {
+                if (scheduledRollType[0] == 3) globalProgress = GetEasedProgress(reelIndex, globalProgress);
                 angle = Mathf.Lerp(start, goal, globalProgress);
                 return true;
             }
@@ -1073,6 +1075,36 @@ namespace AX.UdonSlot.REV1_0
 
             angle = Mathf.Lerp(start, directedGoal, harmonizedProgress);
             return true;
+        }
+
+        /// <summary>種類3の予約で、区間内の進み具合 progress を動き方の曲線に沿わせる。</summary>
+        private float GetEasedProgress(int reelIndex, float progress)
+        {
+            if (scheduledRollSpeed.Length == 0 || scheduledRollDirection.Length == 0) return progress;
+            float[] ranges = scheduledRollSpeed[0];
+            int[] easeTypes = scheduledRollDirection[0];
+            if (ranges == null || easeTypes == null || ranges.Length < 6 || easeTypes.Length < 3) return progress;
+            int ease = easeTypes[reelIndex];
+            if (ease == 0) return progress;
+            float from = ranges[reelIndex * 2], to = ranges[reelIndex * 2 + 1];
+            float a = EaseValue(ease, from), b = EaseValue(ease, to);
+            if (Mathf.Abs(b - a) < 0.00001f) return progress;
+            return (EaseValue(ease, Mathf.Lerp(from, to, progress)) - a) / (b - a);
+        }
+
+        /// <summary>動き方の曲線。p は 0〜1。0=直線 1=加速 2=減速 3=加減速（三次）。</summary>
+        public float EaseValue(int ease, float p)
+        {
+            p = Mathf.Clamp01(p);
+            if (ease == 1) return p * p * p;
+            if (ease == 2) { float q = 1f - p; return 1f - q * q * q; }
+            if (ease == 3)
+            {
+                if (p < 0.5f) return 4f * p * p * p;
+                float q = 2f - 2f * p;
+                return 1f - q * q * q / 2f;
+            }
+            return p;
         }
 
         private float GetGoalHarmonizedProgress(int reelIndex, float globalProgress)
@@ -1503,6 +1535,17 @@ namespace AX.UdonSlot.REV1_0
         /// </summary>
         public int PlayReelEffect(int[] durations, float[] left, float[] center, float[] right, bool startGame)
         {
+            return PlayReelEffectEased(durations, left, center, right, startGame, null, null);
+        }
+
+        /// <summary>
+        /// PlayReelEffectに動き方（イージング）を付けた版。
+        /// eases は [区間0左, 中, 右, 区間1左, ...] で 0=直線 1=加速 2=減速 3=加減速（EaseValue）。
+        /// easeRanges は各要素2つずつで、その区間が動き方の曲線のどこからどこまでか（0〜1）。キーの間を複数の区間に分けたときに使う。
+        /// どちらも null なら直線。
+        /// </summary>
+        public int PlayReelEffectEased(int[] durations, float[] left, float[] center, float[] right, bool startGame, int[] eases, float[] easeRanges)
+        {
             if (!IsOwner() || durations == null || left == null || center == null || right == null) return -1;
             int sections = durations.Length;
             if (sections == 0 || left.Length != sections || center.Length != sections || right.Length != sections) return -1;
@@ -1538,8 +1581,17 @@ namespace AX.UdonSlot.REV1_0
                 }
                 totalTime += duration;
             }
-            SendCustomNetworkEvent(NetworkEventTarget.All, nameof(scheduleRollSequence),
-                Networking.GetServerTimeInMilliseconds(), startOffsets, endOffsets, startAngles, goalAngles);
+            bool eased = eases != null && easeRanges != null && eases.Length == sections * 3 && easeRanges.Length == sections * 6;
+            if (eased)
+            {
+                SendCustomNetworkEvent(NetworkEventTarget.All, nameof(scheduleRollSequenceEased),
+                    Networking.GetServerTimeInMilliseconds(), startOffsets, endOffsets, startAngles, goalAngles, eases, easeRanges);
+            }
+            else
+            {
+                SendCustomNetworkEvent(NetworkEventTarget.All, nameof(scheduleRollSequence),
+                    Networking.GetServerTimeInMilliseconds(), startOffsets, endOffsets, startAngles, goalAngles);
+            }
             // 回転中は、動かしているリールの停止だけを受け付けない（IsReelInEffect）。
             // 回転中でないとき（レバーオン時・全停止後）は、終わるまで操作を止める。
             if (startGame || !(isRollingReel1 || isRollingReel2 || isRollingReel3)) OffControllable(totalTime / 1000f);
@@ -1586,6 +1638,27 @@ namespace AX.UdonSlot.REV1_0
         [NetworkCallable]
         public void scheduleRollSequence(int baseTime, int[] startOffsets, int[] endOffsets, float[] startAngles, float[] goalAngles)
         {
+            AddRollSequence(baseTime, startOffsets, endOffsets, startAngles, goalAngles, null, null);
+        }
+
+        /// <summary>
+        /// scheduleRollSequenceに動き方（イージング）を付けた版。eases・easeRangesはPlayReelEffectEasedと同じ。
+        /// 全員へ反映する場合はSendCustomNetworkEvent(NetworkEventTarget.All, ...)で一度だけ呼ぶ。
+        /// </summary>
+        [NetworkCallable]
+        public void scheduleRollSequenceEased(int baseTime, int[] startOffsets, int[] endOffsets, float[] startAngles, float[] goalAngles, int[] eases, float[] easeRanges)
+        {
+            int length = startOffsets != null ? startOffsets.Length : 0;
+            if (eases == null || easeRanges == null || eases.Length != length || easeRanges.Length != length * 2)
+            {
+                Debug.LogWarning("scheduleRollSequenceEased: eases・easeRangesの長さが合いません。");
+                return;
+            }
+            AddRollSequence(baseTime, startOffsets, endOffsets, startAngles, goalAngles, eases, easeRanges);
+        }
+
+        private void AddRollSequence(int baseTime, int[] startOffsets, int[] endOffsets, float[] startAngles, float[] goalAngles, int[] eases, float[] easeRanges)
+        {
             if (startOffsets == null || endOffsets == null || startAngles == null || goalAngles == null)
             {
                 Debug.LogWarning("scheduleRollSequence: 配列にnullは指定できません。");
@@ -1623,15 +1696,23 @@ namespace AX.UdonSlot.REV1_0
                     starts[reel] = skip ? ScheduledRollSkip : baseTime + startOffsets[offset + reel];
                     ends[reel] = skip ? ScheduledRollSkip : baseTime + endOffsets[offset + reel];
                 }
+                // 種類3（動き方つき）は、speeds に各リールの曲線の範囲 [左の始め, 左の終わり, 中…]、directions に動き方を入れる。
+                float[] ranges = new float[6];
+                int[] easeTypes = new int[3];
+                if (eases != null)
+                {
+                    for (int k = 0; k < 6; k++) ranges[k] = easeRanges[offset * 2 + k];
+                    for (int reel = 0; reel < 3; reel++) easeTypes[reel] = eases[offset + reel];
+                }
                 SetScheduledRoll(
                     firstIndex + section,
-                    2,
+                    eases != null ? 3 : 2,
                     starts,
                     ends,
                     new float[] { startAngles[offset], startAngles[offset + 1], startAngles[offset + 2] },
                     new float[] { goalAngles[offset], goalAngles[offset + 1], goalAngles[offset + 2] },
-                    new float[3],
-                    new int[3]);
+                    ranges,
+                    easeTypes);
             }
         }
 

@@ -10,7 +10,7 @@ namespace AX.UdonSlot.REV1_0.Editor.Effect
     /// アクションのリールをキーフレームで編集する窓。
     /// 縦軸は左に並べたリール配列（上が21、下が1）、横軸は時間。値は中段に来るコマ。
     /// 相対キー（◇）は開始位置から上方向へのコマ数、絶対キー（□）は中段に来るコマ番号。
-    /// 計算は実行時（EffectPlayer.ValueAt）と同じ：キーの間は等速、最初のキーより前はそのキーの値。
+    /// 計算は実行時（EffectPlayer.ValueAt）と同じ：キーの間はキーのイージングに従う、最初のキーより前はそのキーの値。
     /// </summary>
     public sealed class EffectReelWindow : EditorWindow
     {
@@ -31,6 +31,7 @@ namespace AX.UdonSlot.REV1_0.Editor.Effect
         private static readonly Color PlayheadColor = new Color(0.88f, 0.35f, 0.35f);
         private static readonly string[] ModeNames = { "相対", "絶対" };
         private static readonly string[] DirectionNames = { "最短", "順回転", "逆回転" };
+        private static readonly string[] EaseNames = { "直線", "加速", "減速", "加減速" };
 
         private const float RowH = 18f;
         private const float StripW = 64f;
@@ -295,17 +296,33 @@ namespace AX.UdonSlot.REV1_0.Editor.Effect
             float beforeTime = 0f, afterTime = float.MaxValue;
             float beforeValue = 0f, afterValue = 0f;
             bool hasBefore = true, hasAfter = false;
+            int afterEase = EffectPlayer.EaseLinear;
             foreach (var k in action.ReelKeys)
             {
                 if (k.Reel != reel) continue;
                 float value = Relative(k, n);
                 if (k.Time <= t && k.Time >= beforeTime) { beforeTime = k.Time; beforeValue = value; hasBefore = true; }
-                if (k.Time >= t && k.Time < afterTime) { afterTime = k.Time; afterValue = value; hasAfter = true; }
+                if (k.Time >= t && k.Time < afterTime) { afterTime = k.Time; afterValue = value; hasAfter = true; afterEase = k.Ease; }
             }
             if (!hasBefore && !hasAfter) return 0f;
             if (!hasBefore) return afterValue;
             if (!hasAfter || afterTime == beforeTime) return beforeValue;
-            return beforeValue + (afterValue - beforeValue) * (t - beforeTime) / (afterTime - beforeTime);
+            return beforeValue + (afterValue - beforeValue) * EaseValue(afterEase, (t - beforeTime) / (afterTime - beforeTime));
+        }
+
+        /// <summary>MainBoard.EaseValue と同じ曲線。</summary>
+        private static float EaseValue(int ease, float p)
+        {
+            p = Mathf.Clamp01(p);
+            if (ease == EffectPlayer.EaseIn) return p * p * p;
+            if (ease == EffectPlayer.EaseOut) { float q = 1f - p; return 1f - q * q * q; }
+            if (ease == EffectPlayer.EaseInOut)
+            {
+                if (p < 0.5f) return 4f * p * p * p;
+                float q = 2f - 2f * p;
+                return 1f - q * q * q / 2f;
+            }
+            return p;
         }
 
         /// <summary>中段に来るコマ（小数あり）。上へ1コマ動くと1つ下がる。</summary>
@@ -783,11 +800,31 @@ namespace AX.UdonSlot.REV1_0.Editor.Effect
                 return;
             }
             // 0ms は開始位置から
-            if (keys[0].Time > 0) Segment(rect, 0, start, keys[0].Time, start - Relative(keys[0], n), n);
+            if (keys[0].Time > 0) EasedSegment(rect, 0, start, keys[0].Time, start - Relative(keys[0], n), keys[0].Ease, n);
             for (int i = 1; i < keys.Count; i++)
-                Segment(rect, keys[i - 1].Time, start - Relative(keys[i - 1], n), keys[i].Time, start - Relative(keys[i], n), n);
+                EasedSegment(rect, keys[i - 1].Time, start - Relative(keys[i - 1], n), keys[i].Time, start - Relative(keys[i], n), keys[i].Ease, n);
             float last = start - Relative(keys[keys.Count - 1], n);
             Segment(rect, keys[keys.Count - 1].Time, last, end, last, n);
+        }
+
+        /// <summary>イージングのある区間は細かく折れ線にして描く。</summary>
+        private void EasedSegment(Rect rect, float ta, float pa, float tb, float pb, int ease, int n)
+        {
+            if (ease == EffectPlayer.EaseLinear || pa == pb)
+            {
+                Segment(rect, ta, pa, tb, pb, n);
+                return;
+            }
+            const int pieces = 24;
+            float t0 = ta, p0 = pa;
+            for (int i = 1; i <= pieces; i++)
+            {
+                float u = i / (float)pieces;
+                float t1 = Mathf.Lerp(ta, tb, u), p1 = Mathf.Lerp(pa, pb, EaseValue(ease, u));
+                Segment(rect, t0, p0, t1, p1, n);
+                t0 = t1;
+                p0 = p1;
+            }
         }
 
         /// <summary>配列の上下端をまたぐ所で線を切り、反対側から続ける。</summary>
@@ -1156,6 +1193,19 @@ namespace AX.UdonSlot.REV1_0.Editor.Effect
                     GUILayout.Label("コマ", GUILayout.Width(40));
                     GUILayout.FlexibleSpace();
                 }
+            }
+
+            // 前のキーからこのキーまでの動き方
+            GUILayout.Space(2);
+            using (new EditorGUILayout.HorizontalScope())
+            {
+                GUILayout.Label("イージング", GUILayout.Width(labelW));
+                EditorGUI.showMixedValue = !selection.TrueForAll(k => k.Ease == first.Ease);
+                EditorGUI.BeginChangeCheck();
+                int ease = EditorGUILayout.Popup(first.Ease, EaseNames, GUILayout.Width(100));
+                if (EditorGUI.EndChangeCheck()) Edit("リールキーの変更", () => { foreach (var k in selection) k.Ease = ease; });
+                EditorGUI.showMixedValue = false;
+                GUILayout.FlexibleSpace();
             }
         }
 

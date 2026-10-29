@@ -43,6 +43,8 @@ namespace AX.UdonSlot.REV1_0.Editor.Effect
         public int Direction;
         /// <summary>絶対キーで余分に回る周回数（順回転・逆回転のとき）。</summary>
         public int Turns;
+        /// <summary>前のキーからこのキーまでの動き方（EffectPlayer.EaseLinear など）。</summary>
+        public int Ease;
 
         public EffectReelKey Copy() { return (EffectReelKey)MemberwiseClone(); }
     }
@@ -198,6 +200,7 @@ namespace AX.UdonSlot.REV1_0.Editor.Effect
             var keyAbs = so.FindProperty("reelKeyAbsolute");
             var keyDir = so.FindProperty("reelKeyDirection");
             var keyTurns = so.FindProperty("reelKeyTurns");
+            var keyEase = so.FindProperty("reelKeyEase");
 
             for (int a = 0; a < names.arraySize; a++)
             {
@@ -222,7 +225,7 @@ namespace AX.UdonSlot.REV1_0.Editor.Effect
                 foreach (int i in Range(codeStart, codeCount, a, codeTargets.arraySize))
                     action.Codes.Add(new EffectCode { Target = codeTargets.GetArrayElementAtIndex(i).objectReferenceValue as UdonSharpBehaviour, Method = Str(codeMethods, i) });
                 foreach (int i in Range(reelStart, reelCount, a, keyReel.arraySize))
-                    action.ReelKeys.Add(new EffectReelKey { Reel = Int(keyReel, i), Time = Int(keyTime, i), Value = Float(keyValue, i), Absolute = Bool(keyAbs, i), Direction = Int(keyDir, i), Turns = Int(keyTurns, i) });
+                    action.ReelKeys.Add(new EffectReelKey { Reel = Int(keyReel, i), Time = Int(keyTime, i), Value = Float(keyValue, i), Absolute = Bool(keyAbs, i), Direction = Int(keyDir, i), Turns = Int(keyTurns, i), Ease = Int(keyEase, i) });
                 m.Actions.Add(action);
             }
 
@@ -311,6 +314,7 @@ namespace AX.UdonSlot.REV1_0.Editor.Effect
             var keyAbs = Resize(so, "reelKeyAbsolute", keys);
             var keyDir = Resize(so, "reelKeyDirection", keys);
             var keyTurns = Resize(so, "reelKeyTurns", keys);
+            var keyEase = Resize(so, "reelKeyEase", keys);
 
             anims = actives = codes = keys = 0;
             for (int i = 0; i < n; i++)
@@ -372,6 +376,7 @@ namespace AX.UdonSlot.REV1_0.Editor.Effect
                     keyAbs.GetArrayElementAtIndex(keys).boolValue = x.Absolute;
                     keyDir.GetArrayElementAtIndex(keys).intValue = x.Direction;
                     keyTurns.GetArrayElementAtIndex(keys).intValue = x.Turns;
+                    keyEase.GetArrayElementAtIndex(keys).intValue = x.Ease;
                     keys++;
                 }
             }

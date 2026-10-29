@@ -96,10 +96,17 @@ namespace AX.UdonSlot.REV1_0
         public int[] reelKeyDirection = new int[0];
         /// <summary>絶対キーで、そのコマに着くまでに余分に回る周回数（順回転・逆回転のとき）。</summary>
         public int[] reelKeyTurns = new int[0];
+        /// <summary>前のキーからこのキーまでの動き方。0=直線 1=加速 2=減速 3=加減速。</summary>
+        public int[] reelKeyEase = new int[0];
 
         public const int ReelShortest = 0;
         public const int ReelForward = 1;
         public const int ReelBackward = 2;
+
+        public const int EaseLinear = 0;
+        public const int EaseIn = 1;
+        public const int EaseOut = 2;
+        public const int EaseInOut = 3;
 
         // ---------------------------------------------------------------- パターン
 
@@ -567,6 +574,9 @@ namespace AX.UdonSlot.REV1_0
             float[] left = new float[sections];
             float[] center = new float[sections];
             float[] right = new float[sections];
+            // 区間ごと・リールごとの動き方と、キー間のどこからどこまでか（0〜1）。
+            int[] eases = new int[sections * 3];
+            float[] easeRanges = new float[sections * 6];
             int previous = 0;
             for (int s = 0; s < sections; s++)
             {
@@ -574,9 +584,34 @@ namespace AX.UdonSlot.REV1_0
                 left[s] = SectionValue(start, count, 0, s, previous, times[s], lastTime[0], resolved);
                 center[s] = SectionValue(start, count, 1, s, previous, times[s], lastTime[1], resolved);
                 right[s] = SectionValue(start, count, 2, s, previous, times[s], lastTime[2], resolved);
+                for (int reel = 0; reel < 3; reel++) SectionEase(start, count, reel, previous, times[s], s * 3 + reel, eases, easeRanges);
                 previous = times[s];
             }
-            mainBoard.PlayReelEffect(durations, left, center, right, step == StepLeverOn);
+            mainBoard.PlayReelEffectEased(durations, left, center, right, step == StepLeverOn, eases, easeRanges);
+        }
+
+        /// <summary>区間 from〜to を含むキーの間を探し、その動き方と、キー間のうち区間が占める範囲（0〜1）を入れる。</summary>
+        private void SectionEase(int start, int count, int reel, int from, int to, int index, int[] eases, float[] ranges)
+        {
+            int beforeTime = 0, afterTime = int.MaxValue, afterIndex = -1;
+            for (int i = start; i < start + count; i++)
+            {
+                if (reelKeyReel[i] != reel) continue;
+                int time = Mathf.Max(0, reelKeyTime[i]);
+                if (time <= from && time >= beforeTime) beforeTime = time;
+                if (time >= to && time < afterTime) { afterTime = time; afterIndex = i; }
+            }
+            ranges[index * 2] = 0f;
+            ranges[index * 2 + 1] = 1f;
+            if (afterIndex < 0 || afterTime <= beforeTime) return;
+            eases[index] = KeyEase(afterIndex);
+            ranges[index * 2] = (from - beforeTime) / (float)(afterTime - beforeTime);
+            ranges[index * 2 + 1] = (to - beforeTime) / (float)(afterTime - beforeTime);
+        }
+
+        private int KeyEase(int key)
+        {
+            return reelKeyEase.Length > key ? reelKeyEase[key] : EaseLinear;
         }
 
         /// <summary>区間の終わりの位置。キーがない、または最後のキーより後の区間は NaN（触らない）。</summary>
@@ -587,25 +622,27 @@ namespace AX.UdonSlot.REV1_0
             return ValueAt(start, count, reel, to, resolved);
         }
 
-        /// <summary>リール reel の時刻 t での位置（開始位置から上方向へのコマ数）。0ms は開始位置で、キーの間は等速。</summary>
+        /// <summary>リール reel の時刻 t での位置（開始位置から上方向へのコマ数）。0ms は開始位置で、キーの間はキーの動き方（イージング）に従う。</summary>
         private float ValueAt(int start, int count, int reel, int t, float[] resolved)
         {
             // 0ms は開始位置（移動 0）。0ms にキーがあればそちらを使う。
             int beforeTime = 0, afterTime = int.MaxValue;
             float beforeValue = 0f, afterValue = 0f;
             bool hasBefore = true, hasAfter = false;
+            int afterIndex = -1;
             for (int i = start; i < start + count; i++)
             {
                 if (reelKeyReel[i] != reel) continue;
                 int time = reelKeyTime[i];
                 float value = resolved[i - start];
                 if (time <= t && time >= beforeTime) { beforeTime = time; beforeValue = value; hasBefore = true; }
-                if (time >= t && time < afterTime) { afterTime = time; afterValue = value; hasAfter = true; }
+                if (time >= t && time < afterTime) { afterTime = time; afterValue = value; hasAfter = true; afterIndex = i; }
             }
             if (!hasBefore && !hasAfter) return 0f;
             if (!hasBefore) return afterValue;
             if (!hasAfter || afterTime == beforeTime) return beforeValue;
-            return beforeValue + (afterValue - beforeValue) * (t - beforeTime) / (float)(afterTime - beforeTime);
+            float p = (t - beforeTime) / (float)(afterTime - beforeTime);
+            return beforeValue + (afterValue - beforeValue) * mainBoard.EaseValue(KeyEase(afterIndex), p);
         }
 
         /// <summary>
