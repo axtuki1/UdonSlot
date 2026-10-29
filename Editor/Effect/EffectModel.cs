@@ -100,6 +100,8 @@ namespace AX.UdonSlot.REV1_0.Editor.Effect
         public EffectPattern Next;
         /// <summary>チャンネルから外れたら、触ったオブジェクトの ON/OFF を開始時に戻す。</summary>
         public bool ResetOnLeave = true;
+        /// <summary>流している間はリールの停止音を鳴らさない。</summary>
+        public bool MuteStopSound;
         public List<string> Layers = new List<string>();
         public List<EffectEntry> Entries = new List<EffectEntry>();
 
@@ -235,12 +237,13 @@ namespace AX.UdonSlot.REV1_0.Editor.Effect
             var pIds = so.FindProperty("patternIds");
             var pNext = so.FindProperty("patternNext");
             var pKeep = so.FindProperty("patternKeepActive");
+            var pMute = so.FindProperty("patternMuteStopSound");
             var pLayerStart = so.FindProperty("patternLayerStart");
             var pLayerCount = so.FindProperty("patternLayerCount");
             var layerNames = so.FindProperty("layerNames");
             for (int p = 0; p < pNames.arraySize; p++)
             {
-                var pattern = new EffectPattern { Name = Str(pNames, p), Id = Str(pIds, p), ResetOnLeave = !(pKeep != null && Bool(pKeep, p)) };
+                var pattern = new EffectPattern { Name = Str(pNames, p), Id = Str(pIds, p), ResetOnLeave = !(pKeep != null && Bool(pKeep, p)), MuteStopSound = pMute != null && Bool(pMute, p) };
                 foreach (int i in Range(pLayerStart, pLayerCount, p, layerNames.arraySize)) pattern.Layers.Add(Str(layerNames, i));
                 m.Patterns.Add(pattern);
             }
@@ -400,6 +403,7 @@ namespace AX.UdonSlot.REV1_0.Editor.Effect
             var pIds = Resize(so, "patternIds", pc);
             var pNext = Resize(so, "patternNext", pc);
             var pKeep = Resize(so, "patternKeepActive", pc);
+            var pMute = Resize(so, "patternMuteStopSound", pc);
             var pLayerStart = Resize(so, "patternLayerStart", pc);
             var pLayerCount = Resize(so, "patternLayerCount", pc);
             int layers = 0, entries = 0;
@@ -420,6 +424,7 @@ namespace AX.UdonSlot.REV1_0.Editor.Effect
                 pIds.GetArrayElementAtIndex(p).stringValue = pattern.Id;
                 pNext.GetArrayElementAtIndex(p).intValue = pattern.Next != null ? Patterns.IndexOf(pattern.Next) : -1;
                 pKeep.GetArrayElementAtIndex(p).boolValue = !pattern.ResetOnLeave;
+                pMute.GetArrayElementAtIndex(p).boolValue = pattern.MuteStopSound;
                 pLayerStart.GetArrayElementAtIndex(p).intValue = layers;
                 pLayerCount.GetArrayElementAtIndex(p).intValue = pattern.Layers.Count;
                 int baseLayer = layers;

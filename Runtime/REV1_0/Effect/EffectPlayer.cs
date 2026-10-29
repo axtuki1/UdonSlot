@@ -118,6 +118,8 @@ namespace AX.UdonSlot.REV1_0
         public int[] patternNext = new int[0];
         /// <summary>true のパターンは、チャンネルから外れても表示（オブジェクトの ON/OFF）を戻さない。既定は戻す。</summary>
         public bool[] patternKeepActive = new bool[0];
+        /// <summary>true のパターンを流している間は、リールの停止音を鳴らさない（パターン側で音を出すとき）。</summary>
+        public bool[] patternMuteStopSound = new bool[0];
         /// <summary>パターン名の定数ファイルの書き出し先（エディタ用）。</summary>
         public string constantsPath = "";
         public int[] patternLayerStart = new int[0];
@@ -332,6 +334,17 @@ namespace AX.UdonSlot.REV1_0
             for (int i = 0; i < patternNames.Length; i++)
                 if ((i >= patternIds.Length || patternIds[i].Length == 0) && patternNames[i] == patternName) return i;
             return -1;
+        }
+
+        /// <summary>今流しているパターンのどれかが「停止音なし」か。SubBoard.ReelStopLogic が見る。</summary>
+        public bool IsStopSoundMuted()
+        {
+            for (int c = 0; c < ChannelCount; c++)
+            {
+                int pattern = currentPattern[c];
+                if (pattern >= 0 && pattern < patternMuteStopSound.Length && patternMuteStopSound[pattern]) return true;
+            }
+            return false;
         }
 
         /// <summary>チャンネル0の今のパターンの内部名。ないときは空。</summary>

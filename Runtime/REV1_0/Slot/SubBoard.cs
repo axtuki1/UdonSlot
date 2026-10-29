@@ -488,6 +488,8 @@ namespace AX.UdonSlot.REV1_0
         {
             if (!CanPlaySound()) return;
             soundBoard.StopSound(SoundType.WAIT);
+            // 演出パターンが自分の音を聞かせたいときは鳴らさない。
+            if (Utilities.IsValid(effectPlayer) && effectPlayer.IsStopSoundMuted()) return;
             soundBoard.PlaySound(SoundType.SE1, (int)ClipType.STOP);
         }
 

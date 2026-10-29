@@ -285,7 +285,7 @@ namespace AX.UdonSlot.REV1_0.Editor.Effect
                 menu.AddItem(new GUIContent("複製"), false, () => Edit("パターンの複製", delegate
                 {
                     var src = model.Patterns[index];
-                    var p = new EffectPattern { Name = EffectModel.UniqueName(src.Name, model.PatternNames()), Id = EffectModel.UniqueId(src.Id, model.PatternIds()), Next = src.Next, ResetOnLeave = src.ResetOnLeave, Layers = new List<string>(src.Layers) };
+                    var p = new EffectPattern { Name = EffectModel.UniqueName(src.Name, model.PatternNames()), Id = EffectModel.UniqueId(src.Id, model.PatternIds()), Next = src.Next, ResetOnLeave = src.ResetOnLeave, MuteStopSound = src.MuteStopSound, Layers = new List<string>(src.Layers) };
                     foreach (var e in src.Entries) p.Entries.Add(new EffectEntry { Layer = e.Layer, Step = e.Step, Branch = e.Branch, Action = e.Action });
                     model.Patterns.Insert(index + 1, p);
                     patternIndex = index + 1;
@@ -345,6 +345,10 @@ namespace AX.UdonSlot.REV1_0.Editor.Effect
                     EditorGUI.BeginChangeCheck();
                     bool reset = GUILayout.Toggle(pattern.ResetOnLeave, "切り替え時に表示を戻す", GUILayout.Width(150));
                     if (EditorGUI.EndChangeCheck()) Edit("切り替え時に表示を戻すの変更", () => pattern.ResetOnLeave = reset);
+                    GUILayout.Space(8);
+                    EditorGUI.BeginChangeCheck();
+                    bool mute = GUILayout.Toggle(pattern.MuteStopSound, "停止音なし", GUILayout.Width(80));
+                    if (EditorGUI.EndChangeCheck()) Edit("停止音なしの変更", () => pattern.MuteStopSound = mute);
                     GUILayout.Space(16);
                     GUILayout.Label("次ゲームの予定", GUILayout.Width(92));
                     var options = new List<string> { "なし" };
