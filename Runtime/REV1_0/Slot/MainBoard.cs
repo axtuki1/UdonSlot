@@ -626,10 +626,10 @@ namespace AX.UdonSlot.REV1_0
             if (!isMockPlay) reelOutputController.GenerateFlag(bet);
             // Mainの処理（LeverOnLogic）を終えてからSubへ通知する。
             reelEffectStartsGame = false;
-            bool startNow = LeverOnLogic();
+            string activeFlag = Utilities.IsValid(reelOutputController) ? reelOutputController.GetActiveBaseFlag() : "";
+            bool startNow = LeverOnLogic(activeFlag);
             // 同期変数より先にイベントが届いても、全員が今回のフラグを読めるように引数で渡す。
-            subBoard.SendCustomNetworkEvent(NetworkEventTarget.All, nameof(subBoard.LeverOn),
-                Utilities.IsValid(reelOutputController) ? reelOutputController.GetActiveBaseFlag() : "");
+            subBoard.SendCustomNetworkEvent(NetworkEventTarget.All, nameof(subBoard.LeverOn), activeFlag);
             // Subの演出（演出エディタのリールアクションなど）がゲーム開始を引き受けたときも、ここでは開始しない。
             if (!startNow || reelEffectStartsGame) return;
             subBoard.Wait();
@@ -643,7 +643,7 @@ namespace AX.UdonSlot.REV1_0
         /// ゲーム開始予約を基底クラスで行うか
         /// LeverOnLogic内で遅延して予約する等、通常のタイミングと異なる場合はfalseを返す。
         /// </returns>
-        public virtual bool LeverOnLogic()
+        public virtual bool LeverOnLogic(string flag)
         {
             return true;
         }
