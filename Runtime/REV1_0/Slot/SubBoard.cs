@@ -423,11 +423,11 @@ namespace AX.UdonSlot.REV1_0
             gamePayout = 0;
             effectStopCount = 0;
             if (Utilities.IsValid(effectPlayer)) effectPlayer.OnStep(EffectPlayer.StepLeverOn, false);
-            LeverOnLogic();
+            LeverOnLogic(flag);
         }
 
         /// <summary>機種固有のレバーオン演出を実装する拡張ポイント。全員の画面で呼ばれる。gameFlagで今回のフラグを読める。</summary>
-        public virtual void LeverOnLogic() { }
+        public virtual void LeverOnLogic(string flag) { }
 
         [NetworkCallable]
         public void GameStart()
