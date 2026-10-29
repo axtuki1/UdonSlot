@@ -326,6 +326,34 @@ namespace AX.UdonSlot.REV1_0
             return entryBaseFlags[index];
         }
 
+        /// <summary>
+        /// 元のフラグが baseFlag でボーナス付きのフラグから、均等に1つ選ぶ（デバッグの役強制用）。
+        /// 例: WatermelonA なら WatermelonA_RedBB、WatermelonA_BlueBB などから選ぶ。なければ空文字。
+        /// </summary>
+        public string PickBonusFlagOf(string baseFlag)
+        {
+            if (string.IsNullOrEmpty(baseFlag) || winpairNames == null) return "";
+            int count = 0;
+            for (int i = 0; i < winpairNames.Length; i++) if (IsBonusFlagOf(i, baseFlag)) count++;
+            if (count == 0) return "";
+            int pick = Random.Range(0, count);
+            for (int i = 0; i < winpairNames.Length; i++)
+            {
+                if (!IsBonusFlagOf(i, baseFlag)) continue;
+                if (pick == 0) return winpairNames[i];
+                pick--;
+            }
+            return "";
+        }
+
+        private bool IsBonusFlagOf(int index, string baseFlag)
+        {
+            if (entryBonusNames == null || index >= entryBonusNames.Length || string.IsNullOrEmpty(entryBonusNames[index])) return false;
+            string flagBase = entryBaseFlags != null && index < entryBaseFlags.Length && !string.IsNullOrEmpty(entryBaseFlags[index])
+                ? entryBaseFlags[index] : winpairNames[index];
+            return flagBase == baseFlag;
+        }
+
         /// <summary>フラグの内部使用名が登録されているか確認する。</summary>
         public bool HasFlag(string flagName)
         {

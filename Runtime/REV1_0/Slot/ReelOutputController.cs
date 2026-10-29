@@ -143,7 +143,7 @@ namespace AX.UdonSlot.REV1_0
             drawnLotteryTable = GetLotteryTableForDraw();
             if (Utilities.IsValid(nextFlag) && nextFlag.Length > 0)
             {
-                activeFlag = nextFlag;
+                activeFlag = ResolveForcedFlag(nextFlag);
                 nextFlag = "";
             }
             else
@@ -154,6 +154,18 @@ namespace AX.UdonSlot.REV1_0
             ResolveDrawnBonus();
             GenerateFlagLogic(bet, activeFlag);
             RequestSerialization();
+        }
+
+        /// <summary>
+        /// 役強制のフラグ名を決める。「○○_Bonus」で抽選表にそのフラグがなければ、
+        /// ○○ のボーナス付きフラグ（○○_RedBB など）から均等に1つ選ぶ。
+        /// </summary>
+        private string ResolveForcedFlag(string flag)
+        {
+            const string suffix = "_Bonus";
+            if (!Utilities.IsValid(drawnLotteryTable) || !flag.EndsWith(suffix) || drawnLotteryTable.HasFlag(flag)) return flag;
+            string picked = drawnLotteryTable.PickBonusFlagOf(flag.Substring(0, flag.Length - suffix.Length));
+            return picked.Length > 0 ? picked : flag;
         }
 
         /// <summary>
