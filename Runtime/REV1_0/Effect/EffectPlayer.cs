@@ -396,14 +396,21 @@ namespace AX.UdonSlot.REV1_0
             }
         }
 
-        /// <summary>ゲーム終了の後：次のパターンへ進む。常駐でないチャンネルは、次がなければ止まる。</summary>
+        /// <summary>
+        /// ゲーム終了の後：次のレバーオンから次のパターンへ進む。常駐でないチャンネルは、次がなければ止まる。
+        /// 表示を戻すのも次のレバーオンまで待つ（第三停止を離した直後に消えないように）。
+        /// </summary>
         private void EndGame(int channel)
         {
             int pattern = currentPattern[channel];
             if (hasPending[channel] || pattern < 0) return;
             int next = pattern < patternNext.Length ? patternNext[pattern] : -1;
-            if (next >= 0 && next < patternNames.Length) SetChannelPattern(channel, next);
-            else if (!IsResidentChannel(channel)) SetChannelPattern(channel, -1);
+            if (next >= patternNames.Length) next = -1;
+            if (next < 0 && IsResidentChannel(channel)) return;
+            hasPending[channel] = true;
+            pendingPattern[channel] = next;
+            pendingParameter[channel] = currentParameter[channel];
+            pendingFromStep[channel] = StepLeverOn;
         }
 
         private bool HasPassed(int step)
