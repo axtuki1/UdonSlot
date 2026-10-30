@@ -53,9 +53,7 @@ namespace AX.UdonSlot.REV1_0 {
             BonusTable bonusTable = reelOutputController.GetBonusTable();
             SetText(pendingBonusText, BonusLabel(bonusTable, reelOutputController.GetPendingBonusName()));
             SetText(activeBonusText, BonusLabel(bonusTable, reelOutputController.GetActiveBonusName()));
-            SetText(activeBonusCountText, reelOutputController.IsBonusActive()
-                ? $"{reelOutputController.GetBonusPayoutCount()}枚 / {reelOutputController.GetBonusGameCount()}G"
-                : "-");
+            SetText(activeBonusCountText, BonusRemaining(bonusTable));
             WriteDebugText();
         }
         
@@ -65,6 +63,22 @@ namespace AX.UdonSlot.REV1_0 {
             if (!Utilities.IsValid(table)) return "-";
             int index = table.FindBonus(name);
             return index < 0 ? "-" : table.GetBonusDisplayName(index);
+        }
+
+        /// <summary>作動中のボーナスの終了条件まで残り（枚数・入賞回数・G数のうち条件にあるものだけ）。なければ "-"。</summary>
+        private string BonusRemaining(BonusTable table)
+        {
+            if (!Utilities.IsValid(table) || !reelOutputController.IsBonusActive()) return "-";
+            int index = table.FindBonus(reelOutputController.GetActiveBonusName());
+            if (index < 0) return "-";
+            string text = "";
+            int payout = table.GetBonusEndPayout(index);
+            int wins = table.GetBonusEndWins(index);
+            int games = table.GetBonusEndGames(index);
+            if (payout > 0) text = Mathf.Max(0, payout - reelOutputController.GetBonusPayoutCount()) + "枚";
+            if (wins > 0) text += (text.Length > 0 ? " / " : "") + Mathf.Max(0, wins - reelOutputController.GetBonusWinCount()) + "回";
+            if (games > 0) text += (text.Length > 0 ? " / " : "") + Mathf.Max(0, games - reelOutputController.GetBonusGameCount()) + "G";
+            return text.Length > 0 ? text : "-";
         }
 
         private void SetText(TextMeshProUGUI text, string value)
