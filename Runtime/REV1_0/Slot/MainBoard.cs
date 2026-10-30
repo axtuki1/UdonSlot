@@ -690,7 +690,7 @@ namespace AX.UdonSlot.REV1_0
         /// 機種を初期状態に戻す（ボーナス成立中・作動中、RT、演出、掛けているBET）。クレジットと設定はそのまま。
         /// force が false なら、遊技中（レバーオン後〜全リール停止）は何もしない。
         /// force が true なら遊技中でも戻す：回っているリールはその場の近いコマで止め、リール演出・ゲーム開始の予約・操作禁止を取り消す。
-        /// 呼んだ人が Owner になり、全員の画面が戻る。機種ごとのランプなどは ResetMachineLogic（MainBoard・SubBoard）で戻す。
+        /// 呼んだ人が Owner になり、全員の画面が戻る。機種ごとのランプなどは メイン基板・サブ基板の ResetMachineLogic で戻す。
         /// </summary>
         /// <returns>戻したら true。</returns>
         public bool ResetMachine(bool force)
@@ -714,7 +714,7 @@ namespace AX.UdonSlot.REV1_0
         }
 
         /// <summary>
-        /// ボーナス・状態の通知を振り分ける（ReelOutputController が呼ぶ）。SubBoard の同名の通知より先に、Owner の画面だけで呼ばれる。
+        /// ボーナス・状態の通知を振り分ける（ReelOutputController が呼ぶ）。サブ基板の同名の通知より先に、Owner の画面だけで呼ばれる。
         /// </summary>
         public void OnBonusEvent(string eventName, string value)
         {
@@ -726,25 +726,31 @@ namespace AX.UdonSlot.REV1_0
             else if (eventName == nameof(SubBoard.StateChange)) StateChangeLogic(value);
         }
 
-        /// <summary>ボーナスが成立した（レバーオン時）。Owner の画面だけ。引数は役物の内部名。</summary>
+        /// <summary>ボーナスが成立した（レバーオン時）。Owner の画面だけで呼ばれる。</summary>
+        /// <param name="bonusName">役物の内部名</param>
         public virtual void BonusWonLogic(string bonusName) { }
 
-        /// <summary>ボーナスが作動した（作動役が揃ったゲームの終了時）。Owner の画面だけ。</summary>
+        /// <summary>ボーナスが作動した（作動役が揃ったゲームの終了時）。Owner の画面だけで呼ばれる。</summary>
+        /// <param name="bonusName">役物の内部名</param>
         public virtual void BonusStartLogic(string bonusName) { }
 
-        /// <summary>ボーナスが終了した。Owner の画面だけ。</summary>
+        /// <summary>ボーナスが終了した。Owner の画面だけで呼ばれる。</summary>
+        /// <param name="bonusName">役物の内部名</param>
         public virtual void BonusEndLogic(string bonusName) { }
 
-        /// <summary>BB・MB中に連続作動の役物（JACゲームなど）が作動した。Owner の画面だけ。</summary>
+        /// <summary>BB・MB中に連続作動の役物（JACゲームなど）が作動した。Owner の画面だけで呼ばれる。</summary>
+        /// <param name="bonusName">役物の内部名</param>
         public virtual void JACGameStartLogic(string bonusName) { }
 
-        /// <summary>連続作動の役物が終わった。Owner の画面だけ。</summary>
+        /// <summary>連続作動の役物が終わった。Owner の画面だけで呼ばれる。</summary>
+        /// <param name="bonusName">役物の内部名</param>
         public virtual void JACGameEndLogic(string bonusName) { }
 
-        /// <summary>状態（RT）が変わった。Owner の画面だけ。引数は移行先の状態の内部名。</summary>
+        /// <summary>状態（RT）が変わった。Owner の画面だけで呼ばれる。</summary>
+        /// <param name="stateName">移行先の状態の内部名</param>
         public virtual void StateChangeLogic(string stateName) { }
 
-        /// <summary>ResetMachine で、機種ごとの状態（MainBoard 側の変数など）を戻す拡張ポイント。Owner の画面で呼ばれる。</summary>
+        /// <summary>ResetMachine で、機種ごとの状態（メイン基板側の変数など）を戻す拡張ポイント。Owner の画面で呼ばれる。</summary>
         public virtual void ResetMachineLogic() { }
 
         /// <summary>遊技を打ち切る（ResetMachine の force 用）。回っているリールは近いコマで止める。</summary>
@@ -927,8 +933,8 @@ namespace AX.UdonSlot.REV1_0
         /// リール停止時の追加処理
         /// </summary>
         /// <param name="reelIndex">停止リール</param>
-        /// <param name="stopIndex">停止インデックス(下段の図柄のインデックス)</param>
-        /// <param name="accuracy">停止精度</param>
+        /// <param name="stopIndex">押した位置（滑る前の下段の図柄、0始まり）</param>
+        /// <param name="accuracy">押したタイミングの正確さ。図柄ちょうどで1、半コマずれで0.5</param>
         public virtual void StopReelLogic(int reelIndex, int stopIndex, float accuracy) { }
 
         /// <summary>
@@ -971,7 +977,7 @@ namespace AX.UdonSlot.REV1_0
         public void GameEnd()
         {
             GameEndLogic();
-            // SubBoardへ配る結果。同期変数より先にイベントが届いても、全員が同じ結果を読めるようにする。
+            // サブ基板へ配る結果。同期変数より先にイベントが届いても、全員が同じ結果を読めるようにする。
             string gameFlag = "";
             string[] gameWinningNames = new string[0];
             int gamePayout = 0;
@@ -1623,9 +1629,9 @@ namespace AX.UdonSlot.REV1_0
         /// <returns>演出全体の長さ(ms)。入力が不正なら-1で、何もしない。</returns>
         /// <example>
         /// <code>
-        /// public override bool LeverOnLogic()
+        /// public override bool LeverOnLogic(string flag)
         /// {
-        ///     if (reelOutputController.GetActiveBaseFlag() != "Cherry") return true;
+        ///     if (flag != "Cherry") return true;
         ///     // 2秒保持 → 0.35秒で1コマ上へ → 1.5秒保持 → 0.35秒で元へ
         ///     PlayReelSequence(new int[] { 2000, 350, 1500, 350 }, new float[] { 0, 1, 1, 0 });
         ///     return false;
@@ -1843,7 +1849,7 @@ namespace AX.UdonSlot.REV1_0
         // ・直接呼ぶとこのクライアントの予約だけが追加される。[NetworkCallable]だけでは自動同期しない。
         //   全員に同じ演出を見せる場合はSendCustomNetworkEvent(NetworkEventTarget.All, nameof(対象メソッド), ...)で呼ぶ。
         //   発行元(通常は Owner)から一度だけ送る。Allには送信者自身も含まれるため、直接呼び出しを併用すると二重予約になる。
-        //   以下の例はMainBoard内・派生クラス内からの呼び出し。別BehaviourからはmainBoard.SendCustomNetworkEvent(...)とする。
+        //   以下の例はメイン基板内・派生クラス内からの呼び出し。別BehaviourからはmainBoard.SendCustomNetworkEvent(...)とする。
         //   nullの現在時刻・現在角度は、実行した各クライアントで取得される。
 
         /// <summary>
