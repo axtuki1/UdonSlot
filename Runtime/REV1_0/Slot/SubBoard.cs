@@ -517,7 +517,7 @@ namespace AX.UdonSlot.REV1_0
             ReplayBetLogic(betCount);
         }
 
-        /// <summary>機種固有の再遊技音やBET表示演出を実装する拡張ポイント。</summary>
+        /// <summary>機種固有の再遊技音やBET表示演出を実装する拡張ポイント。全員の画面で呼ばれる。</summary>
         public virtual void ReplayBetLogic(int betCount) { }
         
         [NetworkCallable]
@@ -544,7 +544,7 @@ namespace AX.UdonSlot.REV1_0
             soundBoard.PlaySound(SoundType.WAIT, (int)ClipType.WAIT);
         }
         
-        /// <summary>効果音は全員へ送信されるため、メイン基板のオーナーだけが鳴らす。</summary>
+        /// <summary>効果音は全員へ送信されるため、メイン基板の Owner だけが鳴らす。</summary>
         private bool CanPlaySound()
         {
             return Utilities.IsValid(soundBoard) && IsMainBoardOwner();
@@ -572,7 +572,7 @@ namespace AX.UdonSlot.REV1_0
             BonusWonLogic(bonusName);
         }
 
-        /// <summary>機種固有のボーナス成立演出（告知ランプなど）を実装する拡張ポイント。引数は役物の内部名。</summary>
+        /// <summary>機種固有のボーナス成立演出（告知ランプなど）を実装する拡張ポイント。全員の画面で呼ばれる。引数は役物の内部名。</summary>
         public virtual void BonusWonLogic(string bonusName) { }
 
         /// <summary>BB・MB中に連続作動の役物（JACゲームなど）が作動したことを通知する。</summary>
@@ -582,6 +582,7 @@ namespace AX.UdonSlot.REV1_0
             JACGameStartLogic(bonusName);
         }
 
+        /// <summary>BB・MB中に連続作動の役物（JACゲームなど）が作動したときの演出を実装する拡張ポイント。全員の画面で呼ばれる。引数は役物の内部名。</summary>
         public virtual void JACGameStartLogic(string bonusName) { }
 
         /// <summary>連続作動の役物が終わったことを通知する。</summary>
@@ -591,6 +592,7 @@ namespace AX.UdonSlot.REV1_0
             JACGameEndLogic(bonusName);
         }
 
+        /// <summary>連続作動の役物が終わったときの演出を実装する拡張ポイント。全員の画面で呼ばれる。引数は役物の内部名。</summary>
         public virtual void JACGameEndLogic(string bonusName) { }
 
         /// <summary>ボーナスが作動したことを通知する。</summary>
@@ -600,7 +602,7 @@ namespace AX.UdonSlot.REV1_0
             BonusStartLogic(bonusName);
         }
 
-        /// <summary>機種固有のボーナス開始演出を実装する拡張ポイント。引数は役物の内部名。</summary>
+        /// <summary>機種固有のボーナス開始演出を実装する拡張ポイント。全員の画面で呼ばれる。引数は役物の内部名。</summary>
         public virtual void BonusStartLogic(string bonusName) { }
 
         /// <summary>ボーナスが終了したことを通知する。</summary>
@@ -610,7 +612,7 @@ namespace AX.UdonSlot.REV1_0
             BonusEndLogic(bonusName);
         }
 
-        /// <summary>機種固有のボーナス終了演出を実装する拡張ポイント。引数は役物の内部名。</summary>
+        /// <summary>機種固有のボーナス終了演出を実装する拡張ポイント。全員の画面で呼ばれる。引数は役物の内部名。</summary>
         public virtual void BonusEndLogic(string bonusName) { }
 
         /// <summary>状態（RT）が変わったことを通知する。</summary>
@@ -620,7 +622,7 @@ namespace AX.UdonSlot.REV1_0
             StateChangeLogic(stateName);
         }
 
-        /// <summary>機種固有の状態移行演出を実装する拡張ポイント。引数は移行先の状態の内部名。</summary>
+        /// <summary>機種固有の状態移行演出を実装する拡張ポイント。全員の画面で呼ばれる。引数は移行先の状態の内部名。</summary>
         public virtual void StateChangeLogic(string stateName) { }
 
         /// <summary>機種のリセット（MainBoard.ResetMachine）を全員の画面へ伝える。演出を止めて表示を戻す。</summary>

@@ -6,7 +6,7 @@ using VRC.SDKBase;
 namespace AX.UdonSlot.REV1_0.Common
 {
     /// <summary>
-    /// Interactまたはプレイヤー追従Colliderから中央ボタンの押下と解放をMainBoardへ渡す。
+    /// Interactまたはプレイヤー追従Colliderから中央ボタンの押下と解放をメイン基板へ渡す。
     /// </summary>
     public class CenterButton : UdonSharpBehaviour
     {

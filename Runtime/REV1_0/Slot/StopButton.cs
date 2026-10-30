@@ -6,7 +6,7 @@ using VRC.SDKBase;
 namespace AX.UdonSlot.REV1_0
 {
     /// <summary>
-    /// Interactまたはプレイヤー追従Colliderから停止入力を受け、指定リールの押下と解放をMainBoardへ渡す。
+    /// Interactまたはプレイヤー追従Colliderから停止入力を受け、指定リールの押下と解放をメイン基板へ渡す。
     /// </summary>
     public class StopButton : UdonSharpBehaviour
     {

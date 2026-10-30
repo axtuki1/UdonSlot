@@ -6,7 +6,7 @@ using VRC.SDKBase;
 namespace AX.UdonSlot.REV1_0
 {
     /// <summary>
-    /// Interactまたはプレイヤー追従ColliderからMaxBET入力を受け、MainBoardへ渡す。
+    /// Interactまたはプレイヤー追従ColliderからMaxBET入力を受け、メイン基板へ渡す。
     /// </summary>
     public class MaxBet : UdonSharpBehaviour
     {

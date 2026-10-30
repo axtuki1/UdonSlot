@@ -12,7 +12,7 @@ namespace AX.UdonSlot.REV1_0
     }
     
     /// <summary>
-    /// MainBoardのクレジットを通常表示、即時表示、セグメント表示へ反映する。
+    /// メイン基板のクレジットを通常表示、即時表示、セグメント表示へ反映する。
     /// 無操作時のデモ表示と、増減時の追従アニメーションも管理する。
     /// </summary>
     public class CreditView : UdonSharpBehaviour

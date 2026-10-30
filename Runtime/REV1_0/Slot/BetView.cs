@@ -6,7 +6,7 @@ using VRC.SDKBase;
 namespace AX.UdonSlot.REV1_0
 {
     /// <summary>
-    /// MainBoardのBET数に合わせて、各BET段階の画像表示を更新する。
+    /// メイン基板のBET数に合わせて、各BET段階の画像表示を更新する。
     /// </summary>
     public class BetView : UdonSharpBehaviour
     {

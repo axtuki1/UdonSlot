@@ -28,7 +28,7 @@ namespace AX.UdonSlot.REV1_0
 
     /// <summary>
     /// 機種固有の抽選、リール制御、成立役判定、配当計算を実装するための基底クラス。
-    /// MainBoardから遊技の各段階で呼び出される。
+    /// メイン基板から遊技の各段階で呼び出される。
     /// </summary>
     public class ReelOutputController : UdonSharpBehaviour
     {
@@ -1139,7 +1139,7 @@ namespace AX.UdonSlot.REV1_0
         }
         
         /// <summary>PayoutTable、現在のBET、有効ライン、停止順から成立役を判定する。</summary>
-        /// <param name="stopSymbolIndex">MainBoardから渡される各リールの停止図柄位置。</param>
+        /// <param name="stopSymbolIndex">メイン基板から渡される各リールの停止図柄位置。</param>
         /// <returns>成立した役の内部使用名。成立役がない場合は空配列。</returns>
         public virtual string[] JudgePayout(int[] stopSymbolIndex)
         {
@@ -1311,7 +1311,7 @@ namespace AX.UdonSlot.REV1_0
         }
 
         /// <summary>
-        /// 遊技の結果からボーナスの作動・終了と状態の移行を行う。MainBoardが払出の後に呼ぶ。
+        /// 遊技の結果からボーナスの作動・終了と状態の移行を行う。メイン基板が払出の後に呼ぶ。
         /// 優先順: 作動中の計数 → ボーナス作動 → 図柄表示 → G数。
         /// </summary>
         public virtual void UpdateGameState(string[] winningNames, int payout)
@@ -1509,7 +1509,7 @@ namespace AX.UdonSlot.REV1_0
         private void NotifySubBoard(string eventName, string value)
         {
             if (!Utilities.IsValid(mainBoard)) return;
-            // MainBoard（Owner の画面）には先に直接伝える。
+            // メイン基板（Owner の画面）には先に直接伝える。
             mainBoard.OnBonusEvent(eventName, value);
             if (!Utilities.IsValid(mainBoard.subBoard)) return;
             mainBoard.subBoard.SendCustomNetworkEvent(NetworkEventTarget.All, eventName, value);

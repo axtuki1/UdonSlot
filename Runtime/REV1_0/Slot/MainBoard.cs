@@ -499,7 +499,7 @@ namespace AX.UdonSlot.REV1_0
             return n - centerIndex;
         }
 
-        /// <summary>演出エディタのパターンを内部名で呼ぶ（チャンネル0、そのゲームだけ。MainBoard の Ownerだけ）。null なら止める。SubBoardにEffectPlayerが無ければ何もしない。</summary>
+        /// <summary>演出エディタのパターンを内部名で呼ぶ（チャンネル0、そのゲームだけ。メイン基板の Owner だけ）。null なら止める。サブ基板にEffectPlayerが無ければ何もしない。</summary>
         public void CallEffectPattern(string patternName)
         {
             if (Utilities.IsValid(subBoard) && Utilities.IsValid(subBoard.effectPlayer)) subBoard.effectPlayer.CallEffectPattern(patternName);
@@ -1664,7 +1664,7 @@ namespace AX.UdonSlot.REV1_0
             int sections = durations.Length;
             if (sections == 0 || left.Length != sections || center.Length != sections || right.Length != sections) return -1;
 
-            // 角度はOwner の今の位置を基準にした絶対角で送る。受け取った側は各区間の開始角から動くので、
+            // 角度は Owner の今の位置を基準にした絶対角で送る。受け取った側は各区間の開始角から動くので、
             // それまでの各自の表示位置がずれていても（回転中に割り込んでも）同じ動きになる。
             float oneAngle = GetOneSymbolAngle();
             float[] baseAngles = new float[] { GetCurrentReelAngle(0), GetCurrentReelAngle(1), GetCurrentReelAngle(2) };
@@ -1842,7 +1842,7 @@ namespace AX.UdonSlot.REV1_0
         //   isMockPlayや操作禁止も自動では設定しない。必要ならSetMockPlay/OffControllableを併用する。
         // ・直接呼ぶとこのクライアントの予約だけが追加される。[NetworkCallable]だけでは自動同期しない。
         //   全員に同じ演出を見せる場合はSendCustomNetworkEvent(NetworkEventTarget.All, nameof(対象メソッド), ...)で呼ぶ。
-        //   発行元(通常はOwner)から一度だけ送る。Allには送信者自身も含まれるため、直接呼び出しを併用すると二重予約になる。
+        //   発行元(通常は Owner)から一度だけ送る。Allには送信者自身も含まれるため、直接呼び出しを併用すると二重予約になる。
         //   以下の例はMainBoard内・派生クラス内からの呼び出し。別BehaviourからはmainBoard.SendCustomNetworkEvent(...)とする。
         //   nullの現在時刻・現在角度は、実行した各クライアントで取得される。
 

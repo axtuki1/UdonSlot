@@ -10,7 +10,7 @@ namespace AX.UdonSlot.REV1_0
     /// <summary>
     /// 演出エディタで作ったパターンを再生する。
     /// パターンは「レバーオン／第一停止／第二停止／第三停止／ゲーム終了」の5列に、アクション（映像・表示・音・リール・コード）を並べたもの。
-    /// どのパターンを流すかは機種コードが決め、MainBoard の Ownerが CallEffectPattern で呼ぶ。
+    /// どのパターンを流すかは機種コードが決め、メイン基板の Owner が CallEffectPattern で呼ぶ。
     /// 呼ぶと全員へ届き、次のステップから新しいパターンに差し替わる。チャンネルごとに別のパターンを重ねて流せる。
     /// チャンネル0（CallEffectPattern）はそのゲームだけ。常駐チャンネル（1〜residentChannelCount）は差し替えられない限り毎ゲーム繰り返し、それより後はそのゲームで止まる。
     /// データは演出エディタ（UdonSlot/演出エディタ）が書き込む。手で編集しない。
@@ -280,7 +280,7 @@ namespace AX.UdonSlot.REV1_0
             for (int i = 0; i < enableInitial.Length; i++) SetEnabled(i, enableInitial[i]);
         }
 
-        /// <summary>途中参加者向けに同期している常駐チャンネルのパターンを消す。MainBoard の Ownerだけ。</summary>
+        /// <summary>途中参加者向けに同期している常駐チャンネルのパターンを消す。メイン基板の Owner だけ。</summary>
         public void ClearSyncedPatterns()
         {
             if (!IsMainBoardOwner()) return;
@@ -327,7 +327,7 @@ namespace AX.UdonSlot.REV1_0
         }
 
         /// <summary>
-        /// チャンネルを指定してパターンを呼ぶ。MainBoard の Ownerだけが呼べる（ほかの人が呼んでも何もしない）。
+        /// チャンネルを指定してパターンを呼ぶ。メイン基板の Owner だけが呼べる（ほかの人が呼んでも何もしない）。
         /// 全員へ届き、次のステップから差し替わる。ゲームの外で呼んだら次のレバーオンから。
         /// parameter は Animator の int パラメータとして各アクションへ渡す（キャラ違いなどの差し替え用）。
         /// </summary>
@@ -415,7 +415,7 @@ namespace AX.UdonSlot.REV1_0
             pendingFromStep[channel] = fromStep;
         }
 
-        /// <summary>ステップが来たことを伝える。SubBoard が全員の画面で呼ぶ。won は第三停止・ゲーム終了で入賞したか。</summary>
+        /// <summary>ステップが来たことを伝える。サブ基板が全員の画面で呼ぶ。won は第三停止・ゲーム終了で入賞したか。</summary>
         public void OnStep(int step, bool won)
         {
             OnReelStep(step, won, -1);
@@ -599,7 +599,7 @@ namespace AX.UdonSlot.REV1_0
         }
 
         /// <summary>
-        /// リールのキーを区間に直して、MainBoard の Ownerが全員へ配信する（ほかの人は配信を受けて動く）。
+        /// リールのキーを区間に直して、メイン基板の Owner が全員へ配信する（ほかの人は配信を受けて動く）。
         /// 絶対指定のキーは、Owner の今のリール位置からのコマ数に直す。
         /// </summary>
         private void RunReel(int action, int step)

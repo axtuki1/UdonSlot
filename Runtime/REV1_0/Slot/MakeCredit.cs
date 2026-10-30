@@ -5,7 +5,7 @@ using UnityEngine;
 namespace AX.UdonSlot.REV1_0
 {
     /// <summary>
-    /// Interact時に設定量のクレジットをMainBoardへ加算する補助コンポーネント。
+    /// Interact時に設定量のクレジットをメイン基板へ加算する補助コンポーネント。
     /// </summary>
     public class MakeCredit : UdonSharpBehaviour
     {

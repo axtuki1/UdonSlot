@@ -6,7 +6,7 @@ using VRC.SDKBase;
 namespace AX.UdonSlot.REV1_0
 {
     /// <summary>
-    /// Interactまたはプレイヤー追従Colliderからレバー入力を受け、MainBoardへゲーム開始を要求する。
+    /// Interactまたはプレイヤー追従Colliderからレバー入力を受け、メイン基板へゲーム開始を要求する。
     /// </summary>
     public class Lever : UdonSharpBehaviour
     {
