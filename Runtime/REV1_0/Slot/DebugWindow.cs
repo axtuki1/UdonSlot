@@ -13,6 +13,15 @@ namespace AX.UdonSlot.REV1_0 {
         protected ReelOutputController reelOutputController;
 
         [SerializeField]
+        private TextMeshProUGUI pendingBonusText;
+        
+        [SerializeField]
+        private TextMeshProUGUI activeBonusText;
+        
+        [SerializeField]
+        private TextMeshProUGUI activeBonusCountText;
+
+        [SerializeField]
         private TextMeshProUGUI activeFlagText;
         
         [SerializeField]
@@ -40,9 +49,29 @@ namespace AX.UdonSlot.REV1_0 {
             string center = mainBoard.isRollingReel2 ? "-" : throughSymbolCount[1].ToString();
             string right = mainBoard.isRollingReel3 ? "-" : throughSymbolCount[2].ToString();
             slipCountText.text = $"{left} / {center} / {right}";
+            
+            BonusTable bonusTable = reelOutputController.GetBonusTable();
+            SetText(pendingBonusText, BonusLabel(bonusTable, reelOutputController.GetPendingBonusName()));
+            SetText(activeBonusText, BonusLabel(bonusTable, reelOutputController.GetActiveBonusName()));
+            SetText(activeBonusCountText, reelOutputController.IsBonusActive()
+                ? $"{reelOutputController.GetBonusPayoutCount()}枚 / {reelOutputController.GetBonusGameCount()}G"
+                : "-");
             WriteDebugText();
         }
         
+        /// <summary>ボーナスの表示名。なければ "-"。</summary>
+        private string BonusLabel(BonusTable table, string name)
+        {
+            if (!Utilities.IsValid(table)) return "-";
+            int index = table.FindBonus(name);
+            return index < 0 ? "-" : table.GetBonusDisplayName(index);
+        }
+
+        private void SetText(TextMeshProUGUI text, string value)
+        {
+            if (Utilities.IsValid(text)) text.text = value;
+        }
+
         public virtual void WriteDebugText()
         { }
     }
