@@ -9,7 +9,7 @@ namespace AX.UdonSlot.REV1_0
 {
     /// <summary>
     /// 演出エディタで作ったパターンを再生する。
-    /// パターンは「レバーオン／第一停止／第二停止／第三停止／ゲーム終了」の5列に、アクション（映像・表示・音・リール・コード）を並べたもの。
+    /// パターンは「レバーオン／リール回転開始／第一停止／第二停止／第三停止／ゲーム終了」の6列に、アクション（映像・表示・音・リール・コード）を並べたもの。
     /// どのパターンを流すかは機種コードが決め、メイン基板の Owner が CallEffectPattern で呼ぶ。
     /// 呼ぶと全員へ届き、次のステップから新しいパターンに差し替わる。チャンネルごとに別のパターンを重ねて流せる。
     /// チャンネル0（CallEffectPattern）はそのゲームだけ。常駐チャンネル（1〜residentChannelCount）は差し替えられない限り毎ゲーム繰り返し、それより後はそのゲームで止まる。
@@ -116,7 +116,7 @@ namespace AX.UdonSlot.REV1_0
         public string[] patternNames = new string[0];
         /// <summary>コードから呼ぶときの名前（英数字）。</summary>
         public string[] patternIds = new string[0];
-        /// <summary>ゲーム終了時に差し替わる次のパターン。-1 はなし（同じパターンを繰り返す）。</summary>
+        /// <summary>ゲーム終了の後、次のレバーオンから差し替わる次のパターン。-1 はなし（常駐チャンネルは同じパターンを繰り返し、それ以外は止まる）。</summary>
         public int[] patternNext = new int[0];
         /// <summary>true のパターンは、チャンネルから外れても表示（オブジェクトの ON/OFF）を戻さない。既定は戻す。</summary>
         public bool[] patternKeepActive = new bool[0];
@@ -159,7 +159,7 @@ namespace AX.UdonSlot.REV1_0
         private int[] currentPattern = new int[ChannelCount];
         private int[] currentParameter = new int[ChannelCount];
         private bool[] hasPending = new bool[ChannelCount];
-        /// <summary>-1 は止める。</summary>
+        /// <summary>差し替え待ちのパターン。-1 は止める。</summary>
         private int[] pendingPattern = new int[ChannelCount];
         private int[] pendingParameter = new int[ChannelCount];
         private int[] pendingFromStep = new int[ChannelCount];
@@ -258,7 +258,7 @@ namespace AX.UdonSlot.REV1_0
         }
 
         /// <summary>
-        /// 全チャンネルを止め、演出が触ったオブジェクト・コンポーネントの ON/OFF をすべて開始時に戻す（この画面だけ）。
+        /// 全チャンネルを止め、演出が触ったオブジェクト・コンポーネントの ON/OFF をすべて開始時に戻す。ローカル。
         /// 機種のリセット（MainBoard.ResetMachine）から全員の画面で呼ばれる。
         /// </summary>
         public void ResetAll()
@@ -329,8 +329,10 @@ namespace AX.UdonSlot.REV1_0
         /// <summary>
         /// チャンネルを指定してパターンを呼ぶ。メイン基板の Owner だけが呼べる（ほかの人が呼んでも何もしない）。
         /// 全員へ届き、次のステップから差し替わる。ゲームの外で呼んだら次のレバーオンから。
-        /// parameter は Animator の int パラメータとして各アクションへ渡す（キャラ違いなどの差し替え用）。
         /// </summary>
+        /// <param name="channel">チャンネル（0〜15）</param>
+        /// <param name="patternName">パターンの内部名</param>
+        /// <param name="parameter">Animator の int パラメータとして各アクションへ渡す値（キャラ違いなどの差し替え用）</param>
         public void CallEffectPatternOnChannel(int channel, string patternName, int parameter)
         {
             if (!IsMainBoardOwner() || channel < 0 || channel >= ChannelCount) return;
@@ -415,13 +417,18 @@ namespace AX.UdonSlot.REV1_0
             pendingFromStep[channel] = fromStep;
         }
 
-        /// <summary>ステップが来たことを伝える。サブ基板が全員の画面で呼ぶ。won は第三停止・ゲーム終了で入賞したか。</summary>
+        /// <summary>ステップが来たことを伝える。サブ基板が全員の画面で呼ぶ。</summary>
+        /// <param name="step">EffectPlayer.Step～ の値</param>
+        /// <param name="won">第三停止・ゲーム終了で入賞したか</param>
         public void OnStep(int step, bool won)
         {
             OnReelStep(step, won, -1);
         }
 
-        /// <summary>OnStep の停止版。reelIndex は押したリール（0=左 1=中 2=右）。</summary>
+        /// <summary>OnStep の停止版。</summary>
+        /// <param name="step">EffectPlayer.Step～ の値</param>
+        /// <param name="won">第三停止で入賞したか</param>
+        /// <param name="reelIndex">押したリール（0=左 1=中 2=右）</param>
         public void OnReelStep(int step, bool won, int reelIndex)
         {
             if (step < 0 || step >= StepCount) return;
@@ -582,7 +589,7 @@ namespace AX.UdonSlot.REV1_0
                 for (int i = start; i < end && i < enableValues.Length; i++) SetEnabled(i, enableValues[i]);
             }
 
-            // 効果音は各自の画面で鳴らす（SoundBoard の全員送信は使わない）。
+            // 効果音はローカルで鳴らす（SoundBoard の全員送信は使わない）。
             int soundType = actionSoundType[action];
             if (soundType >= 0 && Utilities.IsValid(mainBoard) && Utilities.IsValid(mainBoard.subBoard)
                 && Utilities.IsValid(mainBoard.subBoard.soundBoard))
