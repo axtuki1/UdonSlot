@@ -1183,12 +1183,23 @@ namespace AX.UdonSlot.REV1_0
             return HasReelControl(name) ? name : flag;
         }
 
-        /// <summary>現在成立しているフラグの表示名を返す。</summary>
+        /// <summary>現在成立しているフラグの表示名を返す。ボーナス付きの行は「元のフラグの表示名＋ボーナスの表示名」。</summary>
         public string GetActiveFlagDisplayName()
         {
             LotteryTable table = GetCurrentLotteryTable();
-            if (!Utilities.IsValid(table)) return GetActiveFlag();
-            return table.GetFlagDisplayName(GetActiveFlag());
+            string flag = GetActiveFlag();
+            if (!Utilities.IsValid(table)) return flag;
+            string display = table.GetFlagDisplayName(flag);
+            // ボーナス付きの行（Cherry_RedBB）に表示名がなければ「チェリー＋赤BB」のように組み立てる。
+            string bonus = table.GetEntryBonusName(flag);
+            if (display != flag || bonus.Length == 0) return display;
+            string bonusDisplay = bonus;
+            if (Utilities.IsValid(bonusTable))
+            {
+                int index = bonusTable.FindBonus(bonus);
+                if (index >= 0) bonusDisplay = bonusTable.GetBonusDisplayName(index);
+            }
+            return table.GetFlagDisplayName(table.GetEntryBaseFlag(flag)) + "＋" + bonusDisplay;
         }
 
         /// <summary>ボーナス付きフラグ（Cherry_RedBB など）の元のフラグ名を返す。</summary>
