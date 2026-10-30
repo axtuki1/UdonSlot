@@ -271,6 +271,7 @@ namespace AX.UdonSlot.REV1_0
             }
             for (int i = 0; i < queueAction.Length; i++) queueAction[i] = -1;
             stopSoundMuted = false;
+            lastStep = StepGameEnd;
             CaptureInitial();
             for (int i = 0; i < activeTargets.Length && i < activeInitial.Length; i++)
             {

@@ -622,6 +622,7 @@ namespace AX.UdonSlot.REV1_0
             if (isRollingReel1 || isRollingReel2 || isRollingReel3) return;
             SetOwner();
             OffControllable(0.75f);
+            isLeverOnPending = true;
             firstLeverOnTime = Networking.GetServerTimeInMilliseconds();
             // 疑似遊技中は再抽選せず、現在のフラグを維持する。
             if (!isMockPlay) reelOutputController.GenerateFlag(bet);
@@ -672,19 +673,33 @@ namespace AX.UdonSlot.REV1_0
             // ここにセンターボタンを離したときの処理を実装する
         }
 
-        public void RequestGameStart() { requestGameStart = true; }
+        /// <summary>
+        /// ゲーム開始を予約する。レバーオンからゲーム開始までの間だけ効く
+        /// （リセットの後に、遅らせて呼んだ予約が届いてもゲームを始めない）。
+        /// </summary>
+        public void RequestGameStart()
+        {
+            if (!isLeverOnPending) return;
+            requestGameStart = true;
+        }
+
+        /// <summary>レバーオンを受け付けてから、リールが回り始めるまで。</summary>
+        private bool isLeverOnPending = false;
 
         /// <summary>
         /// 機種を初期状態に戻す（ボーナス成立中・作動中、RT、演出、掛けているBET）。クレジットと設定はそのまま。
-        /// 遊技中（レバーオン後〜全リール停止）は何もしない。呼んだ人が持ち主になり、全員の画面が戻る。
-        /// 機種ごとのランプなどは ResetMachineLogic（MainBoard・SubBoard）で戻す。
+        /// force が false なら、遊技中（レバーオン後〜全リール停止）は何もしない。
+        /// force が true なら遊技中でも戻す：回っているリールはその場の近いコマで止め、リール演出・ゲーム開始の予約・操作禁止を取り消す。
+        /// 呼んだ人が持ち主になり、全員の画面が戻る。機種ごとのランプなどは ResetMachineLogic（MainBoard・SubBoard）で戻す。
         /// </summary>
         /// <returns>戻したら true。</returns>
-        public bool ResetMachine()
+        public bool ResetMachine(bool force)
         {
-            if (isGaming || requestGameStart || reelEffectStartsGame) return false;
-            if (isRollingReel1 || isRollingReel2 || isRollingReel3) return false;
+            bool busy = isGaming || requestGameStart || isLeverOnPending || reelEffectStartsGame ||
+                        isRollingReel1 || isRollingReel2 || isRollingReel3;
+            if (busy && !force) return false;
             SetOwner();
+            if (busy) AbortGame();
             // リプレイの自動BETはクレジットから引いていないので返さない。
             if (!isReplay) credit += bet;
             bet = 0;
@@ -700,6 +715,45 @@ namespace AX.UdonSlot.REV1_0
 
         /// <summary>ResetMachine で、機種ごとの状態（MainBoard 側の変数など）を戻す拡張ポイント。持ち主の画面で呼ばれる。</summary>
         public virtual void ResetMachineLogic() { }
+
+        /// <summary>遊技を打ち切る（ResetMachine の force 用）。回っているリールは近いコマで止める。</summary>
+        private void AbortGame()
+        {
+            SendCustomNetworkEvent(NetworkEventTarget.All, nameof(ClearScheduledRolls));
+            requestGameStart = false;
+            isLeverOnPending = false;
+            reelEffectStartsGame = false;
+            double now = Networking.GetServerTimeInMilliseconds();
+            for (int i = 0; i < 3; i++)
+            {
+                pushingButton[i] = false;
+                if (!IsReelRolling(i)) continue;
+                Transform reelTransform = GetReelTransform(i);
+                SetReelRolling(i, false);
+                if (!Utilities.IsValid(reelTransform)) continue;
+                Vector3 defaultForward = defaultReelRot * Vector3.right;
+                Vector3 currentForward = reelTransform.localRotation * Vector3.right;
+                float angle = Vector3.SignedAngle(defaultForward, currentForward, defaultReelRot * Vector3.down);
+                int symbolIndex = Mathf.RoundToInt((angle + anglePerSymbol / 2f) / anglePerSymbol % pictureCount);
+                if (symbolIndex < 0) symbolIndex += pictureCount;
+                Quaternion target = Quaternion.Euler(REEL_ANGLEPOS_BASE + symbolIndex * anglePerSymbol, 0f, 90f);
+                SetReelRotation(i, target, now);
+                SetReelAccumulatedRotation(i, reelTransform.localRotation * Quaternion.Inverse(target));
+            }
+            stoppedReelsStopOrder = new int[] { -1, -1, -1 };
+            isGaming = false;
+            if (isMockPlay) SetMockPlay(false);
+            // フリーズなどの長い操作禁止を取り消す。
+            OffControllable(0.25f);
+        }
+
+        /// <summary>リール演出（scheduleRoll系）の予約をすべて取り消す。ResetMachine の force から全員へ送る。</summary>
+        [NetworkCallable]
+        public void ClearScheduledRolls()
+        {
+            while (scheduledRollType.Length > 0) RemoveScheduledVariableArray();
+            ResetScheduledRollRuntimeState();
+        }
 
         public int GetReelStopIndex(int reelIndex)
         {
@@ -717,6 +771,7 @@ namespace AX.UdonSlot.REV1_0
             isGaming = true;
             gameStartTime = now;
             requestGameStart = false;
+            isLeverOnPending = false;
             isRollingReel1 = true;
             isRollingReel2 = true;
             isRollingReel3 = true;
