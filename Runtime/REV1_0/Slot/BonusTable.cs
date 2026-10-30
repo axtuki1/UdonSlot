@@ -29,11 +29,12 @@ namespace AX.UdonSlot.REV1_0
 
         /// <summary>役物の内部名。抽選表のボーナス名、制御名の {bonus} に使う。</summary>
         [HideInInspector] public string[] bonusNames = new string[0];
+        /// <summary>役物の表示名。空は内部名を表示する。</summary>
         [HideInInspector] public string[] bonusDisplayNames = new string[0];
         /// <summary>BonusKindの数値。</summary>
         [HideInInspector] public int[] bonusKinds = new int[0];
 
-        /// <summary>役物を作動させる配当表の役名。BBから連続作動する役物は空。</summary>
+        /// <summary>役物を作動させる配当表の役名。自動で連続作動する役物は空でよい。手動JACインでは作動役を入れる。</summary>
         [HideInInspector] public string[] bonusStartRoles = new string[0];
 
         /// <summary>作動中に使う抽選表。</summary>
@@ -68,7 +69,9 @@ namespace AX.UdonSlot.REV1_0
 
         // ---- 状態（RT） ----
 
+        /// <summary>状態の内部名。制御名の {rt} に使う。</summary>
         [HideInInspector] public string[] stateNames = new string[0];
+        /// <summary>状態の表示名。空は内部名を表示する。</summary>
         [HideInInspector] public string[] stateDisplayNames = new string[0];
 
         /// <summary>状態ごとの抽選表。未設定ならReelOutputControllerの抽選表。</summary>
@@ -88,23 +91,28 @@ namespace AX.UdonSlot.REV1_0
         /// <summary>このフラグのときだけ移行する。空はいつでも。</summary>
         [HideInInspector] public string[] moveOnlyFlags = new string[0];
 
+        /// <summary>移行先の状態。</summary>
         [HideInInspector] public int[] moveToStates = new int[0];
 
+        /// <summary>役物の数。</summary>
         public int GetBonusCount()
         {
             return bonusNames == null ? 0 : bonusNames.Length;
         }
 
+        /// <summary>状態の数。</summary>
         public int GetStateCount()
         {
             return stateNames == null ? 0 : stateNames.Length;
         }
 
+        /// <summary>図柄表示による移行の数。</summary>
         public int GetMoveCount()
         {
             return moveRoles == null ? 0 : moveRoles.Length;
         }
 
+        /// <summary>内部名から役物のインデックスを返す。なければ-1。</summary>
         public int FindBonus(string internalName)
         {
             if (string.IsNullOrEmpty(internalName)) return -1;
@@ -116,11 +124,13 @@ namespace AX.UdonSlot.REV1_0
             return -1;
         }
 
+        /// <summary>役物の内部名。範囲外なら空文字。</summary>
         public string GetBonusName(int index)
         {
             return index >= 0 && index < GetBonusCount() ? bonusNames[index] : "";
         }
 
+        /// <summary>役物の表示名。未設定なら内部名。</summary>
         public string GetBonusDisplayName(int index)
         {
             if (index < 0 || index >= GetBonusCount()) return "";
@@ -128,37 +138,49 @@ namespace AX.UdonSlot.REV1_0
             return string.IsNullOrEmpty(name) ? bonusNames[index] : name;
         }
 
+        /// <summary>役物の種別。範囲外ならBB。</summary>
         public BonusKind GetBonusKind(int index)
         {
             if (bonusKinds == null || index < 0 || index >= bonusKinds.Length) return BonusKind.BB;
             return (BonusKind)bonusKinds[index];
         }
 
+        /// <summary>役物を作動させる配当表の役名。</summary>
         public string GetBonusStartRole(int index)
         {
             return GetString(bonusStartRoles, index);
         }
 
+        /// <summary>作動中に使う抽選表。未設定ならnull。</summary>
         public LotteryTable GetBonusLotteryTable(int index)
         {
             if (bonusLotteryTables == null || index < 0 || index >= bonusLotteryTables.Length) return null;
             return bonusLotteryTables[index];
         }
 
+        /// <summary>連続作動させる役物のインデックス。なしは-1。</summary>
         public int GetBonusChild(int index)
         {
             int child = GetInt(bonusChildIndexes, index, -1);
             return child >= 0 && child < GetBonusCount() && child != index ? child : -1;
         }
 
+        /// <summary>終了する払出枚数。0は使わない。</summary>
         public int GetBonusEndPayout(int index) { return GetInt(bonusEndPayouts, index, 0); }
+        /// <summary>終了する遊技回数。0は使わない。</summary>
         public int GetBonusEndGames(int index) { return GetInt(bonusEndGames, index, 0); }
+        /// <summary>終了する入賞回数。0は使わない。</summary>
         public int GetBonusEndWins(int index) { return GetInt(bonusEndWins, index, 0); }
+        /// <summary>作動中の規定BET。0は通常の最大BET。</summary>
         public int GetBonusRequiredBet(int index) { return GetInt(bonusRequiredBets, index, 0); }
+        /// <summary>成立時に移る状態。-1は移らない。</summary>
         public int GetBonusWonState(int index) { return ClampState(GetInt(bonusWonStates, index, -1)); }
+        /// <summary>終了後に移る状態。-1は状態0。</summary>
         public int GetBonusEndState(int index) { return ClampState(GetInt(bonusEndStates, index, -1)); }
 
+        /// <summary>CB作動中にすぐ止まるリールのビット（1=左、2=中、4=右）。</summary>
         public int GetBonusQuickReels(int index) { return GetInt(bonusQuickReels, index, 0); }
+        /// <summary>連続作動の役物を図柄で作動させる（手動JACイン）か。</summary>
         public bool IsBonusManualChild(int index) { return GetInt(bonusManualChild, index, 0) != 0; }
 
         /// <summary>SB・CBは1遊技で終わる。</summary>
@@ -168,11 +190,13 @@ namespace AX.UdonSlot.REV1_0
             return kind == BonusKind.SB || kind == BonusKind.CB;
         }
 
+        /// <summary>状態の内部名。範囲外なら空文字。</summary>
         public string GetStateName(int index)
         {
             return index >= 0 && index < GetStateCount() ? stateNames[index] : "";
         }
 
+        /// <summary>状態の表示名。未設定なら内部名。</summary>
         public string GetStateDisplayName(int index)
         {
             if (index < 0 || index >= GetStateCount()) return "";
@@ -180,17 +204,23 @@ namespace AX.UdonSlot.REV1_0
             return string.IsNullOrEmpty(name) ? stateNames[index] : name;
         }
 
+        /// <summary>状態の抽選表。未設定ならnull。</summary>
         public LotteryTable GetStateLotteryTable(int index)
         {
             if (stateLotteryTables == null || index < 0 || index >= stateLotteryTables.Length) return null;
             return stateLotteryTables[index];
         }
 
+        /// <summary>状態0へ戻るまでの遊技回数。0は無制限。</summary>
         public int GetStateGameLimit(int index) { return GetInt(stateGameLimits, index, 0); }
 
+        /// <summary>移行元の状態。-1はすべての状態。</summary>
         public int GetMoveFrom(int index) { return GetInt(moveFromStates, index, -1); }
+        /// <summary>移行の契機になる配当表の役名。</summary>
         public string GetMoveRole(int index) { return GetString(moveRoles, index); }
+        /// <summary>移行するフラグ。空はいつでも。</summary>
         public string GetMoveOnlyFlag(int index) { return GetString(moveOnlyFlags, index); }
+        /// <summary>移行先の状態。範囲外なら-1。</summary>
         public int GetMoveTo(int index) { return ClampState(GetInt(moveToStates, index, -1)); }
 
         private int ClampState(int index)

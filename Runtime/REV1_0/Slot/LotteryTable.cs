@@ -11,6 +11,8 @@ namespace AX.UdonSlot.REV1_0
     /// ハズレに指定したフラグには、最大確率分母から他フラグの抽選比率を引いた残りを割り当てる。
     /// 役名はPayoutTableの成立役名と完全に一致させる。
     /// 対象BETの通常フラグ比率がすべて0の場合と、BET 1〜3以外の場合はハズレになる。
+    /// 設定ごとに比率を持てる（settingNames）。
+    /// ボーナス付きフラグ（Cherry_RedBB など）は、元のフラグとボーナスを同時に成立させる。
     /// </summary>
     public class LotteryTable : UdonSharpBehaviour
     {

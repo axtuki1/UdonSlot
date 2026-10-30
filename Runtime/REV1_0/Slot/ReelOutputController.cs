@@ -1544,6 +1544,7 @@ namespace AX.UdonSlot.REV1_0
             return bet > 0 ? bet : bonusTable.GetBonusRequiredBet(activeBonus);
         }
 
+        /// <summary>役物とRT状態の定義表。</summary>
         public BonusTable GetBonusTable() { return bonusTable; }
 
         /// <summary>デバッグ用: 指定したボーナスを成立させる（作動中なら何もしない）。</summary>
@@ -1601,7 +1602,9 @@ namespace AX.UdonSlot.REV1_0
             hasReceivedState = true;
         }
 
+        /// <summary>ボーナスが成立中（作動待ち）か。</summary>
         public bool IsBonusPending() { return pendingBonus >= 0; }
+        /// <summary>ボーナスが作動中か。</summary>
         public bool IsBonusActive() { return activeBonus >= 0; }
 
         /// <summary>成立して作動待ちのボーナスの内部名。なければ空文字。</summary>
@@ -1622,8 +1625,11 @@ namespace AX.UdonSlot.REV1_0
             return Utilities.IsValid(bonusTable) ? bonusTable.GetBonusName(activeChildBonus) : "";
         }
 
+        /// <summary>作動中の役物の払出枚数。</summary>
         public int GetBonusPayoutCount() { return bonusPayoutCount; }
+        /// <summary>作動中の役物の遊技回数。</summary>
         public int GetBonusGameCount() { return bonusGameCount; }
+        /// <summary>作動中の役物の入賞回数。</summary>
         public int GetBonusWinCount() { return bonusWinCount; }
 
         /// <summary>現在の状態（RT）の内部名。</summary>
@@ -1632,8 +1638,11 @@ namespace AX.UdonSlot.REV1_0
             return Utilities.IsValid(bonusTable) ? bonusTable.GetStateName(stateIndex) : "";
         }
 
+        /// <summary>現在の状態（RT）のインデックス。0は基底の状態。</summary>
         public int GetStateIndex() { return stateIndex; }
+        /// <summary>現在の状態に入ってからの遊技回数。</summary>
         public int GetStateGameCount() { return stateGameCount; }
+        /// <summary>設定（0始まり）。</summary>
         public int GetSettingIndex() { return settingIndex; }
 
         /// <summary>設定（0始まり）を変える。</summary>
@@ -1644,11 +1653,13 @@ namespace AX.UdonSlot.REV1_0
             RequestSerialization();
         }
 
+        /// <summary>自分がリール制御の Owner か。</summary>
         public bool IsOwner()
         {
             return Networking.IsOwner(gameObject);
         }
 
+        /// <summary>自分をリール制御の Owner にする。</summary>
         public void SetOwner()
         {
             if (IsOwner()) return;
