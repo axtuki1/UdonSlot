@@ -26,7 +26,7 @@ namespace AX.UdonSlot.REV1_0.Editor
             }
 
             EditorGUILayout.PropertyField(serializedObject.FindProperty("tags"), true);
-            // シンボルはリールデータのシンボル名から取得し選択させる
+            // 図柄はリールデータの図柄名から取得し選択させる
             WinPair winPair = (WinPair)target;
             ReelOutputController reelOutputController = winPair.transform.parent.GetComponentInParent<ReelOutputController>();
             if (reelOutputController != null)

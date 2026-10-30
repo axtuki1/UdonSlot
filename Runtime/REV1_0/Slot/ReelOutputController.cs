@@ -27,7 +27,7 @@ namespace AX.UdonSlot.REV1_0
     }
 
     /// <summary>
-    /// 機種固有の抽選、リール制御、成立役判定、配当計算を実装するための基底クラス。
+    /// 抽選、リール制御、成立役判定、配当計算、役物・RTを受け持つ基底クラス。機種固有の処理は派生クラスで足す。
     /// メイン基板から遊技の各段階で呼び出される。
     /// </summary>
     public class ReelOutputController : UdonSharpBehaviour
