@@ -1543,6 +1543,31 @@ namespace AX.UdonSlot.REV1_0
             NotifySubBoard(nameof(SubBoard.BonusWon), bonusName);
         }
 
+        /// <summary>
+        /// 役物と状態（RT）を初期状態に戻す（ボーナス成立中・作動中・RT・各カウント・役強制）。設定はそのまま。
+        /// MainBoard.ResetMachine から呼ぶ。
+        /// </summary>
+        public void ResetBonusState()
+        {
+            SetOwner();
+            activeFlag = "";
+            nextFlag = "";
+            pendingBonus = -1;
+            activeBonus = -1;
+            activeChildBonus = -1;
+            bonusPayoutCount = 0;
+            bonusGameCount = 0;
+            bonusWinCount = 0;
+            childPayoutCount = 0;
+            childGameCount = 0;
+            childWinCount = 0;
+            stateIndex = 0;
+            stateGameCount = 0;
+            isStateEnteredBySymbol = false;
+            isStateEnteredThisGame = false;
+            RequestSerialization();
+        }
+
         /// <summary>デバッグ用: 成立中のボーナスを取り消す。</summary>
         public void ClearPendingBonus()
         {

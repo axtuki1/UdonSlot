@@ -623,6 +623,17 @@ namespace AX.UdonSlot.REV1_0
         /// <summary>機種固有の状態移行演出を実装する拡張ポイント。引数は移行先の状態の内部名。</summary>
         public virtual void StateChangeLogic(string stateName) { }
 
+        /// <summary>機種のリセット（MainBoard.ResetMachine）を全員の画面へ伝える。演出を止めて表示を戻す。</summary>
+        [NetworkCallable]
+        public void ResetMachine()
+        {
+            if (Utilities.IsValid(effectPlayer)) effectPlayer.ResetAll();
+            ResetMachineLogic();
+        }
+
+        /// <summary>機種固有の表示（告知ランプ、液晶など）を初期状態に戻す拡張ポイント。全員の画面で呼ばれる。</summary>
+        public virtual void ResetMachineLogic() { }
+
         public void NetworkStandby()
         {
             NetworkStandbyLogic();

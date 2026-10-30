@@ -674,6 +674,33 @@ namespace AX.UdonSlot.REV1_0
 
         public void RequestGameStart() { requestGameStart = true; }
 
+        /// <summary>
+        /// 機種を初期状態に戻す（ボーナス成立中・作動中、RT、演出、掛けているBET）。クレジットと設定はそのまま。
+        /// 遊技中（レバーオン後〜全リール停止）は何もしない。呼んだ人が持ち主になり、全員の画面が戻る。
+        /// 機種ごとのランプなどは ResetMachineLogic（MainBoard・SubBoard）で戻す。
+        /// </summary>
+        /// <returns>戻したら true。</returns>
+        public bool ResetMachine()
+        {
+            if (isGaming || requestGameStart || reelEffectStartsGame) return false;
+            if (isRollingReel1 || isRollingReel2 || isRollingReel3) return false;
+            SetOwner();
+            // リプレイの自動BETはクレジットから引いていないので返さない。
+            if (!isReplay) credit += bet;
+            bet = 0;
+            isReplay = false;
+            lastPayout = 0;
+            if (Utilities.IsValid(reelOutputController)) reelOutputController.ResetBonusState();
+            if (Utilities.IsValid(subBoard) && Utilities.IsValid(subBoard.effectPlayer)) subBoard.effectPlayer.ClearSyncedPatterns();
+            ResetMachineLogic();
+            RequestSerialization();
+            if (Utilities.IsValid(subBoard)) subBoard.SendCustomNetworkEvent(NetworkEventTarget.All, nameof(subBoard.ResetMachine));
+            return true;
+        }
+
+        /// <summary>ResetMachine で、機種ごとの状態（MainBoard 側の変数など）を戻す拡張ポイント。持ち主の画面で呼ばれる。</summary>
+        public virtual void ResetMachineLogic() { }
+
         public int GetReelStopIndex(int reelIndex)
         {
             return pictureCount - stoppedReelsSymbolIndex[reelIndex] - 1;

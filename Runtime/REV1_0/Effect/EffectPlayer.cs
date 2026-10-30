@@ -257,6 +257,41 @@ namespace AX.UdonSlot.REV1_0
             }
         }
 
+        /// <summary>
+        /// 全チャンネルを止め、演出が触ったオブジェクト・コンポーネントの ON/OFF をすべて開始時に戻す（この画面だけ）。
+        /// 機種のリセット（MainBoard.ResetMachine）から全員の画面で呼ばれる。
+        /// </summary>
+        public void ResetAll()
+        {
+            for (int c = 0; c < ChannelCount; c++)
+            {
+                currentPattern[c] = -1;
+                currentParameter[c] = 0;
+                hasPending[c] = false;
+            }
+            for (int i = 0; i < queueAction.Length; i++) queueAction[i] = -1;
+            stopSoundMuted = false;
+            CaptureInitial();
+            for (int i = 0; i < activeTargets.Length && i < activeInitial.Length; i++)
+            {
+                if (Utilities.IsValid(activeTargets[i])) activeTargets[i].SetActive(activeInitial[i]);
+            }
+            for (int i = 0; i < enableInitial.Length; i++) SetEnabled(i, enableInitial[i]);
+        }
+
+        /// <summary>途中参加者向けに同期している常駐チャンネルのパターンを消す。メイン基板の所有者だけ。</summary>
+        public void ClearSyncedPatterns()
+        {
+            if (!IsMainBoardOwner()) return;
+            if (!Networking.IsOwner(gameObject)) Networking.SetOwner(Networking.LocalPlayer, gameObject);
+            for (int c = 0; c < ChannelCount; c++)
+            {
+                syncedPatterns[c] = 0;
+                syncedParameters[c] = 0;
+            }
+            RequestSerialization();
+        }
+
         public override void OnDeserialization()
         {
             ApplySynced();
