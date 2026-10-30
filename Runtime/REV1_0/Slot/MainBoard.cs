@@ -35,10 +35,10 @@ namespace AX.UdonSlot.REV1_0
 
         public bool isDebug = false;
 
-        public int pictureCount = 21; // シンボルの数
+        public int pictureCount = 21; // 図柄の数
 
         /// <summary>
-        /// シンボル1つ分の角度
+        /// 図柄1つ分の角度
         /// </summary>
         protected float anglePerSymbol;
 
@@ -148,7 +148,7 @@ namespace AX.UdonSlot.REV1_0
         public float firstLeverOnTime = 0f;
 
         [UdonSynced]
-        public float gameStartTime = 0f; // 前回ゲームの開始時間（秒）
+        public float gameStartTime = 0f; // 前回ゲームの開始時間（ミリ秒）
 
         [SerializeField]
         protected float maxReelSpeed = 0.4615f;
@@ -180,8 +180,8 @@ namespace AX.UdonSlot.REV1_0
         protected SegView segView;
         
         /// <summary>
-        /// 各リールの停止ボタン押下時のシンボルのインデックス。0からpictureCount-1までの値。0ならシンボル0が下段に、1ならシンボル1が下段に停止する。<br />
-        /// 滑り前のシンボルを示すので注意。
+        /// 各リールの停止ボタン押下時の図柄のインデックス。0からpictureCount-1までの値。0なら図柄0が下段に、1なら図柄1が下段に停止する。<br />
+        /// 滑り前の図柄を示すので注意。
         /// 回転中のリールは-1。
         /// </summary>
         [UdonSynced]
@@ -458,10 +458,10 @@ namespace AX.UdonSlot.REV1_0
             reelTransform.localRotation = currentAccumulatedRotation * targetRotation;
         }
 
-        /**
-         * 最後のゲーム開始からの経過時間
-         * ※ゲーム開始時、この数値が4100ms以上である必要がある
-         */
+        /// <summary>
+        /// 最後のゲーム開始からの経過時間（ミリ秒）。
+        /// ※ゲーム開始時、この数値が4100ms以上である必要がある
+        /// </summary>
         public float GetLastGameStartElapsed()
         {
             return Networking.GetServerTimeInMilliseconds() - gameStartTime;
@@ -626,13 +626,13 @@ namespace AX.UdonSlot.REV1_0
             firstLeverOnTime = Networking.GetServerTimeInMilliseconds();
             // 疑似遊技中は再抽選せず、現在のフラグを維持する。
             if (!isMockPlay) reelOutputController.GenerateFlag(bet);
-            // Mainの処理（LeverOnLogic）を終えてからSubへ通知する。
+            // メイン基板の処理（LeverOnLogic）を終えてからサブ基板へ通知する。
             reelEffectStartsGame = false;
             string activeFlag = Utilities.IsValid(reelOutputController) ? reelOutputController.GetActiveBaseFlag() : "";
             bool startNow = LeverOnLogic(activeFlag);
             // 同期変数より先にイベントが届いても、全員が今回のフラグを読めるように引数で渡す。
             subBoard.SendCustomNetworkEvent(NetworkEventTarget.All, nameof(subBoard.LeverOn), activeFlag);
-            // Subの演出（演出エディタのリールアクションなど）がゲーム開始を引き受けたときも、ここでは開始しない。
+            // サブ基板の演出（演出エディタのリールアクションなど）がゲーム開始を引き受けたときも、ここでは開始しない。
             if (!startNow || reelEffectStartsGame) return;
             subBoard.Wait();
             RequestGameStart();
@@ -791,9 +791,9 @@ namespace AX.UdonSlot.REV1_0
             return pictureCount - stoppedReelsSymbolIndex[reelIndex] - 1;
         }
 
-        /**
-         * リール回転開始時の基本処理
-         */
+        /// <summary>
+        /// リール回転開始時の基本処理
+        /// </summary>
         public void StartReel()
         {
             if (!requestGameStart) return;
@@ -927,7 +927,7 @@ namespace AX.UdonSlot.REV1_0
         /// リール停止時の追加処理
         /// </summary>
         /// <param name="reelIndex">停止リール</param>
-        /// <param name="stopIndex">停止インデックス(下段のシンボルのインデックス)</param>
+        /// <param name="stopIndex">停止インデックス(下段の図柄のインデックス)</param>
         /// <param name="accuracy">停止精度</param>
         public virtual void StopReelLogic(int reelIndex, int stopIndex, float accuracy) { }
 

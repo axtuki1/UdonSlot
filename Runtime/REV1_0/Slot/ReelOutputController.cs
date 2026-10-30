@@ -201,7 +201,7 @@ namespace AX.UdonSlot.REV1_0
         /// 例えば、チェリーが成立している場合は左リールにチェリーを引き込むために左リールの滑りコマ数を返す、など。
         /// </summary>
         /// <param name="reelIndex">リールのインデックス。左から0,1,2...</param>
-        /// <param name="currentSymbol">現在リールの下段に表示されているシンボルのインデックス。0からpictureCount-1までの値。0ならシンボル0が表示されている。</param>
+        /// <param name="currentSymbol">現在リールの下段に表示されている図柄のインデックス。0からpictureCount-1までの値。0なら図柄0が表示されている。</param>
         /// <returns>リールの滑りコマ数</returns>
         public virtual int ControllReel(int reelIndex, int currentSymbol)
         {
@@ -344,8 +344,8 @@ namespace AX.UdonSlot.REV1_0
         /// <summary>
         /// プログラムによって滑りコマ数を制御する関数。
         /// </summary>
-        /// <param name="symbols">リールに表示されているシンボルの配列。</param>
-        /// <param name="currentSymbol">現在リールの下段に表示されているシンボルのインデックス。0からpictureCount-1までの値。0ならシンボル0が表示されている。</param>
+        /// <param name="symbols">リールに表示されている図柄の配列。</param>
+        /// <param name="currentSymbol">現在リールの下段に表示されている図柄のインデックス。0からpictureCount-1までの値。0なら図柄0が表示されている。</param>
         /// <param name="reelIndex">リールのインデックス</param>
         /// <param name="stopReelCount">停止済リール数(当該リールは含まない)</param>
         /// <returns>リールの滑りコマ数。</returns>
