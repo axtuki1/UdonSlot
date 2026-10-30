@@ -713,6 +713,37 @@ namespace AX.UdonSlot.REV1_0
             return true;
         }
 
+        /// <summary>
+        /// ボーナス・状態の通知を振り分ける（ReelOutputController が呼ぶ）。SubBoard の同名の通知より先に、持ち主の画面だけで呼ばれる。
+        /// </summary>
+        public void OnBonusEvent(string eventName, string value)
+        {
+            if (eventName == nameof(SubBoard.BonusWon)) BonusWonLogic(value);
+            else if (eventName == nameof(SubBoard.BonusStart)) BonusStartLogic(value);
+            else if (eventName == nameof(SubBoard.BonusEnd)) BonusEndLogic(value);
+            else if (eventName == nameof(SubBoard.JACGameStart)) JACGameStartLogic(value);
+            else if (eventName == nameof(SubBoard.JACGameEnd)) JACGameEndLogic(value);
+            else if (eventName == nameof(SubBoard.StateChange)) StateChangeLogic(value);
+        }
+
+        /// <summary>ボーナスが成立した（レバーオン時）。持ち主の画面だけ。引数は役物の内部名。</summary>
+        public virtual void BonusWonLogic(string bonusName) { }
+
+        /// <summary>ボーナスが作動した（作動役が揃ったゲームの終了時）。持ち主の画面だけ。</summary>
+        public virtual void BonusStartLogic(string bonusName) { }
+
+        /// <summary>ボーナスが終了した。持ち主の画面だけ。</summary>
+        public virtual void BonusEndLogic(string bonusName) { }
+
+        /// <summary>BB・MB中に連続作動の役物（JACゲームなど）が作動した。持ち主の画面だけ。</summary>
+        public virtual void JACGameStartLogic(string bonusName) { }
+
+        /// <summary>連続作動の役物が終わった。持ち主の画面だけ。</summary>
+        public virtual void JACGameEndLogic(string bonusName) { }
+
+        /// <summary>状態（RT）が変わった。持ち主の画面だけ。引数は移行先の状態の内部名。</summary>
+        public virtual void StateChangeLogic(string stateName) { }
+
         /// <summary>ResetMachine で、機種ごとの状態（MainBoard 側の変数など）を戻す拡張ポイント。持ち主の画面で呼ばれる。</summary>
         public virtual void ResetMachineLogic() { }
 

@@ -1508,7 +1508,10 @@ namespace AX.UdonSlot.REV1_0
 
         private void NotifySubBoard(string eventName, string value)
         {
-            if (!Utilities.IsValid(mainBoard) || !Utilities.IsValid(mainBoard.subBoard)) return;
+            if (!Utilities.IsValid(mainBoard)) return;
+            // メイン基板（持ち主の画面）には先に直接伝える。
+            mainBoard.OnBonusEvent(eventName, value);
+            if (!Utilities.IsValid(mainBoard.subBoard)) return;
             mainBoard.subBoard.SendCustomNetworkEvent(NetworkEventTarget.All, eventName, value);
         }
 
