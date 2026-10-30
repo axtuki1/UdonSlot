@@ -499,7 +499,7 @@ namespace AX.UdonSlot.REV1_0
             return n - centerIndex;
         }
 
-        /// <summary>演出エディタのパターンを内部名で呼ぶ（チャンネル0、そのゲームだけ。メイン基板の所有者だけ）。null なら止める。SubBoardにEffectPlayerが無ければ何もしない。</summary>
+        /// <summary>演出エディタのパターンを内部名で呼ぶ（チャンネル0、そのゲームだけ。MainBoard の Ownerだけ）。null なら止める。SubBoardにEffectPlayerが無ければ何もしない。</summary>
         public void CallEffectPattern(string patternName)
         {
             if (Utilities.IsValid(subBoard) && Utilities.IsValid(subBoard.effectPlayer)) subBoard.effectPlayer.CallEffectPattern(patternName);
@@ -690,7 +690,7 @@ namespace AX.UdonSlot.REV1_0
         /// 機種を初期状態に戻す（ボーナス成立中・作動中、RT、演出、掛けているBET）。クレジットと設定はそのまま。
         /// force が false なら、遊技中（レバーオン後〜全リール停止）は何もしない。
         /// force が true なら遊技中でも戻す：回っているリールはその場の近いコマで止め、リール演出・ゲーム開始の予約・操作禁止を取り消す。
-        /// 呼んだ人が持ち主になり、全員の画面が戻る。機種ごとのランプなどは ResetMachineLogic（MainBoard・SubBoard）で戻す。
+        /// 呼んだ人が Owner になり、全員の画面が戻る。機種ごとのランプなどは ResetMachineLogic（MainBoard・SubBoard）で戻す。
         /// </summary>
         /// <returns>戻したら true。</returns>
         public bool ResetMachine(bool force)
@@ -714,7 +714,7 @@ namespace AX.UdonSlot.REV1_0
         }
 
         /// <summary>
-        /// ボーナス・状態の通知を振り分ける（ReelOutputController が呼ぶ）。SubBoard の同名の通知より先に、持ち主の画面だけで呼ばれる。
+        /// ボーナス・状態の通知を振り分ける（ReelOutputController が呼ぶ）。SubBoard の同名の通知より先に、Owner の画面だけで呼ばれる。
         /// </summary>
         public void OnBonusEvent(string eventName, string value)
         {
@@ -726,25 +726,25 @@ namespace AX.UdonSlot.REV1_0
             else if (eventName == nameof(SubBoard.StateChange)) StateChangeLogic(value);
         }
 
-        /// <summary>ボーナスが成立した（レバーオン時）。持ち主の画面だけ。引数は役物の内部名。</summary>
+        /// <summary>ボーナスが成立した（レバーオン時）。Owner の画面だけ。引数は役物の内部名。</summary>
         public virtual void BonusWonLogic(string bonusName) { }
 
-        /// <summary>ボーナスが作動した（作動役が揃ったゲームの終了時）。持ち主の画面だけ。</summary>
+        /// <summary>ボーナスが作動した（作動役が揃ったゲームの終了時）。Owner の画面だけ。</summary>
         public virtual void BonusStartLogic(string bonusName) { }
 
-        /// <summary>ボーナスが終了した。持ち主の画面だけ。</summary>
+        /// <summary>ボーナスが終了した。Owner の画面だけ。</summary>
         public virtual void BonusEndLogic(string bonusName) { }
 
-        /// <summary>BB・MB中に連続作動の役物（JACゲームなど）が作動した。持ち主の画面だけ。</summary>
+        /// <summary>BB・MB中に連続作動の役物（JACゲームなど）が作動した。Owner の画面だけ。</summary>
         public virtual void JACGameStartLogic(string bonusName) { }
 
-        /// <summary>連続作動の役物が終わった。持ち主の画面だけ。</summary>
+        /// <summary>連続作動の役物が終わった。Owner の画面だけ。</summary>
         public virtual void JACGameEndLogic(string bonusName) { }
 
-        /// <summary>状態（RT）が変わった。持ち主の画面だけ。引数は移行先の状態の内部名。</summary>
+        /// <summary>状態（RT）が変わった。Owner の画面だけ。引数は移行先の状態の内部名。</summary>
         public virtual void StateChangeLogic(string stateName) { }
 
-        /// <summary>ResetMachine で、機種ごとの状態（MainBoard 側の変数など）を戻す拡張ポイント。持ち主の画面で呼ばれる。</summary>
+        /// <summary>ResetMachine で、機種ごとの状態（MainBoard 側の変数など）を戻す拡張ポイント。Owner の画面で呼ばれる。</summary>
         public virtual void ResetMachineLogic() { }
 
         /// <summary>遊技を打ち切る（ResetMachine の force 用）。回っているリールは近いコマで止める。</summary>
@@ -1612,7 +1612,7 @@ namespace AX.UdonSlot.REV1_0
         }
 
         /// <summary>
-        /// リール演出（フリーズなど）を、所有者の今のリール位置からのコマ数で再生する。
+        /// リール演出（フリーズなど）を、Owner の今のリール位置からのコマ数で再生する。
         /// 全員へ配信する。動かしているリールは終わるまで止められない。レバーオン時は終わるまで操作を止める。
         /// レバーオン時（LeverOnLogicから呼んでfalseを返す）は、終わったらゲームを開始する。
         /// 回転中（PushStopButtonLogicから呼んでfalseを返す）は、終わると回転に戻る。
@@ -1664,7 +1664,7 @@ namespace AX.UdonSlot.REV1_0
             int sections = durations.Length;
             if (sections == 0 || left.Length != sections || center.Length != sections || right.Length != sections) return -1;
 
-            // 角度は所有者の今の位置を基準にした絶対角で送る。受け取った側は各区間の開始角から動くので、
+            // 角度はOwner の今の位置を基準にした絶対角で送る。受け取った側は各区間の開始角から動くので、
             // それまでの各自の表示位置がずれていても（回転中に割り込んでも）同じ動きになる。
             float oneAngle = GetOneSymbolAngle();
             float[] baseAngles = new float[] { GetCurrentReelAngle(0), GetCurrentReelAngle(1), GetCurrentReelAngle(2) };

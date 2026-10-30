@@ -7,7 +7,7 @@ namespace AX.UdonSlot.REV1_0
 {
     /// <summary>
     /// オブジェクトをローカルプレイヤーの指定ボーンへ追従させる。
-    /// 物理ボタン操作時のローカル所有者判定にも使用する。
+    /// 物理ボタン操作時のローカル Owner 判定にも使用する。
     /// </summary>
     public class PlayerTracking : UdonSharpBehaviour
     {

@@ -1256,7 +1256,7 @@ namespace AX.UdonSlot.REV1_0
             return lotteryTable;
         }
 
-        /// <summary>今回の遊技の抽選表。抽選前や所有者が変わった後は今の状態から決める。</summary>
+        /// <summary>今回の遊技の抽選表。抽選前や Owner が変わった後は今の状態から決める。</summary>
         public LotteryTable GetCurrentLotteryTable()
         {
             return Utilities.IsValid(drawnLotteryTable) ? drawnLotteryTable : GetLotteryTableForDraw();
@@ -1509,7 +1509,7 @@ namespace AX.UdonSlot.REV1_0
         private void NotifySubBoard(string eventName, string value)
         {
             if (!Utilities.IsValid(mainBoard)) return;
-            // メイン基板（持ち主の画面）には先に直接伝える。
+            // MainBoard（Owner の画面）には先に直接伝える。
             mainBoard.OnBonusEvent(eventName, value);
             if (!Utilities.IsValid(mainBoard.subBoard)) return;
             mainBoard.subBoard.SendCustomNetworkEvent(NetworkEventTarget.All, eventName, value);
