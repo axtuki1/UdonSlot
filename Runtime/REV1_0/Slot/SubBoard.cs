@@ -56,7 +56,7 @@ namespace AX.UdonSlot.REV1_0
         /// <summary>演出エディタのパターンを再生する。無くてもよい。</summary>
         public EffectPlayer effectPlayer;
 
-        /// <summary>このゲームで止まったリールの数（各自の画面で数える）。</summary>
+        /// <summary>このゲームで止まったリールの数（ローカルで数える）。</summary>
         private int effectStopCount = 0;
         /// <summary>最後に見たゲーム開始時刻。変わったらリール回転開始（ネットワークを増やさず同期変数で知る）。</summary>
         private float effectSeenGameStart = 0f;
@@ -133,7 +133,7 @@ namespace AX.UdonSlot.REV1_0
             }
         }
 
-        /// <summary>指定リール（左から0～2）の上下照明色を設定する。HDR値対応、ローカル演出。</summary>
+        /// <summary>指定リール（左から0～2）の上下照明色を設定する。HDR値対応。ローカル。</summary>
         public void SetReelLightColors(int reelIndex, Color upperColor, Color lowerColor)
         {
             if (!CanSetReelLightColor(reelIndex)) return;
@@ -253,8 +253,10 @@ namespace AX.UdonSlot.REV1_0
             LateUpdateLogic();
         }
         
+        /// <summary>機種固有の処理を実装する拡張ポイント。ローカルで毎フレーム、リール照明の更新後に呼ばれる。</summary>
         public virtual void LateUpdateLogic(){}
         
+        /// <summary>機種固有の初期化を実装する拡張ポイント。ローカルで開始時に1回呼ばれる。</summary>
         public virtual void StartLogic(){}
         
         public virtual void Update()
@@ -377,18 +379,17 @@ namespace AX.UdonSlot.REV1_0
             BetButtonEffectLogic(betButton, mat, isCanBetting);
         }
         
-        /// <summary>
-        /// MaxBetボタンの表示を定義する。
-        /// </summary>
+        /// <summary>機種固有のMaxBetボタン表示を実装する拡張ポイント。ローカルで毎フレーム呼ばれる。</summary>
         /// <param name="betButton">MaxBetボタンのレンダラー</param>
         /// <param name="mat">マテリアル</param>
         /// <param name="isCanBetting">ベット可能かどうか</param>
         public virtual void BetButtonEffectLogic(Renderer betButton, Material mat, bool isCanBetting)
         { }
         
+        /// <summary>機種固有の処理を実装する拡張ポイント。ローカルで毎フレーム呼ばれる。</summary>
         public virtual void UpdateLogic(){}
 
-        /// <summary>メイン基板のゲーム開始時刻が変わったら、演出へリール回転開始を伝える。各自の画面で動く。</summary>
+        /// <summary>メイン基板のゲーム開始時刻が変わったら、演出へリール回転開始を伝える。ローカル。</summary>
         private void NotifyEffectReelStart()
         {
             if (!Utilities.IsValid(mainBoard)) return;
@@ -412,9 +413,11 @@ namespace AX.UdonSlot.REV1_0
             FixedUpdateLogic();
         }
         
+        /// <summary>機種固有の処理を実装する拡張ポイント。ローカルで物理更新ごとに呼ばれる。</summary>
         public virtual void FixedUpdateLogic(){}
         
-        /// <summary>レバーオンを全員へ通知する。引数は今回の成立フラグ（ボーナスを除いたもの）。</summary>
+        /// <summary>レバーオンを全員へ通知する。</summary>
+        /// <param name="flag">今回の成立フラグ（ボーナスを除いたもの）</param>
         [NetworkCallable]
         public void LeverOn(string flag)
         {
@@ -426,7 +429,8 @@ namespace AX.UdonSlot.REV1_0
             LeverOnLogic(flag);
         }
 
-        /// <summary>機種固有のレバーオン演出を実装する拡張ポイント。全員の画面で呼ばれる。gameFlagで今回のフラグを読める。</summary>
+        /// <summary>機種固有のレバーオン演出を実装する拡張ポイント。全員の画面で呼ばれる。gameFlagでも今回のフラグを読める。</summary>
+        /// <param name="flag">今回の成立フラグ（ボーナスを除いたもの）</param>
         public virtual void LeverOnLogic(string flag) { }
 
         [NetworkCallable]
@@ -479,11 +483,11 @@ namespace AX.UdonSlot.REV1_0
             ReelStopLogic(reelIndex, stopIndex, accuracy, possibleRoles);
         }
 
-        /// <summary>
-        /// リール停止時の演出を実装する拡張ポイント。全員の画面で呼ばれる。
-        /// possibleRolesは、ここまでに止まったリールの図柄で、まだ揃う可能性がある役の内部名（テンパイ音などに使う）。
-        /// 全リール停止時は実際に揃った役になる。
-        /// </summary>
+        /// <summary>リール停止時の演出を実装する拡張ポイント。全員の画面で呼ばれる。</summary>
+        /// <param name="reelIndex">止まったリール（左0～右2）</param>
+        /// <param name="stopIndex">押した位置（滑る前の下段の図柄、0始まり）</param>
+        /// <param name="accuracy">押したタイミングの正確さ。図柄ちょうどで1、半コマずれで0.5</param>
+        /// <param name="possibleRoles">ここまでに止まったリールの図柄で、まだ揃う可能性がある役の内部名（テンパイ音などに使う）。全リール停止時は実際に揃った役</param>
         public virtual void ReelStopLogic(int reelIndex, int stopIndex, float accuracy, string[] possibleRoles)
         {
             if (!CanPlaySound()) return;
@@ -499,6 +503,8 @@ namespace AX.UdonSlot.REV1_0
             BetLogic(betCount);
         }
 
+        /// <summary>機種固有のBET音・表示を実装する拡張ポイント。メイン基板の Owner の画面だけで呼ばれる。</summary>
+        /// <param name="betCount">今回BETした枚数</param>
         public virtual void BetLogic(int betCount)
         {
             if (!CanPlaySound() || betCount <= 0) return;
@@ -518,6 +524,7 @@ namespace AX.UdonSlot.REV1_0
         }
 
         /// <summary>機種固有の再遊技音やBET表示演出を実装する拡張ポイント。全員の画面で呼ばれる。</summary>
+        /// <param name="betCount">再装填された枚数</param>
         public virtual void ReplayBetLogic(int betCount) { }
         
         [NetworkCallable]
@@ -526,6 +533,7 @@ namespace AX.UdonSlot.REV1_0
             CreditLogic();
         }
         
+        /// <summary>機種固有のクレジット音を実装する拡張ポイント。メイン基板の Owner の画面だけで呼ばれる。</summary>
         public virtual void CreditLogic()
         {
             if (!CanPlaySound()) return;
@@ -538,6 +546,7 @@ namespace AX.UdonSlot.REV1_0
             WaitLogic();
         }
         
+        /// <summary>機種固有のウェイト音を実装する拡張ポイント。メイン基板の Owner の画面だけで呼ばれる。</summary>
         public virtual void WaitLogic()
         {
             if (!CanPlaySound()) return;
@@ -572,7 +581,8 @@ namespace AX.UdonSlot.REV1_0
             BonusWonLogic(bonusName);
         }
 
-        /// <summary>機種固有のボーナス成立演出（告知ランプなど）を実装する拡張ポイント。全員の画面で呼ばれる。引数は役物の内部名。</summary>
+        /// <summary>機種固有のボーナス成立演出（告知ランプなど）を実装する拡張ポイント。全員の画面で呼ばれる。</summary>
+        /// <param name="bonusName">役物の内部名</param>
         public virtual void BonusWonLogic(string bonusName) { }
 
         /// <summary>BB・MB中に連続作動の役物（JACゲームなど）が作動したことを通知する。</summary>
@@ -582,7 +592,8 @@ namespace AX.UdonSlot.REV1_0
             JACGameStartLogic(bonusName);
         }
 
-        /// <summary>BB・MB中に連続作動の役物（JACゲームなど）が作動したときの演出を実装する拡張ポイント。全員の画面で呼ばれる。引数は役物の内部名。</summary>
+        /// <summary>BB・MB中に連続作動の役物（JACゲームなど）が作動したときの演出を実装する拡張ポイント。全員の画面で呼ばれる。</summary>
+        /// <param name="bonusName">役物の内部名</param>
         public virtual void JACGameStartLogic(string bonusName) { }
 
         /// <summary>連続作動の役物が終わったことを通知する。</summary>
@@ -592,7 +603,8 @@ namespace AX.UdonSlot.REV1_0
             JACGameEndLogic(bonusName);
         }
 
-        /// <summary>連続作動の役物が終わったときの演出を実装する拡張ポイント。全員の画面で呼ばれる。引数は役物の内部名。</summary>
+        /// <summary>連続作動の役物が終わったときの演出を実装する拡張ポイント。全員の画面で呼ばれる。</summary>
+        /// <param name="bonusName">役物の内部名</param>
         public virtual void JACGameEndLogic(string bonusName) { }
 
         /// <summary>ボーナスが作動したことを通知する。</summary>
@@ -602,7 +614,8 @@ namespace AX.UdonSlot.REV1_0
             BonusStartLogic(bonusName);
         }
 
-        /// <summary>機種固有のボーナス開始演出を実装する拡張ポイント。全員の画面で呼ばれる。引数は役物の内部名。</summary>
+        /// <summary>機種固有のボーナス開始演出を実装する拡張ポイント。全員の画面で呼ばれる。</summary>
+        /// <param name="bonusName">役物の内部名</param>
         public virtual void BonusStartLogic(string bonusName) { }
 
         /// <summary>ボーナスが終了したことを通知する。</summary>
@@ -612,7 +625,8 @@ namespace AX.UdonSlot.REV1_0
             BonusEndLogic(bonusName);
         }
 
-        /// <summary>機種固有のボーナス終了演出を実装する拡張ポイント。全員の画面で呼ばれる。引数は役物の内部名。</summary>
+        /// <summary>機種固有のボーナス終了演出を実装する拡張ポイント。全員の画面で呼ばれる。</summary>
+        /// <param name="bonusName">役物の内部名</param>
         public virtual void BonusEndLogic(string bonusName) { }
 
         /// <summary>状態（RT）が変わったことを通知する。</summary>
@@ -622,7 +636,8 @@ namespace AX.UdonSlot.REV1_0
             StateChangeLogic(stateName);
         }
 
-        /// <summary>機種固有の状態移行演出を実装する拡張ポイント。全員の画面で呼ばれる。引数は移行先の状態の内部名。</summary>
+        /// <summary>機種固有の状態移行演出を実装する拡張ポイント。全員の画面で呼ばれる。</summary>
+        /// <param name="stateName">移行先の状態の内部名</param>
         public virtual void StateChangeLogic(string stateName) { }
 
         /// <summary>機種のリセット（MainBoard.ResetMachine）を全員の画面へ伝える。演出を止めて表示を戻す。</summary>
