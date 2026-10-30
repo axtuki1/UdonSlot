@@ -38,7 +38,7 @@ namespace AX.UdonSlot.REV1_0
         [SerializeField]
         public MainBoard mainBoard;
 
-        /// <summary>レバーON時のフラグ抽選に使用する抽選テーブル。</summary>
+        /// <summary>レバーオン時のフラグ抽選に使用する抽選テーブル。</summary>
         [SerializeField]
         protected LotteryTable lotteryTable;
 
@@ -58,12 +58,12 @@ namespace AX.UdonSlot.REV1_0
         [SerializeField]
         protected int maxSlipCount = 4;
 
-        /// <summary>現在成立しているフラグの内部使用名。</summary>
+        /// <summary>現在成立しているフラグの内部名。</summary>
         [UdonSynced]
         protected string activeFlag = "";
         
         /// <summary>
-        /// 次回抽選時に使用するフラグの内部使用名。役強制時想定。
+        /// 次回抽選時に使用するフラグの内部名。役強制時想定。
         /// レバーオン時に抽選の代わりにactiveFlagへコピーされる。
         /// null時は抽選を行う。
         /// </summary>
@@ -133,7 +133,7 @@ namespace AX.UdonSlot.REV1_0
         private bool isStateEnteredThisGame = false;
         
         /// <summary>
-        /// レバーON時にLotteryTableからフラグを抽選し、結果を同期する。
+        /// レバーオン時にLotteryTableからフラグを抽選し、結果を同期する。
         /// 抽選後、機種固有処理を追加するためのGenerateFlagLogicを呼び出す。
         /// </summary>
         /// <param name="bet">現在のBET数。</param>
@@ -170,15 +170,16 @@ namespace AX.UdonSlot.REV1_0
 
         /// <summary>
         /// フラグ抽選後に機種固有処理を追加するための拡張ポイント。
-        /// 既存のGenerateFlagLogic(int)オーバーライドも呼び出す。
         /// </summary>
+        /// <param name="bet">現在のBET数。</param>
+        /// <param name="activeFlag">抽選されたフラグの内部名。</param>
         public virtual void GenerateFlagLogic(int bet, string activeFlag)
         {
             
         }
 
         /// <summary>
-        /// 成立役に応じた後処理(ボーナス入賞時の状態移行等)を行う。
+        /// ゲーム終了時（払出・リプレイの後）に呼ばれる拡張ポイント。Owner の画面だけで呼ばれる。
         /// </summary>
         public virtual void FlagPostProcess()
         {
@@ -188,7 +189,7 @@ namespace AX.UdonSlot.REV1_0
         /// <summary>
         /// 次回レバーオン時に強制的に設定するフラグを設定する。
         /// </summary>
-        /// <param name="flag">設定するフラグの内部使用名。</param>
+        /// <param name="flag">設定するフラグの内部名。</param>
         public void ForceFlag(string flag)
         {
             SetOwner();
@@ -1140,14 +1141,14 @@ namespace AX.UdonSlot.REV1_0
         
         /// <summary>PayoutTable、現在のBET、有効ライン、停止順から成立役を判定する。</summary>
         /// <param name="stopSymbolIndex">メイン基板から渡される各リールの停止図柄位置。</param>
-        /// <returns>成立した役の内部使用名。成立役がない場合は空配列。</returns>
+        /// <returns>成立した役の内部名。成立役がない場合は空配列。</returns>
         public virtual string[] JudgePayout(int[] stopSymbolIndex)
         {
             if (!Utilities.IsValid(payoutTable)) return new string[0];
             return JudgePayoutFromTable(payoutTable);
         }
 
-        /// <summary>現在成立しているフラグの内部使用名を返す。</summary>
+        /// <summary>現在成立しているフラグの内部名を返す。</summary>
         public virtual string GetActiveFlag()
         {
             // 同期で受け取った空文字が null になる場合があるので、空文字にそろえる。
@@ -1217,7 +1218,7 @@ namespace AX.UdonSlot.REV1_0
         }
         
 
-        /// <summary>成立役の内部使用名から現在BETの払出枚数合計を返す。</summary>
+        /// <summary>成立役の内部名から現在BETの払出枚数合計を返す。</summary>
         public virtual int GetPayout(string[] winningSymbols)
         {
             if (!Utilities.IsValid(payoutTable)) return 0;

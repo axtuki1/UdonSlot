@@ -104,11 +104,11 @@ namespace AX.UdonSlot.REV1_0
                     );
                     EditorGUILayout.PropertyField(
                         flagNames.GetArrayElementAtIndex(flagIndex),
-                        new GUIContent("内部使用名")
+                        new GUIContent("内部名")
                     );
                     if (string.IsNullOrEmpty(flagNames.GetArrayElementAtIndex(flagIndex).stringValue))
                     {
-                        EditorGUILayout.HelpBox("内部使用名を入力してください。", MessageType.Error);
+                        EditorGUILayout.HelpBox("内部名を入力してください。", MessageType.Error);
                     }
                     SerializedProperty remainderProperty = remainderFlags.GetArrayElementAtIndex(flagIndex);
                     bool wasRemainder = remainderProperty.boolValue;
@@ -150,7 +150,7 @@ namespace AX.UdonSlot.REV1_0
 
                     if (HasDuplicateFlagName(flagIndex, flagNames))
                     {
-                        EditorGUILayout.HelpBox("同じ内部使用名が複数登録されています。", MessageType.Error);
+                        EditorGUILayout.HelpBox("同じ内部名が複数登録されています。", MessageType.Error);
                     }
 
                     EditorGUILayout.LabelField("当選役", EditorStyles.boldLabel);

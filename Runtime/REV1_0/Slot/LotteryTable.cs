@@ -5,7 +5,7 @@ using UnityEngine;
 namespace AX.UdonSlot.REV1_0
 {
     /// <summary>
-    /// レバーON時の抽選内容を定義するテーブル。
+    /// レバーオン時の抽選内容を定義するテーブル。
     /// 各フラグにBET 1〜3ごとの抽選比率と0個以上の当選役を設定する。
     /// 1つのフラグへ複数の役を登録すると、複数役の同時当選を表現できる。
     /// ハズレに指定したフラグには、最大確率分母から他フラグの抽選比率を引いた残りを割り当てる。
@@ -15,7 +15,7 @@ namespace AX.UdonSlot.REV1_0
     public class LotteryTable : UdonSharpBehaviour
     {
         /// <summary>
-        /// 抽選候補となるフラグの内部使用名。抽選結果を識別する名前として使用する。
+        /// 抽選候補となるフラグの内部名。抽選結果を識別する名前として使用する。
         /// DrawFlagの戻り値、同期値、ReelControlとの照合にはこちらを使用する。
         /// 同じ位置にあるBET別比率配列の値が、そのフラグの抽選比率になる。
         /// 変数名は既存のInspectorデータとの互換性を保つためwinpairNamesのままにしている。
@@ -26,7 +26,7 @@ namespace AX.UdonSlot.REV1_0
         /// <summary>
         /// Inspectorや画面表示に使用するフラグの表示名。
         /// 内部処理では使用しないため、日本語名や後からの表示変更が抽選結果へ影響しない。
-        /// 空の場合は内部使用名を表示名として扱う。
+        /// 空の場合は内部名を表示名として扱う。
         /// </summary>
         [HideInInspector]
         public string[] flagDisplayNames = new string[0];
@@ -117,7 +117,7 @@ namespace AX.UdonSlot.REV1_0
         /// 設定された抽選方式に従って、抽選結果のフラグを1つ選ぶ。
         /// </summary>
         /// <returns>
-        /// 抽選されたフラグの内部使用名。抽選可能な候補がない場合は空文字。
+        /// 抽選されたフラグの内部名。抽選可能な候補がない場合は空文字。
         /// </returns>
         public string DrawFlag()
         {
@@ -254,7 +254,7 @@ namespace AX.UdonSlot.REV1_0
             return probabilityRatios[index];
         }
 
-        /// <summary>ハズレフラグの内部使用名を返す。未設定の場合は空文字。</summary>
+        /// <summary>ハズレフラグの内部名を返す。未設定の場合は空文字。</summary>
         private string GetRemainderFlagName()
         {
             int entryCount = winpairNames == null ? 0 : winpairNames.Length;
@@ -277,7 +277,7 @@ namespace AX.UdonSlot.REV1_0
             return -1;
         }
 
-        /// <summary>内部使用名に対応する表示名を返す。</summary>
+        /// <summary>内部名に対応する表示名を返す。</summary>
         public string GetFlagDisplayName(string internalName)
         {
             if (string.IsNullOrEmpty(internalName)) return "";
@@ -354,7 +354,7 @@ namespace AX.UdonSlot.REV1_0
             return flagBase == baseFlag;
         }
 
-        /// <summary>フラグの内部使用名が登録されているか確認する。</summary>
+        /// <summary>フラグの内部名が登録されているか確認する。</summary>
         public bool HasFlag(string flagName)
         {
             return FindEntry(flagName) >= 0;

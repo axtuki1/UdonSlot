@@ -18,7 +18,7 @@ namespace AX.UdonSlot.REV1_0
 
     /// <summary>
     /// 成立役ごとの図柄組み合わせと払出条件を定義する配当表。
-    /// 成立役の表示名と内部使用名、図柄、BET別配当、リプレイ属性、停止順、有効ラインを提供する。
+    /// 成立役の表示名と内部名、図柄、BET別配当、リプレイ属性、停止順、有効ラインを提供する。
     /// どのフラグでどの役が当選するかはLotteryTable側で定義する。
     /// 告知やボーナス状態遷移は扱わない。
     ///
@@ -29,7 +29,7 @@ namespace AX.UdonSlot.REV1_0
     public class PayoutTable : UdonSharpBehaviour
     {
         /// <summary>
-        /// 成立判定やLotteryTableとの照合に使用する成立役の内部使用名。
+        /// 成立判定やLotteryTableとの照合に使用する成立役の内部名。
         /// 既存のInspectorデータとの互換性を保つため、変数名はそのままにしている。
         /// </summary>
         [HideInInspector]
@@ -247,7 +247,7 @@ namespace AX.UdonSlot.REV1_0
             return isReplays[pairIndex];
         }
 
-        /// <summary>内部使用名に対応する成立役がリプレイか確認する。</summary>
+        /// <summary>内部名に対応する成立役がリプレイか確認する。</summary>
         public bool IsReplay(string internalName)
         {
             if (string.IsNullOrEmpty(internalName)) return false;
@@ -275,7 +275,7 @@ namespace AX.UdonSlot.REV1_0
             return isTransitions[pairIndex];
         }
 
-        /// <summary>内部使用名に対応する成立役が移行図柄か確認する。</summary>
+        /// <summary>内部名に対応する成立役が移行図柄か確認する。</summary>
         public bool IsTransition(string internalName)
         {
             if (string.IsNullOrEmpty(internalName)) return false;
@@ -287,7 +287,7 @@ namespace AX.UdonSlot.REV1_0
             return false;
         }
 
-        /// <summary>内部使用名に対応する成立役がボーナスか確認する。</summary>
+        /// <summary>内部名に対応する成立役がボーナスか確認する。</summary>
         public bool IsBonus(string internalName)
         {
             if (string.IsNullOrEmpty(internalName)) return false;
@@ -311,7 +311,7 @@ namespace AX.UdonSlot.REV1_0
             return false;
         }
 
-        /// <summary>内部使用名に対応する表示名を返す。</summary>
+        /// <summary>内部名に対応する表示名を返す。</summary>
         public string GetWinPairDisplayName(string internalName)
         {
             if (string.IsNullOrEmpty(internalName)) return "";

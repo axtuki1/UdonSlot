@@ -173,11 +173,11 @@ namespace AX.UdonSlot.REV1_0.Editor
                     );
                     EditorGUILayout.PropertyField(
                         names.GetArrayElementAtIndex(i),
-                        new GUIContent("内部使用名")
+                        new GUIContent("内部名")
                     );
                     if (string.IsNullOrEmpty(names.GetArrayElementAtIndex(i).stringValue))
                     {
-                        EditorGUILayout.HelpBox("内部使用名を入力してください。", MessageType.Error);
+                        EditorGUILayout.HelpBox("内部名を入力してください。", MessageType.Error);
                     }
 
                     SerializedProperty replay = replays.GetArrayElementAtIndex(i);
@@ -227,7 +227,7 @@ namespace AX.UdonSlot.REV1_0.Editor
                         bonuses))
                     {
                         EditorGUILayout.HelpBox(
-                            "同じ内部使用名で表示名、リプレイ設定、払出枚数が異なります。役の設定を統一してください。",
+                            "同じ内部名で表示名、リプレイ設定、払出枚数が異なります。役の設定を統一してください。",
                             MessageType.Error
                         );
                     }
