@@ -8,21 +8,21 @@ namespace AX.UdonSlot.REV1_0
     /// </summary>
     public class ReelControlData : UdonSharpBehaviour
     {
-        /**
-         * 1次元目のインデックスはリール停止パターンを表す。
-         * 2次元目はリールの図柄番号、値は停止時の滑りコマ数を表す。
-         *
-         * 1次元目は上位ビットを左リール、下位ビットを右リールとし、停止順序を各2ビットで表す。
-         * 一番大きい値を持つリールのパターンが2次元目に格納されている。
-         * 000001: 右のみ停止 / 000100: 中のみ停止 / 010000: 左のみ停止
-         * 011000: 左→中(中リールのパターン) / 000110: 中→右(右リールのパターン) / 011011: 左→中→右(右リールのパターン)
-         */
+        /// <summary>
+        /// 1次元目のインデックスはリール停止パターンを表す。
+        /// 2次元目はリールの図柄番号、値は停止時の滑りコマ数を表す。
+        ///
+        /// 1次元目は上位ビットを左リール、下位ビットを右リールとし、停止順序を各2ビットで表す。
+        /// 一番大きい値を持つリールのパターンが2次元目に格納されている。
+        /// 000001: 右のみ停止 / 000100: 中のみ停止 / 010000: 左のみ停止
+        /// 011000: 左→中(中リールのパターン) / 000110: 中→右(右リールのパターン) / 011011: 左→中→右(右リールのパターン)
+        /// </summary>
         [VRC.Udon.Serialization.OdinSerializer.OdinSerialize]
         public int[][] reelStopSlipCount = new int[0][];
         
-        /**
-         * テーブル制御かコントロール制御化を示す。trueであればテーブル制御、falseであればコントロール制御。
-         */
+        /// <summary>
+        /// テーブル制御かコントロール制御かを示す。trueであればテーブル制御、falseであればコントロール制御。
+        /// </summary>
         public bool[] IsReelStopTableStyle = new bool[0];
 
         // 条件付きテーブル。条件位置は滑り後の下段インデックス、-1は任意。
@@ -64,11 +64,11 @@ namespace AX.UdonSlot.REV1_0
             return conditionSlips[index];
         }
 
-        /**
-         * reelStopSlipCountのインデックスをリール停止順序から計算する。
-         * 各引数は当該リールの状態/停止順序を表す整数で、0は停止なし、1-3は停止順序を表す。
-         * 4以上、0未満の値はエラー。
-         */
+        /// <summary>
+        /// reelStopSlipCountのインデックスをリール停止順序から計算する。
+        /// 各引数は当該リールの状態/停止順序を表す整数で、0は停止なし、1-3は停止順序を表す。
+        /// 4以上、0未満の値はエラー。
+        /// </summary>
         public static int GetIndexForReelStopPattern(int leftReelStopOrder, int centerReelStopOrder, int rightReelStopOrder)
         {
             leftReelStopOrder = Mathf.Clamp(leftReelStopOrder, 0, 3);

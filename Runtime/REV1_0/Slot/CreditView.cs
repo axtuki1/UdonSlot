@@ -17,21 +17,21 @@ namespace AX.UdonSlot.REV1_0
     /// </summary>
     public class CreditView : UdonSharpBehaviour
     {
-        /**
-         * カウントアップ/ダウンして反映するテキスト
-         */
+        /// <summary>
+        /// カウントアップ/ダウンして反映するテキスト
+        /// </summary>
         [SerializeField]
         private TextMeshProUGUI creditText;
         
-        /**
-         * 即時反映するテキスト
-         */
+        /// <summary>
+        /// 即時反映するテキスト
+        /// </summary>
         [SerializeField]
         private TextMeshProUGUI instantApplyText;
 
-        /**
-         * クレジットのセグメント表示テキスト
-         */
+        /// <summary>
+        /// クレジットのセグメント表示テキスト
+        /// </summary>
         [SerializeField]
         private TextMeshProUGUI creditSegText;
         
@@ -41,39 +41,39 @@ namespace AX.UdonSlot.REV1_0
         [SerializeField]
         private int demoView;
 
-        /**
-         * デモ表示の内容2
-         */
+        /// <summary>
+        /// デモ表示の内容2
+        /// </summary>
         [SerializeField]
         private string[] demoView1 = {""};
 
-        /**
-         * デモ表示のフレームレート
-         */
+        /// <summary>
+        /// デモ表示のフレームレート
+        /// </summary>
         [SerializeField]
         private float frameRateView1 = 0.25f;
 
-        /**
-         * デモ表示の内容2
-         */
+        /// <summary>
+        /// デモ表示の内容2
+        /// </summary>
         [SerializeField]
         private string[] demoView2 = {""};
 
-        /**
-         * デモ表示のフレームレート
-         */
+        /// <summary>
+        /// デモ表示のフレームレート
+        /// </summary>
         [SerializeField]
         private float frameRateView2 = 0.25f;
         
-        /**
-         * デモ表示の内容2
-         */
+        /// <summary>
+        /// デモ表示の内容2
+        /// </summary>
         [SerializeField]
         private string[] demoView3 = {""};
 
-        /**
-         * デモ表示のフレームレート
-         */
+        /// <summary>
+        /// デモ表示のフレームレート
+        /// </summary>
         [SerializeField]
         private float frameRateView3 = 0.25f;
 
@@ -85,9 +85,9 @@ namespace AX.UdonSlot.REV1_0
         [SerializeField]
         private float nonActionTime = 5f;
         
-        /**
-         * クレジット更新の際に1フレームに付きどれだけ増減させるか
-         */
+        /// <summary>
+        /// クレジット更新の際に1フレームに付きどれだけ増減させるか
+        /// </summary>
         public float frameChangeingRate = 5f;
 
         private MainBoard mainBoard;

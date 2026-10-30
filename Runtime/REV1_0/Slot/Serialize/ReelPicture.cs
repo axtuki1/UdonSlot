@@ -10,13 +10,13 @@ namespace AX.UdonSlot.REV1_0.Serialize
     [CreateAssetMenu(menuName = "UdonSlot/ReelPicture")]
     public class ReelPicture : ScriptableObject
     {
-        /**
-         * 図柄の名前
-         */
+        /// <summary>
+        /// 図柄の名前
+        /// </summary>
         public string pictureName;
-        /**
-         * 図柄の画像
-         */
+        /// <summary>
+        /// 図柄の画像
+        /// </summary>
         public Texture2D picture;
     }
 }

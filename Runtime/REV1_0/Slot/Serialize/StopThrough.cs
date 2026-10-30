@@ -10,15 +10,15 @@ namespace AX.UdonSlot.REV1_0.Serialize
     [CreateAssetMenu(menuName = "UdonSlot/StopThrough")]
     public class StopThrough : ScriptableObject
     {
-        /**
-         * この滑りコマ定義の名前
-         * 管理用に接頭辞とかにLeftとかCenterとかRightとかつけるとわかりやすいかも
-         */
+        /// <summary>
+        /// この滑りコマ定義の名前
+        /// 管理用に接頭辞とかにLeftとかCenterとかRightとかつけるとわかりやすいかも
+        /// </summary>
         public string flagName;
-        /**
-         * ビタ止めしたコマからどれだけ滑るかを定義する配列
-         * 長さは紐づけるリールのコマ数と同じにする必要がある
-         */
+        /// <summary>
+        /// ビタ止めしたコマからどれだけ滑るかを定義する配列
+        /// 長さは紐づけるリールのコマ数と同じにする必要がある
+        /// </summary>
         public int[] throughLength;
     }
 }

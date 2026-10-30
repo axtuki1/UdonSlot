@@ -40,12 +40,12 @@ namespace AX.UdonSlot.REV1_0
         
         public AudioSource[] source;
         
-        /**
-         * 再生キュー
-         * Sound: 再生種別
-         * Clip: 再生する音
-         * Time: 再生するまでの時間
-         */
+        /// <summary>
+        /// 再生キュー
+        /// Sound: 再生種別
+        /// Clip: 再生する音
+        /// Time: 再生するまでの時間
+        /// </summary>
         private SoundType[] queuedSound = new SoundType[0];
         private int[] queuedClip = new int[0];
         private float[] queuedTime = new float[0];
@@ -73,9 +73,9 @@ namespace AX.UdonSlot.REV1_0
             queuedTime[index] = -9999999f;
         }
 
-        /**
-         * キューのクリアをやっておく
-         */
+        /// <summary>
+        /// キューのクリアをやっておく
+        /// </summary>
         private void FixedUpdate()
         {
             for (int i = 0; i < queuedSound.Length; i++)
@@ -144,10 +144,10 @@ namespace AX.UdonSlot.REV1_0
             SendCustomNetworkEvent(NetworkEventTarget.All, nameof(RemotePlaySound), type, clip, isOneShot, isReplay);
         }
 
-        /**
-         * LateJoiner向け。指定SoundTypeで再生していなければ再生する。ローカル。
-         * この関数はOneShotがfalse固定。
-         */
+        /// <summary>
+        /// 途中参加者（Late Joiner）向け。指定SoundTypeで再生していなければ再生する。ローカル。
+        /// この関数はOneShotがfalse固定。
+        /// </summary>
         public void TryPlaySound(SoundType type, int clip, bool isReplay)
         {
             if (IsPlayingSound(type)) return;
@@ -155,9 +155,9 @@ namespace AX.UdonSlot.REV1_0
             source[(int)type].Play();
         }
         
-        /**
-         * LateJoiner向け。指定SoundTypeで再生しているが、再生しているクリップが違う場合は変更する。ローカル。
-         */
+        /// <summary>
+        /// 途中参加者（Late Joiner）向け。指定SoundTypeで再生しているが、再生しているクリップが違う場合は変更する。ローカル。
+        /// </summary>
         public void TryMusicChange(SoundType type, int clip)
         {
             if (!IsPlayingSound(type) || source[(int)type].clip == this.clip[clip]) return;
@@ -170,10 +170,10 @@ namespace AX.UdonSlot.REV1_0
             SendCustomNetworkEvent(NetworkEventTarget.All, nameof(RemoteStopSound), type);
         }
 
-        /**
-         * 指定SoundTypeで再生しているか
-         * なおOneShotは判定できない
-         */
+        /// <summary>
+        /// 指定SoundTypeで再生しているか
+        /// なおOneShotは判定できない
+        /// </summary>
         public bool IsPlayingSound(SoundType type)
         {
             return source[(int)type].isPlaying;

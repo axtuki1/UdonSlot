@@ -10,19 +10,19 @@ namespace AX.UdonSlot.REV1_0.Serialize
     [CreateAssetMenu(menuName = "UdonSlot/ReelArray")]
     public class ReelArray : ScriptableObject
     {
-        /**
-         * リールに並ぶ図柄
-         */
+        /// <summary>
+        /// リールに並ぶ図柄
+        /// </summary>
         public ReelPicture[] reel;
 
-        /**
-         * 通常時滑り定義
-         */
+        /// <summary>
+        /// 通常時滑り定義
+        /// </summary>
         public StopThrough standardStop;
         
-        /**
-         * フラグ重複滑り定義
-         */
+        /// <summary>
+        /// フラグ重複滑り定義
+        /// </summary>
         public StopThrough[] flagDuplicateStop;
 
     }

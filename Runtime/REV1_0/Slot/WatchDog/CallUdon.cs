@@ -7,7 +7,7 @@ using VRC.Udon.Common.Interfaces;
 namespace AX.UdonSlot.REV1_0
 {
     /// <summary>
-    /// Interact時に指定UdonBehaviourのイベントをローカルまたは全クライアントで実行する。
+    /// Interact時に指定UdonBehaviourのイベントをローカルまたは全員で実行する。
     /// </summary>
     public class CallUdon : UdonSharpBehaviour
     {

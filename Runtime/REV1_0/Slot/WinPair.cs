@@ -9,30 +9,30 @@ namespace AX.UdonSlot.REV1_0
     /// </summary>
     public class WinPair : UdonSharpBehaviour
     {
-        /**
-         * 役の名前
-         */
+        /// <summary>
+        /// 役の名前
+        /// </summary>
         [SerializeField]
         public string winPairName;
-        /**
-         * 配当
-         */
+        /// <summary>
+        /// 配当
+        /// </summary>
         [SerializeField]
         public int payout;
-        /**
-         * 有効ライン上の役の図柄
-         * -1はany
-         */
+        /// <summary>
+        /// 有効ライン上の役の図柄
+        /// 空文字は任意
+        /// </summary>
         [SerializeField]
         public string[] symbols = new string[3];
-        /**
-         * リール停止順序を使用せず
-         */
+        /// <summary>
+        /// リール停止順序を使用せず
+        /// </summary>
         [SerializeField]
         public bool isReelStopOrderAny = true;
-        /**
-         * リール停止順序
-         */
+        /// <summary>
+        /// リール停止順序
+        /// </summary>
         [SerializeField]
         public int[] reelStopOrder;
         [SerializeField]
