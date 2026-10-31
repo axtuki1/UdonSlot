@@ -225,12 +225,15 @@ namespace AX.UdonSlot.REV1_0
             else if (i < enableColliders.Length && Utilities.IsValid(enableColliders[i])) enableColliders[i].enabled = value;
         }
 
-        /// <summary>チャンネルのパターンを差し替える。外れたパターンが触ったオブジェクトは開始時の ON/OFF に戻す。</summary>
+        /// <summary>
+        /// チャンネルのパターンを差し替える。外れたパターンが触ったオブジェクトは開始時の ON/OFF に戻す。
+        /// 同じパターンでも、呼び直し・次のパターンとして選ばれたときは戻してからやり直す。
+        /// </summary>
         private void SetChannelPattern(int channel, int pattern)
         {
             int old = currentPattern[channel];
             currentPattern[channel] = pattern;
-            if (old < 0 || old == pattern || old >= patternNames.Length) return;
+            if (old < 0 || old >= patternNames.Length) return;
             if (old < patternKeepActive.Length && patternKeepActive[old]) return;
             // 戻したあとで点かないよう、外れたパターンのまだ始まっていないアクションは流さない。
             for (int i = 0; i < queueChannel.Length; i++) if (queueChannel[i] == channel) queueAction[i] = -1;
