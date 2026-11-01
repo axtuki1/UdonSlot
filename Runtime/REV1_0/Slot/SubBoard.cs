@@ -682,6 +682,20 @@ namespace AX.UdonSlot.REV1_0
         /// <param name="betCount">再装填された枚数</param>
         public virtual void ReplayBetLogic(int betCount) { }
 
+        /// <summary>停止ボタンが押されたことを全員へ通知する。ゲーム中でなくても届く。</summary>
+        [NetworkCallable]
+        public void PushStopButton(int reelIndex)
+        {
+            PushStopButtonLogic(reelIndex);
+        }
+
+        /// <summary>
+        /// 機種固有の停止ボタンを押したときの処理を実装する拡張ポイント。全員の画面で呼ばれる。
+        /// ゲーム中かどうかは mainBoard.isGaming で分かる。リールが止まるときは、この後に ReelStopLogic が呼ばれる。
+        /// </summary>
+        /// <param name="reelIndex">押したボタンのリール（左0～右2）</param>
+        public virtual void PushStopButtonLogic(int reelIndex) { }
+
         /// <summary>停止ボタンが離されたことを全員へ通知する。</summary>
         [NetworkCallable]
         public void ReleaseStopButton(int reelIndex)

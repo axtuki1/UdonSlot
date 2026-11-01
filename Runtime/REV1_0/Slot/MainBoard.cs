@@ -846,6 +846,8 @@ namespace AX.UdonSlot.REV1_0
         public virtual void PushStopButton(int reelIndex)
         {
             if (!isControllable) return;
+            // ゲーム中でなくても届ける（ページ切り替えなど）。リールが止まる場合は、この後に ReelStop が届く。
+            subBoard.SendCustomNetworkEvent(NetworkEventTarget.All, nameof(subBoard.PushStopButton), reelIndex);
             // リール演出で動かしているリールは止められない（ほかのリールは止められる）。
             if (IsReelInEffect(reelIndex)) return;
             if (PushStopButtonLogic(reelIndex)) StopReel(reelIndex);
