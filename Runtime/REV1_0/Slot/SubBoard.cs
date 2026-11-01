@@ -220,6 +220,125 @@ namespace AX.UdonSlot.REV1_0
             }
         }
 
+        // ---- 点灯・照明のシナリオ ----
+
+        private int[] symbolSequencePatterns;
+        private int[] symbolSequenceDurations;
+        private int symbolSequenceStep = -1;
+        private float symbolSequenceStepEnd;
+
+        private Color[] colorSequenceUpper;
+        private Color[] colorSequenceLower;
+        private int[] colorSequenceDurations;
+        private int colorSequenceStep = -1;
+        private float colorSequenceStepEnd;
+
+        /// <summary>
+        /// 表示窓9コマの点灯状態を、時間つきで順に切り替える。最後の状態のまま終わる。ローカル。
+        /// 再生中にもう一度呼ぶと、新しいほうに差し替わる。
+        /// </summary>
+        /// <param name="patterns">各段階の点灯状態（SetReelSymbolLightPattern と同じ9ビット）</param>
+        /// <param name="durations">各段階を続ける長さ(ms)。patterns と同じ長さ</param>
+        /// <example>
+        /// <code>
+        /// // 左から右へ消灯 → 右から左へ点灯（各100ms）
+        /// PlayReelSymbolLightSequence(
+        ///     new int[] { 0x1F8, 0x1C0, 0x000, 0x1C0, 0x1F8, 0x1FF },
+        ///     new int[] { 100, 100, 100, 100, 100, 100 });
+        /// </code>
+        /// </example>
+        public void PlayReelSymbolLightSequence(int[] patterns, int[] durations)
+        {
+            if (patterns == null || durations == null || patterns.Length == 0 || patterns.Length != durations.Length) return;
+            symbolSequencePatterns = patterns;
+            symbolSequenceDurations = durations;
+            symbolSequenceStep = 0;
+            SetReelSymbolLightPattern(patterns[0]);
+            symbolSequenceStepEnd = Time.time + Mathf.Max(0, durations[0]) / 1000f;
+        }
+
+        /// <summary>表示窓の点灯シナリオを止める。点灯状態はその時点のまま。</summary>
+        public void StopReelSymbolLightSequence()
+        {
+            symbolSequenceStep = -1;
+        }
+
+        /// <summary>表示窓の点灯シナリオを再生中か。</summary>
+        public bool IsReelSymbolLightSequencePlaying()
+        {
+            return symbolSequenceStep >= 0;
+        }
+
+        /// <summary>
+        /// リールの上下照明の色を、時間つきで順に切り替える。最後の色のまま終わる。ローカル。
+        /// 再生中にもう一度呼ぶと、新しいほうに差し替わる。
+        /// </summary>
+        /// <param name="upperColors">各段階の上側の色。durations と同じ長さなら3リール共通、3倍の長さなら [段階0左, 中, 右, 段階1左, ...]</param>
+        /// <param name="lowerColors">各段階の下側の色。並びは upperColors と同じ。null なら upperColors と同じ色</param>
+        /// <param name="durations">各段階を続ける長さ(ms)</param>
+        public void PlayReelLightColorSequence(Color[] upperColors, Color[] lowerColors, int[] durations)
+        {
+            if (upperColors == null || durations == null || durations.Length == 0) return;
+            if (lowerColors == null) lowerColors = upperColors;
+            if (upperColors.Length != lowerColors.Length) return;
+            if (upperColors.Length != durations.Length && upperColors.Length != durations.Length * 3) return;
+            colorSequenceUpper = upperColors;
+            colorSequenceLower = lowerColors;
+            colorSequenceDurations = durations;
+            colorSequenceStep = 0;
+            ApplyColorSequenceStep();
+            colorSequenceStepEnd = Time.time + Mathf.Max(0, durations[0]) / 1000f;
+        }
+
+        /// <summary>上下照明の色のシナリオを止める。色はその時点のまま。</summary>
+        public void StopReelLightColorSequence()
+        {
+            colorSequenceStep = -1;
+        }
+
+        /// <summary>上下照明の色のシナリオを再生中か。</summary>
+        public bool IsReelLightColorSequencePlaying()
+        {
+            return colorSequenceStep >= 0;
+        }
+
+        private void ApplyColorSequenceStep()
+        {
+            bool perReel = colorSequenceUpper.Length != colorSequenceDurations.Length;
+            for (int i = 0; i < 3; i++)
+            {
+                int index = perReel ? colorSequenceStep * 3 + i : colorSequenceStep;
+                SetReelLightColors(i, colorSequenceUpper[index], colorSequenceLower[index]);
+            }
+        }
+
+        private void UpdateLightSequences()
+        {
+            float now = Time.time;
+            while (symbolSequenceStep >= 0 && now >= symbolSequenceStepEnd)
+            {
+                symbolSequenceStep++;
+                if (symbolSequenceStep >= symbolSequencePatterns.Length)
+                {
+                    symbolSequenceStep = -1;
+                    break;
+                }
+                SetReelSymbolLightPattern(symbolSequencePatterns[symbolSequenceStep]);
+                symbolSequenceStepEnd += Mathf.Max(0, symbolSequenceDurations[symbolSequenceStep]) / 1000f;
+            }
+            while (colorSequenceStep >= 0 && now >= colorSequenceStepEnd)
+            {
+                colorSequenceStep++;
+                if (colorSequenceStep >= colorSequenceDurations.Length)
+                {
+                    colorSequenceStep = -1;
+                    break;
+                }
+                ApplyColorSequenceStep();
+                colorSequenceStepEnd += Mathf.Max(0, colorSequenceDurations[colorSequenceStep]) / 1000f;
+            }
+        }
+
         public virtual void LateUpdate()
         {
             // MainBoard.Update後の実回転を使い、停止時の揺れや逆回転にも追従する。
@@ -270,6 +389,7 @@ namespace AX.UdonSlot.REV1_0
             UpdateWaitView();
             RestoreStateOnJoin();
             NotifyEffectReelStart();
+            UpdateLightSequences();
             UpdateLogic();
         }
 
@@ -645,6 +765,8 @@ namespace AX.UdonSlot.REV1_0
         public void ResetMachine()
         {
             if (Utilities.IsValid(effectPlayer)) effectPlayer.ResetAll();
+            StopReelSymbolLightSequence();
+            StopReelLightColorSequence();
             ResetMachineLogic();
         }
 
