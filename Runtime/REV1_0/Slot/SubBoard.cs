@@ -290,21 +290,21 @@ namespace AX.UdonSlot.REV1_0
             colorSequenceStepEnd = Time.time + Mathf.Max(0, durations[0]) / 1000f;
         }
 
-        /// <summary>PlayReelLightColorSequence のリール別版。色をリールごとの配列で渡す。</summary>
+        /// <summary>リール別版。色を [リール][段階] の配列で渡す。</summary>
         /// <param name="upperColors">[リール(左0～右2)][段階] の上側の色。各リールの段階数は durations と同じ</param>
         /// <param name="lowerColors">下側の色。並びは upperColors と同じ。null なら upperColors と同じ色</param>
         /// <param name="durations">各段階を続ける長さ(ms)</param>
         /// <example>
         /// <code>
         /// // 左から順に赤くして、最後に全部白へ
-        /// PlayReelLightColorSequenceEach(new Color[][] {
+        /// PlayReelLightColorSequence(new Color[][] {
         ///     new Color[] { Color.red,   Color.red,   Color.red,   Color.white },
         ///     new Color[] { Color.white, Color.red,   Color.red,   Color.white },
         ///     new Color[] { Color.white, Color.white, Color.red,   Color.white },
         /// }, null, new int[] { 100, 100, 300, 100 });
         /// </code>
         /// </example>
-        public void PlayReelLightColorSequenceEach(Color[][] upperColors, Color[][] lowerColors, int[] durations)
+        public void PlayReelLightColorSequence(Color[][] upperColors, Color[][] lowerColors, int[] durations)
         {
             if (upperColors == null || upperColors.Length != 3 || durations == null) return;
             if (lowerColors == null) lowerColors = upperColors;
