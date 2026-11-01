@@ -1019,21 +1019,35 @@ namespace AX.UdonSlot.REV1_0
             subBoard.SendCustomNetworkEvent(NetworkEventTarget.All, nameof(subBoard.GameEnd), gameFlag, gameWinningNames, gamePayout);
         }
 
+        public bool isPushingCountingButton = false;
+        
         /// <summary>
         /// 計数ボタン押下時の処理
         /// </summary>
         public virtual void PushCountingButton()
         {
-            // TODO: 計数ユニットへクレジットを送信する処理を入れる
+            isPushingCountingButton = true;
+            PushCountingButtonLogic();
         }
+        
+        /// <summary>
+        /// 計数ボタンを押した時の固有処理
+        /// </summary>
+        public virtual void PushCountingButtonLogic() { }
 
         /// <summary>
         /// 計数ボタンを離した時の処理
         /// </summary>
         public virtual void ReleaseCountingButton()
         {
-            
+            isPushingCountingButton = false;
+            ReleaseCountingButtonLogic();
         }
+        
+        /// <summary>
+        /// 計数ボタンを押した時の固有処理
+        /// </summary>
+        public virtual void ReleaseCountingButtonLogic() { }
 
         public bool IsOwner() { return Networking.IsOwner(gameObject); }
 
