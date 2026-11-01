@@ -681,6 +681,26 @@ namespace AX.UdonSlot.REV1_0
         /// <summary>機種固有の再遊技音やBET表示演出を実装する拡張ポイント。全員の画面で呼ばれる。</summary>
         /// <param name="betCount">再装填された枚数</param>
         public virtual void ReplayBetLogic(int betCount) { }
+
+        /// <summary>センターボタンが押されたことを全員へ通知する。</summary>
+        [NetworkCallable]
+        public void PushCenterButton()
+        {
+            PushCenterButtonLogic();
+        }
+
+        /// <summary>機種固有のセンターボタン演出を実装する拡張ポイント。全員の画面で呼ばれる。</summary>
+        public virtual void PushCenterButtonLogic() { }
+
+        /// <summary>センターボタンが離されたことを全員へ通知する。</summary>
+        [NetworkCallable]
+        public void ReleaseCenterButton()
+        {
+            ReleaseCenterButtonLogic();
+        }
+
+        /// <summary>機種固有のセンターボタンを離したときの演出を実装する拡張ポイント。全員の画面で呼ばれる。</summary>
+        public virtual void ReleaseCenterButtonLogic() { }
         
         [NetworkCallable]
         public void Credit()

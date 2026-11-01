@@ -655,6 +655,7 @@ namespace AX.UdonSlot.REV1_0
         {
             isPushingCenterButton = true;
             PushCenterButtonLogic();
+            subBoard.SendCustomNetworkEvent(NetworkEventTarget.All, nameof(subBoard.PushCenterButton));
         }
         
         public virtual void PushCenterButtonLogic()
@@ -666,6 +667,7 @@ namespace AX.UdonSlot.REV1_0
         {
             isPushingCenterButton = false;
             ReleaseCenterButtonLogic();
+            subBoard.SendCustomNetworkEvent(NetworkEventTarget.All, nameof(subBoard.ReleaseCenterButton));
         }
         
         public virtual void ReleaseCenterButtonLogic()
