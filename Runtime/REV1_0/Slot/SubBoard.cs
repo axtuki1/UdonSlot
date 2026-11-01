@@ -682,6 +682,17 @@ namespace AX.UdonSlot.REV1_0
         /// <param name="betCount">再装填された枚数</param>
         public virtual void ReplayBetLogic(int betCount) { }
 
+        /// <summary>停止ボタンが離されたことを全員へ通知する。</summary>
+        [NetworkCallable]
+        public void ReleaseStopButton(int reelIndex)
+        {
+            ReleaseStopButtonLogic(reelIndex);
+        }
+
+        /// <summary>機種固有の停止ボタンを離したときの演出を実装する拡張ポイント。全員の画面で呼ばれる。</summary>
+        /// <param name="reelIndex">離したボタンのリール（左0～右2）</param>
+        public virtual void ReleaseStopButtonLogic(int reelIndex) { }
+
         /// <summary>センターボタンが押されたことを全員へ通知する。</summary>
         [NetworkCallable]
         public void PushCenterButton()

@@ -954,6 +954,7 @@ namespace AX.UdonSlot.REV1_0
         {
             if (!isControllable) return;
             ReleaseStopButtonLogic(reelIndex);
+            subBoard.SendCustomNetworkEvent(NetworkEventTarget.All, nameof(subBoard.ReleaseStopButton), reelIndex);
             if (!isGaming) return;
             SetOwner();
             pushingButton[reelIndex] = false;
