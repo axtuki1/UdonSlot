@@ -594,6 +594,7 @@ namespace AX.UdonSlot.REV1_0
             GameStartLogic();
         }
 
+        /// <summary>機種固有のゲーム開始（リール回転開始）の音・演出を実装する拡張ポイント。全員の画面で呼ばれる。基底の音はメイン基板の Owner だけが鳴らす（全員に聞こえる）。</summary>
         public virtual void GameStartLogic()
         {
             if (!CanPlaySound()) return;
@@ -658,7 +659,7 @@ namespace AX.UdonSlot.REV1_0
             BetLogic(betCount);
         }
 
-        /// <summary>機種固有のBET音・表示を実装する拡張ポイント。メイン基板の Owner の画面だけで呼ばれる。</summary>
+        /// <summary>機種固有のBET音・表示を実装する拡張ポイント。全員の画面で呼ばれる。基底の音はメイン基板の Owner だけが鳴らす（全員に聞こえる）。</summary>
         /// <param name="betCount">今回BETした枚数</param>
         public virtual void BetLogic(int betCount)
         {
@@ -733,7 +734,7 @@ namespace AX.UdonSlot.REV1_0
             CreditLogic();
         }
         
-        /// <summary>機種固有のクレジット音を実装する拡張ポイント。メイン基板の Owner の画面だけで呼ばれる。</summary>
+        /// <summary>機種固有のクレジット音を実装する拡張ポイント。全員の画面で呼ばれる。基底の音はメイン基板の Owner だけが鳴らす（全員に聞こえる）。</summary>
         public virtual void CreditLogic()
         {
             if (!CanPlaySound()) return;
@@ -746,7 +747,7 @@ namespace AX.UdonSlot.REV1_0
             WaitLogic();
         }
         
-        /// <summary>機種固有のウェイト音を実装する拡張ポイント。メイン基板の Owner の画面だけで呼ばれる。</summary>
+        /// <summary>機種固有のウェイト音を実装する拡張ポイント。全員の画面で呼ばれる。基底の音はメイン基板の Owner だけが鳴らす（全員に聞こえる）。</summary>
         public virtual void WaitLogic()
         {
             if (!CanPlaySound()) return;

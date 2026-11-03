@@ -555,7 +555,7 @@ namespace AX.UdonSlot.REV1_0
             SetOwner();
             OffControllable();
             credit += amount;
-            subBoard.Credit();
+            subBoard.SendCustomNetworkEvent(NetworkEventTarget.All, nameof(subBoard.Credit));
         }
 
         public virtual void Bet()
@@ -567,7 +567,7 @@ namespace AX.UdonSlot.REV1_0
             bet++;
             credit--;
             BetLogic(1);
-            subBoard.Bet(1);
+            subBoard.SendCustomNetworkEvent(NetworkEventTarget.All, nameof(subBoard.Bet), 1);
             RequestSerialization();
         }
         
@@ -581,7 +581,7 @@ namespace AX.UdonSlot.REV1_0
             bet += betAmount;
             credit -= betAmount;
             BetLogic(betAmount);
-            subBoard.Bet(betAmount);
+            subBoard.SendCustomNetworkEvent(NetworkEventTarget.All, nameof(subBoard.Bet), betAmount);
             RequestSerialization();
         }
 
@@ -634,7 +634,7 @@ namespace AX.UdonSlot.REV1_0
             subBoard.SendCustomNetworkEvent(NetworkEventTarget.All, nameof(subBoard.LeverOn), activeFlag);
             // サブ基板の演出（演出エディタのリールアクションなど）がゲーム開始を引き受けたときも、ここでは開始しない。
             if (!startNow || reelEffectStartsGame) return;
-            subBoard.Wait();
+            subBoard.SendCustomNetworkEvent(NetworkEventTarget.All, nameof(subBoard.Wait));
             RequestGameStart();
         }
 
@@ -831,7 +831,7 @@ namespace AX.UdonSlot.REV1_0
             OffControllable();
             RequestSerialization();
             StartReelLogic();
-            subBoard.GameStart();
+            subBoard.SendCustomNetworkEvent(NetworkEventTarget.All, nameof(subBoard.GameStart));
         }
         
         /// <summary>
