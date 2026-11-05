@@ -13,6 +13,7 @@ namespace AX.UdonSlot.REV1_0
     /// どのパターンを流すかは機種コードが決め、メイン基板の Owner が CallEffectPattern で呼ぶ。
     /// 呼ぶと全員へ届き、次のステップから新しいパターンに差し替わる。チャンネルごとに別のパターンを重ねて流せる。
     /// チャンネル0（CallEffectPattern）はそのゲームだけ。常駐チャンネル（1〜residentChannelCount）は差し替えられない限り毎ゲーム繰り返し、それより後はそのゲームで止まる。
+    /// 入賞演出は役ごとに決めたアクションで、パターンとは別にゲーム終了で毎回流れる（セットを切り替えられる）。
     /// データは演出エディタ（UdonSlot/演出エディタ）が書き込む。手で編集しない。
     /// </summary>
     [UdonBehaviourSyncMode(BehaviourSyncMode.Manual)]
@@ -110,6 +111,51 @@ namespace AX.UdonSlot.REV1_0
         public const int EaseOut = 2;
         public const int EaseInOut = 3;
 
+        // ---------------------------------------------------------------- リール照明
+
+        /// <summary>リール照明のキー。アクションごとに、トラック順・時間順に並ぶ。</summary>
+        public int[] actionLightStart = new int[0];
+        public int[] actionLightCount = new int[0];
+        /// <summary>1回の長さ(ms)。0 以下は最後のキーの時間。</summary>
+        public int[] actionLightLength = new int[0];
+        public bool[] actionLightLoop = new bool[0];
+        /// <summary>終わったとき（止められたときも）、触ったコマ・照明を始まる前の値に戻す。</summary>
+        public bool[] actionLightRestore = new bool[0];
+        /// <summary>「入賞図柄」「入賞図柄以外」トラックのリールごとの遅れ(ms)。アクションごとに左・中・右の3つ。</summary>
+        public int[] actionLightDelay = new int[0];
+        /// <summary>再生中のリール照明を止めるきっかけ。StopOnBet などの組み合わせ。</summary>
+        public int[] actionStopMask = new int[0];
+        /// <summary>流したときに切り替える入賞演出のセット。-1 は切り替えない。</summary>
+        public int[] actionWinSet = new int[0];
+
+        /// <summary>LightTrack～ の値。</summary>
+        public int[] lightKeyTrack = new int[0];
+        public int[] lightKeyTime = new int[0];
+        /// <summary>明るさのトラックは r だけを使う（0～1）。色のトラックは HDR の色。</summary>
+        public Color[] lightKeyValue = new Color[0];
+        /// <summary>true なら次のキーまで値をそのまま保つ（切り替え）。false なら次のキーへなめらかに変える（リニア）。</summary>
+        public bool[] lightKeyHold = new bool[0];
+
+        /// <summary>トラック 0～8 は表示窓の1コマ（リール×3＋段、段は上0・中1・下2）の明るさ。</summary>
+        public const int LightTrackWin = 9;
+        public const int LightTrackNotWin = 10;
+        /// <summary>11～16 はリールの照明の色。11＋リール×2、上が＋0、下が＋1。</summary>
+        public const int LightTrackColor = 11;
+        public const int LightTrackCount = 17;
+
+        public const int StopOnBet = 1;
+        public const int StopOnLeverOn = 2;
+        public const int StopOnWin = 4;
+
+        // ---------------------------------------------------------------- 入賞演出
+
+        /// <summary>入賞演出のセットの名前。0 番が既定のセット。</summary>
+        public string[] winSetNames = new string[0];
+        /// <summary>入賞演出の1件 = (セット, 役の内部名, アクション)。アクション -1 は「なし」（既定のセットも流さない）。</summary>
+        public int[] winEntrySet = new int[0];
+        public string[] winEntryRole = new string[0];
+        public int[] winEntryAction = new int[0];
+
         // ---------------------------------------------------------------- パターン
 
         /// <summary>エディタに出す名前。</summary>
@@ -177,6 +223,24 @@ namespace AX.UdonSlot.REV1_0
         private int[] queueChannel = new int[0];
 
         private bool[] received = new bool[ChannelCount];
+
+        /// <summary>今の入賞演出のセット。途中参加者向けに同期する。</summary>
+        [UdonSynced] private int syncedWinSet = 0;
+        private int currentWinSet = 0;
+        /// <summary>最後のゲーム終了で入賞したコマ（9ビット）。パターンから流すリール照明の「入賞図柄」にも使う。</summary>
+        private int lastWinMask = 0;
+
+        /// <summary>同時に流せるリール照明の数。足りなくなったら一番古いものを止める。</summary>
+        private const int LightSlotCount = 8;
+        private int[] lightAction = new int[] { -1, -1, -1, -1, -1, -1, -1, -1 };
+        private float[] lightStartTime = new float[LightSlotCount];
+        private int[] lightMask = new int[LightSlotCount];
+        /// <summary>始まった順番。大きいほど後から始まったもので、同じトラックは後のものが勝つ。</summary>
+        private int[] lightOrder = new int[LightSlotCount];
+        private int lightOrderCounter = 0;
+        /// <summary>始まる前の明るさ（スロット×9）と色（スロット×6）。戻すときに使う。</summary>
+        private float[] lightSavedBrightness = new float[LightSlotCount * 9];
+        private Color[] lightSavedColor = new Color[LightSlotCount * 6];
         /// <summary>activeTargets ごとの、ワールド開始時の ON/OFF。</summary>
         private bool[] activeInitial = new bool[0];
         /// <summary>enable の各件の、ワールド開始時の有効／無効。</summary>
@@ -273,6 +337,9 @@ namespace AX.UdonSlot.REV1_0
                 hasPending[c] = false;
             }
             for (int i = 0; i < queueAction.Length; i++) queueAction[i] = -1;
+            for (int slot = 0; slot < LightSlotCount; slot++) EndLight(slot);
+            currentWinSet = 0;
+            lastWinMask = 0;
             stopSoundMuted = false;
             lastStep = StepGameEnd;
             CaptureInitial();
@@ -293,11 +360,13 @@ namespace AX.UdonSlot.REV1_0
                 syncedPatterns[c] = 0;
                 syncedParameters[c] = 0;
             }
+            syncedWinSet = 0;
             RequestSerialization();
         }
 
         public override void OnDeserialization()
         {
+            if (syncedWinSet >= 0 && syncedWinSet < winSetNames.Length) currentWinSet = syncedWinSet;
             ApplySynced();
         }
 
@@ -435,6 +504,7 @@ namespace AX.UdonSlot.REV1_0
         public void OnReelStep(int step, bool won, int reelIndex)
         {
             if (step < 0 || step >= StepCount) return;
+            if (step == StepLeverOn) StopLights(StopOnLeverOn);
             stopSoundMuted = false;
             lastStep = step;
             lastWon = won;
@@ -531,6 +601,7 @@ namespace AX.UdonSlot.REV1_0
 
         public void Update()
         {
+            UpdateLights();
             if (queueAction.Length == 0) return;
             float now = Time.time;
             int kept = 0;
@@ -599,6 +670,8 @@ namespace AX.UdonSlot.REV1_0
                 mainBoard.subBoard.soundBoard.RemotePlaySound((SoundType)soundType, actionSoundClip[action], true, false);
 
             if (actionReelCount[action] > 0) RunReel(action, step);
+            if (action < actionLightCount.Length && actionLightCount[action] > 0) StartLight(action, lastWinMask);
+            if (action < actionWinSet.Length && actionWinSet[action] >= 0) ApplyWinSet(actionWinSet[action]);
 
             start = actionCodeStart[action];
             end = start + actionCodeCount[action];
@@ -771,6 +844,278 @@ namespace AX.UdonSlot.REV1_0
             else if (direction == ReelBackward) delta += turns * n;
             else if (delta > n / 2f) delta -= n;
             return previous + delta;
+        }
+
+        // ---------------------------------------------------------------- 入賞演出
+
+        /// <summary>
+        /// 入賞演出を流す。サブ基板がゲーム終了で全員の画面で呼ぶ。
+        /// 同時に入賞したときは払出の多い役の演出だけを流し、「入賞図柄」トラックは入賞したすべてのコマを光らせる。
+        /// 今のセットにその役の行が無ければ既定のセット（0番）の行を流す。
+        /// </summary>
+        /// <param name="winningNames">入賞した役の内部名</param>
+        /// <param name="winCellMask">入賞したコマ（9ビット）</param>
+        public void PlayWinEffect(string[] winningNames, int winCellMask)
+        {
+            lastWinMask = winCellMask;
+            if (winningNames == null || winningNames.Length == 0) return;
+            StopLights(StopOnWin);
+            string role = PickWinRole(winningNames);
+            if (PlayWinRole(currentWinSet, role)) return;
+            if (currentWinSet != 0) PlayWinRole(0, role);
+        }
+
+        /// <summary>BET を受けたことを伝える。サブ基板が全員の画面で呼ぶ。</summary>
+        public void OnBet()
+        {
+            StopLights(StopOnBet);
+        }
+
+        private string PickWinRole(string[] names)
+        {
+            string best = names[0];
+            ReelOutputController controller = Utilities.IsValid(mainBoard) ? mainBoard.reelOutputController : null;
+            if (!Utilities.IsValid(controller)) return best;
+            int bestPayout = controller.GetRolePayout(best);
+            for (int i = 1; i < names.Length; i++)
+            {
+                int payout = controller.GetRolePayout(names[i]);
+                if (payout > bestPayout) { best = names[i]; bestPayout = payout; }
+            }
+            return best;
+        }
+
+        /// <summary>セットの、その役の行を流す。行があれば（「なし」でも）true。</summary>
+        private bool PlayWinRole(int set, string role)
+        {
+            bool found = false;
+            for (int i = 0; i < winEntrySet.Length; i++)
+            {
+                if (winEntrySet[i] != set || winEntryRole[i] != role) continue;
+                found = true;
+                if (winEntryAction[i] >= 0) StartAction(-1, winEntryAction[i], StepGameEnd, 0);
+            }
+            return found;
+        }
+
+        /// <summary>
+        /// 入賞演出のセットを名前で切り替える。メイン基板の Owner だけが呼べる（ほかの人が呼んでも何もしない）。
+        /// 全員へ届き、次の入賞から使われる。途中参加者（Late Joiner）にも同期する。
+        /// </summary>
+        public void SetWinEffectSet(string setName)
+        {
+            if (!IsMainBoardOwner()) return;
+            int set = FindWinSet(setName);
+            if (set < 0)
+            {
+                Debug.LogWarning("[EffectPlayer] 入賞演出のセットがありません: " + setName);
+                return;
+            }
+            ApplyWinSet(set);
+            SendCustomNetworkEvent(NetworkEventTarget.All, nameof(ReceiveWinSet), set);
+        }
+
+        [NetworkCallable]
+        public void ReceiveWinSet(int set)
+        {
+            if (set >= 0 && set < winSetNames.Length) currentWinSet = set;
+        }
+
+        /// <summary>今の入賞演出のセットの名前。</summary>
+        public string GetWinEffectSetName()
+        {
+            return currentWinSet >= 0 && currentWinSet < winSetNames.Length ? winSetNames[currentWinSet] : "";
+        }
+
+        public int FindWinSet(string setName)
+        {
+            for (int i = 0; i < winSetNames.Length; i++) if (winSetNames[i] == setName) return i;
+            return -1;
+        }
+
+        /// <summary>ローカルで切り替える。メイン基板の Owner なら途中参加者向けに同期もする。</summary>
+        private void ApplyWinSet(int set)
+        {
+            if (set < 0 || set >= winSetNames.Length) return;
+            currentWinSet = set;
+            if (!IsMainBoardOwner()) return;
+            if (!Networking.IsOwner(gameObject)) Networking.SetOwner(Networking.LocalPlayer, gameObject);
+            syncedWinSet = set;
+            RequestSerialization();
+        }
+
+        // ---------------------------------------------------------------- リール照明の再生（ローカル）
+
+        private void StartLight(int action, int winMask)
+        {
+            SubBoard sub = SubBoardOf();
+            if (!Utilities.IsValid(sub)) return;
+            // 空きがなければ一番古いものを止める。
+            int slot = -1, oldest = -1;
+            for (int i = 0; i < LightSlotCount; i++)
+            {
+                if (lightAction[i] < 0) { slot = i; break; }
+                if (oldest < 0 || lightOrder[i] < lightOrder[oldest]) oldest = i;
+            }
+            if (slot < 0)
+            {
+                EndLight(oldest);
+                slot = oldest;
+            }
+            for (int c = 0; c < 9; c++) lightSavedBrightness[slot * 9 + c] = sub.GetReelSymbolBrightness(c / 3, c % 3);
+            for (int reel = 0; reel < 3; reel++)
+            {
+                lightSavedColor[slot * 6 + reel * 2] = sub.GetReelUpperLightColor(reel);
+                lightSavedColor[slot * 6 + reel * 2 + 1] = sub.GetReelLowerLightColor(reel);
+            }
+            lightAction[slot] = action;
+            lightStartTime[slot] = Time.time;
+            lightMask[slot] = winMask;
+            lightOrder[slot] = ++lightOrderCounter;
+            ApplyLight(slot, sub);
+        }
+
+        /// <summary>止めるきっかけ（StopOnBet など）が合う再生中のリール照明を止める。</summary>
+        private void StopLights(int reason)
+        {
+            for (int slot = 0; slot < LightSlotCount; slot++)
+            {
+                int action = lightAction[slot];
+                if (action < 0) continue;
+                int mask = action < actionStopMask.Length ? actionStopMask[action] : StopOnBet | StopOnLeverOn;
+                if ((mask & reason) != 0) EndLight(slot);
+            }
+        }
+
+        /// <summary>再生を終える。「戻す」なら、そのアクションが触ったコマ・照明を始まる前の値に戻す。</summary>
+        private void EndLight(int slot)
+        {
+            int action = lightAction[slot];
+            if (action < 0) return;
+            lightAction[slot] = -1;
+            if (action >= actionLightRestore.Length || !actionLightRestore[action]) return;
+            SubBoard sub = SubBoardOf();
+            if (!Utilities.IsValid(sub)) return;
+            for (int c = 0; c < 9; c++)
+            {
+                if (TouchesCell(action, c)) sub.SetReelSymbolBrightness(c / 3, c % 3, lightSavedBrightness[slot * 9 + c]);
+            }
+            for (int k = 0; k < 6; k++)
+            {
+                if (!HasTrack(action, LightTrackColor + k)) continue;
+                Color color = lightSavedColor[slot * 6 + k];
+                if (k % 2 == 0) sub.SetReelUpperLightColor(k / 2, color);
+                else sub.SetReelLowerLightColor(k / 2, color);
+            }
+        }
+
+        private void UpdateLights()
+        {
+            SubBoard sub = null;
+            // 始まった順に当てる（同じトラックは後から始まったものが勝つ）。
+            int done = 0;
+            while (true)
+            {
+                int next = -1;
+                for (int i = 0; i < LightSlotCount; i++)
+                {
+                    if (lightAction[i] < 0 || lightOrder[i] <= done) continue;
+                    if (next < 0 || lightOrder[i] < lightOrder[next]) next = i;
+                }
+                if (next < 0) return;
+                done = lightOrder[next];
+                if (sub == null) sub = SubBoardOf();
+                if (!Utilities.IsValid(sub)) return;
+                ApplyLight(next, sub);
+            }
+        }
+
+        private void ApplyLight(int slot, SubBoard sub)
+        {
+            int action = lightAction[slot];
+            int length = LightLength(action);
+            bool loop = action < actionLightLoop.Length && actionLightLoop[action] && length > 0;
+            float elapsed = (Time.time - lightStartTime[slot]) * 1000f;
+            float t = loop ? Mathf.Repeat(elapsed, length) : Mathf.Min(elapsed, length);
+            int mask = lightMask[slot];
+
+            for (int c = 0; c < 9; c++)
+            {
+                int reel = c / 3;
+                Color value = TrackValue(action, c, t);
+                if (!trackFound)
+                {
+                    float delayed = elapsed - LightDelay(action, reel);
+                    delayed = loop ? Mathf.Repeat(delayed, length) : Mathf.Min(delayed, length);
+                    value = TrackValue(action, ((mask >> c) & 1) != 0 ? LightTrackWin : LightTrackNotWin, delayed);
+                }
+                if (trackFound) sub.SetReelSymbolBrightness(reel, c % 3, value.r);
+            }
+            for (int k = 0; k < 6; k++)
+            {
+                Color color = TrackValue(action, LightTrackColor + k, t);
+                if (!trackFound) continue;
+                if (k % 2 == 0) sub.SetReelUpperLightColor(k / 2, color);
+                else sub.SetReelLowerLightColor(k / 2, color);
+            }
+
+            if (!loop && elapsed >= length) EndLight(slot);
+        }
+
+        /// <summary>TrackValue でそのトラックにキーがあったか。</summary>
+        private bool trackFound;
+
+        /// <summary>トラックの時刻 t の値。キーが無ければ trackFound が false。最初のキーより前は最初のキー、最後のキーより後は最後のキーの値。</summary>
+        private Color TrackValue(int action, int track, float t)
+        {
+            trackFound = false;
+            int start = actionLightStart[action], end = start + actionLightCount[action];
+            int before = -1, after = -1;
+            for (int i = start; i < end; i++)
+            {
+                if (lightKeyTrack[i] != track) continue;
+                if (lightKeyTime[i] <= t) before = i;
+                else if (after < 0) after = i;
+            }
+            if (before < 0 && after < 0) return Color.black;
+            trackFound = true;
+            if (before < 0) return lightKeyValue[after];
+            if (after < 0 || lightKeyHold[before]) return lightKeyValue[before];
+            float p = (t - lightKeyTime[before]) / Mathf.Max(1f, lightKeyTime[after] - lightKeyTime[before]);
+            return Color.Lerp(lightKeyValue[before], lightKeyValue[after], p);
+        }
+
+        private int LightLength(int action)
+        {
+            int length = action < actionLightLength.Length ? actionLightLength[action] : 0;
+            if (length > 0) return length;
+            int start = actionLightStart[action], end = start + actionLightCount[action];
+            for (int i = start; i < end; i++) length = Mathf.Max(length, lightKeyTime[i]);
+            return length;
+        }
+
+        private int LightDelay(int action, int reel)
+        {
+            int index = action * 3 + reel;
+            return index < actionLightDelay.Length ? actionLightDelay[index] : 0;
+        }
+
+        private bool HasTrack(int action, int track)
+        {
+            int start = actionLightStart[action], end = start + actionLightCount[action];
+            for (int i = start; i < end; i++) if (lightKeyTrack[i] == track) return true;
+            return false;
+        }
+
+        /// <summary>そのアクションがコマ c の明るさを動かすか（1コマのトラック、または入賞図柄・入賞図柄以外のトラック）。</summary>
+        private bool TouchesCell(int action, int c)
+        {
+            return HasTrack(action, c) || HasTrack(action, LightTrackWin) || HasTrack(action, LightTrackNotWin);
+        }
+
+        private SubBoard SubBoardOf()
+        {
+            return Utilities.IsValid(mainBoard) ? mainBoard.subBoard : null;
         }
 
         private bool IsMainBoardOwner()

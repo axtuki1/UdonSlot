@@ -794,6 +794,40 @@ namespace AX.UdonSlot.REV1_0
         }
 
         /// <summary>
+        /// 入賞した図柄のコマを9ビットで返す。bit0～2=左の上中下、bit3～5=中、bit6～8=右（SubBoard.SetReelSymbolLightPattern と同じ）。
+        /// 揃った役の、図柄の指定があるリールのコマだけを含める（チェリーなら左だけ）。
+        /// </summary>
+        public virtual int GetWinningCellMask()
+        {
+            if (!Utilities.IsValid(payoutTable)) return 0;
+            if (!IsAutomaticControlStateValid(0, payoutTable)) return 0;
+            int mask = 0;
+            for (int lineIndex = 0; lineIndex < payoutTable.GetPayLineCount(); lineIndex++)
+            {
+                if (!payoutTable.IsPayLineActive(lineIndex, mainBoard.bet)) continue;
+                for (int pairIndex = 0; pairIndex < payoutTable.GetWinPairCount(); pairIndex++)
+                {
+                    if (!IsCompletedStopOrderMatched(payoutTable, pairIndex)) continue;
+                    if (!IsCompletedWinPairMatched(payoutTable, pairIndex, lineIndex)) continue;
+                    for (int reelIndex = 0; reelIndex < 3; reelIndex++)
+                    {
+                        if (string.IsNullOrEmpty(payoutTable.GetSymbol(pairIndex, reelIndex))) continue;
+                        int row = payoutTable.GetPayLineRow(lineIndex, reelIndex);
+                        if (row >= 0 && row < 3) mask |= 1 << (reelIndex * 3 + row);
+                    }
+                }
+            }
+            return mask;
+        }
+
+        /// <summary>役の BET 3 での払出枚数（同時入賞のとき、どの役の入賞演出を流すか決めるのに使う）。</summary>
+        public int GetRolePayout(string winPairName)
+        {
+            if (!Utilities.IsValid(payoutTable)) return 0;
+            return payoutTable.FindPayout(winPairName);
+        }
+
+        /// <summary>
         /// ここまでに止まったリールの図柄で、まだ揃う可能性がある役の内部名を返す。
         /// 有効ラインのどれかで止まったリールの図柄がすべて一致し、押し順の指定にも反していない役。
         /// 回っているリールは問わない（滑りで届くかは見ない）。

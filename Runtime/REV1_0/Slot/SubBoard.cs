@@ -195,6 +195,28 @@ namespace AX.UdonSlot.REV1_0
             emissionMaterials[reelIndex].SetVector(ReelSymbolLightsProperty, lights);
         }
 
+        /// <summary>表示窓の1コマのバックライトの今の明るさ（0～1）。設定できないリールは 1。</summary>
+        public float GetReelSymbolBrightness(int reelIndex, int rowIndex)
+        {
+            if (rowIndex < 0 || rowIndex >= 3 || !CanSetReelSymbolLight(reelIndex)) return 1f;
+            Vector4 lights = reelSymbolLights[reelIndex];
+            return rowIndex == 0 ? lights.x : rowIndex == 1 ? lights.y : lights.z;
+        }
+
+        /// <summary>指定リールの上側の照明の今の色。設定できないリールは黒。</summary>
+        public Color GetReelUpperLightColor(int reelIndex)
+        {
+            if (!CanSetReelLightColor(reelIndex)) return Color.black;
+            return emissionMaterials[reelIndex].GetColor(ReelUpperLightColorProperty);
+        }
+
+        /// <summary>指定リールの下側の照明の今の色。設定できないリールは黒。</summary>
+        public Color GetReelLowerLightColor(int reelIndex)
+        {
+            if (!CanSetReelLightColor(reelIndex)) return Color.black;
+            return emissionMaterials[reelIndex].GetColor(ReelLowerLightColorProperty);
+        }
+
         /// <summary>指定リールの上・中・下の点灯状態をまとめて設定する。</summary>
         public void SetReelSymbolLights(int reelIndex, bool top, bool middle, bool bottom)
         {
@@ -611,13 +633,21 @@ namespace AX.UdonSlot.REV1_0
         /// <summary>直前のゲームの払出枚数。</summary>
         protected int gamePayout = 0;
 
+        /// <summary>直前のゲームで入賞した図柄のコマ（9ビット。SetReelSymbolLightPattern と同じ並び）。</summary>
+        protected int gameWinCellMask = 0;
+
         [NetworkCallable]
-        public void GameEnd(string flag, string[] winningNames, int payout)
+        public void GameEnd(string flag, string[] winningNames, int payout, int winCellMask)
         {
             gameFlag = flag != null ? flag : "";
             gameWinningNames = winningNames != null ? winningNames : new string[0];
             gamePayout = payout;
-            if (Utilities.IsValid(effectPlayer)) effectPlayer.OnStep(EffectPlayer.StepGameEnd, gameWinningNames.Length > 0);
+            gameWinCellMask = winCellMask;
+            if (Utilities.IsValid(effectPlayer))
+            {
+                effectPlayer.PlayWinEffect(gameWinningNames, winCellMask);
+                effectPlayer.OnStep(EffectPlayer.StepGameEnd, gameWinningNames.Length > 0);
+            }
             GameEndLogic();
         }
 
@@ -656,6 +686,7 @@ namespace AX.UdonSlot.REV1_0
         [NetworkCallable]
         public void Bet(int betCount)
         {
+            if (Utilities.IsValid(effectPlayer)) effectPlayer.OnBet();
             BetLogic(betCount);
         }
 

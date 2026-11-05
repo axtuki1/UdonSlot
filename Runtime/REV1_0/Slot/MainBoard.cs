@@ -525,6 +525,12 @@ namespace AX.UdonSlot.REV1_0
             if (Utilities.IsValid(subBoard) && Utilities.IsValid(subBoard.effectPlayer)) subBoard.effectPlayer.StopEffectPattern(channel);
         }
 
+        /// <summary>入賞演出のセットを名前で切り替える（メイン基板の Owner だけ）。全員へ届き、途中参加者（Late Joiner）にも同期する。</summary>
+        public void SetWinEffectSet(string setName)
+        {
+            if (Utilities.IsValid(subBoard) && Utilities.IsValid(subBoard.effectPlayer)) subBoard.effectPlayer.SetWinEffectSet(setName);
+        }
+
         /// <summary>
         /// 指定秒数、操作を受け付けない状態にする
         /// </summary>
@@ -986,6 +992,7 @@ namespace AX.UdonSlot.REV1_0
             string gameFlag = "";
             string[] gameWinningNames = new string[0];
             int gamePayout = 0;
+            int winCellMask = 0;
             if (isMockPlay)
             {
                 isReplay = false;
@@ -1007,6 +1014,7 @@ namespace AX.UdonSlot.REV1_0
                     gameFlag = reelOutputController.GetActiveBaseFlag();
                     gameWinningNames = payoutNames;
                     gamePayout = payoutAmount;
+                    if (payoutNames.Length > 0) winCellMask = reelOutputController.GetWinningCellMask();
                 }
 
                 // リプレイ時は今回のBETを次ゲームへ持ち越す。
@@ -1021,7 +1029,7 @@ namespace AX.UdonSlot.REV1_0
                 RequestSerialization();
             }
             isGaming = false;
-            subBoard.SendCustomNetworkEvent(NetworkEventTarget.All, nameof(subBoard.GameEnd), gameFlag, gameWinningNames, gamePayout);
+            subBoard.SendCustomNetworkEvent(NetworkEventTarget.All, nameof(subBoard.GameEnd), gameFlag, gameWinningNames, gamePayout, winCellMask);
         }
 
         public bool isPushingCountingButton = false;
