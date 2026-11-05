@@ -56,18 +56,6 @@ namespace AX.UdonSlot.REV1_0
         /// <summary>演出エディタのパターンを再生する。無くてもよい。</summary>
         public EffectPlayer effectPlayer;
 
-        [Header("払出")]
-        [SerializeField, Tooltip("1枚あたりの秒数。0で一度に表示")]
-        protected float payoutCountInterval = 0.08f;
-
-        /// <summary>払出セグに出している枚数（ローカルで数える）。</summary>
-        protected int payoutCount = 0;
-        /// <summary>今回の払出の合計枚数。</summary>
-        protected int payoutTotal = 0;
-        /// <summary>払出を数えている途中か。</summary>
-        protected bool isPayoutCounting = false;
-        private float payoutStartTime = 0f;
-
         /// <summary>このゲームで止まったリールの数（ローカルで数える）。</summary>
         private int effectStopCount = 0;
         /// <summary>最後に見たゲーム開始時刻。変わったらリール回転開始（ネットワークを増やさず同期変数で知る）。</summary>
@@ -437,7 +425,6 @@ namespace AX.UdonSlot.REV1_0
             RestoreStateOnJoin();
             NotifyEffectReelStart();
             UpdateLightSequences();
-            UpdatePayoutCount();
             UpdateLogic();
         }
 
@@ -593,7 +580,6 @@ namespace AX.UdonSlot.REV1_0
             gameWinningNames = new string[0];
             gamePayout = 0;
             effectStopCount = 0;
-            EndPayoutCount();
             if (Utilities.IsValid(effectPlayer)) effectPlayer.OnStep(EffectPlayer.StepLeverOn, false);
             LeverOnLogic(flag);
         }
@@ -631,74 +617,9 @@ namespace AX.UdonSlot.REV1_0
             gameFlag = flag != null ? flag : "";
             gameWinningNames = winningNames != null ? winningNames : new string[0];
             gamePayout = payout;
-            StartPayoutCount(payout);
             if (Utilities.IsValid(effectPlayer)) effectPlayer.OnStep(EffectPlayer.StepGameEnd, gameWinningNames.Length > 0);
             GameEndLogic();
         }
-
-        /// <summary>払出セグに出す枚数。数えている途中ならその枚数、それ以外は payout をそのまま返す。</summary>
-        /// <param name="payout">メイン基板の直近の払出</param>
-        public int GetViewingPayout(int payout)
-        {
-            return isPayoutCounting ? payoutCount : payout;
-        }
-
-        /// <summary>払出を1枚ずつ数え始める。持ち玉はメイン基板ですでに増えている。</summary>
-        private void StartPayoutCount(int payout)
-        {
-            EndPayoutCount();
-            if (payout <= 0) return;
-            payoutTotal = payout;
-            if (payoutCountInterval <= 0f)
-            {
-                payoutCount = payout;
-                PayoutLogic(payoutCount, payoutTotal);
-                PayoutEndLogic();
-                return;
-            }
-            payoutCount = 0;
-            payoutStartTime = Time.time;
-            isPayoutCounting = true;
-            UpdatePayoutCount();
-        }
-
-        private void UpdatePayoutCount()
-        {
-            if (!isPayoutCounting) return;
-            // 1枚目はすぐ、以降は payoutCountInterval ごとに1枚。
-            int target = Mathf.Min(payoutTotal, Mathf.FloorToInt((Time.time - payoutStartTime) / payoutCountInterval) + 1);
-            while (payoutCount < target)
-            {
-                payoutCount++;
-                PayoutLogic(payoutCount, payoutTotal);
-            }
-            if (payoutCount >= payoutTotal)
-            {
-                isPayoutCounting = false;
-                PayoutEndLogic();
-            }
-        }
-
-        /// <summary>数えている途中なら残りを飛ばして終える（BET・レバーオン・リセット時）。</summary>
-        private void EndPayoutCount()
-        {
-            if (!isPayoutCounting) return;
-            isPayoutCounting = false;
-            payoutCount = payoutTotal;
-            PayoutEndLogic();
-        }
-
-        /// <summary>機種固有の払出音・表示を実装する拡張ポイント。1枚数えるごとに全員の画面で呼ばれる。基底は払い出し音をローカルで鳴らす。</summary>
-        /// <param name="count">数え終わった枚数</param>
-        /// <param name="total">今回の払出の合計枚数</param>
-        public virtual void PayoutLogic(int count, int total)
-        {
-            if (!Utilities.IsValid(soundBoard)) return;
-            soundBoard.PlayLocalSound(SoundType.SE1, (int)ClipType.PAYOUT);
-        }
-
-        /// <summary>機種固有の払出終了時の処理を実装する拡張ポイント。数え終わったとき、または途中で打ち切られたときに全員の画面で呼ばれる。</summary>
-        public virtual void PayoutEndLogic() { }
 
         public virtual void GameEndLogic()
         {
@@ -735,7 +656,6 @@ namespace AX.UdonSlot.REV1_0
         [NetworkCallable]
         public void Bet(int betCount)
         {
-            EndPayoutCount();
             BetLogic(betCount);
         }
 
@@ -926,7 +846,6 @@ namespace AX.UdonSlot.REV1_0
         public void ResetMachine()
         {
             if (Utilities.IsValid(effectPlayer)) effectPlayer.ResetAll();
-            EndPayoutCount();
             StopReelSymbolLightSequence();
             StopReelLightColorSequence();
             ResetMachineLogic();

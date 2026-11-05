@@ -144,13 +144,6 @@ namespace AX.UdonSlot.REV1_0
             SendCustomNetworkEvent(NetworkEventTarget.All, nameof(RemotePlaySound), type, clip, isOneShot, isReplay);
         }
 
-        /// <summary>ローカルだけで鳴らす（全員へは送らない）。OneShot固定。クリップが無ければ何もしない。</summary>
-        public void PlayLocalSound(SoundType type, int clip)
-        {
-            if (clip < 0 || clip >= this.clip.Length || this.clip[clip] == null) return;
-            RemotePlaySound(type, clip, true, false);
-        }
-
         /// <summary>
         /// 途中参加者（Late Joiner）向け。指定SoundTypeで再生していなければ再生する。ローカル。
         /// この関数はOneShotがfalse固定。
