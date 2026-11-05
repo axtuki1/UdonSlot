@@ -344,7 +344,7 @@ namespace AX.UdonSlot.REV1_0
 
             if (Utilities.IsValid(segView))
             {
-                segView.SetNumberSeg(0, lastPayout);
+                segView.SetNumberSeg(0, Utilities.IsValid(subBoard) ? subBoard.GetViewingPayout(lastPayout) : lastPayout);
             }
             
             if (!scheduledRollActive[0]) UpdateReel(0, reel1Transform, isRollingReel1, currentServerMs, isLocalOwner, maxStopStepDeg);
