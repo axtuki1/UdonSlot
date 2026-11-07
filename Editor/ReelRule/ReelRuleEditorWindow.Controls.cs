@@ -467,6 +467,7 @@ namespace AX.UdonSlot.REV1_0.Editor.ReelRule
             Edit("通常の内容をコピー", delegate
             {
                 target.targets = new List<string>(source.targets);
+                target.allowSpill = source.allowSpill;
                 target.overrides.Clear();
                 foreach (var o in source.overrides) target.overrides.Add(o.Copy());
                 foreach (var shape in Design.shapes)
@@ -1053,6 +1054,17 @@ namespace AX.UdonSlot.REV1_0.Editor.ReelRule
                 }
                 if (menu.GetItemCount() == 0) menu.AddDisabledItem(new GUIContent("-"));
                 menu.ShowAsContext();
+            }
+            bool basicTarget = false;
+            foreach (string name in control.targets)
+            {
+                var shape = Design.FindShape(name);
+                if (shape != null && !shape.Exclusive) basicTarget = true;
+            }
+            if (basicTarget)
+            {
+                bool keep = EditorGUILayout.ToggleLeft("形にできなくても小役は揃える", !control.allowSpill);
+                if (keep == control.allowSpill) Edit("小役を揃える設定", delegate { control.allowSpill = !keep; });
             }
             GUILayout.Space(8);
         }

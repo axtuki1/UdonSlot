@@ -271,6 +271,8 @@ namespace AX.UdonSlot.REV1_0.Editor.ReelRule
         public string state = "";
         /// <summary>狙う出目の名前（上ほど優先）。</summary>
         public List<string> targets = new List<string>();
+        /// <summary>基本目を狙うとき、狙う形にできなければ小役をこぼすか。false なら形を崩しても揃える。</summary>
+        public bool allowSpill;
         public List<DesignOverride> overrides = new List<DesignOverride>();
 
         public DesignControl Copy()
@@ -284,7 +286,8 @@ namespace AX.UdonSlot.REV1_0.Editor.ReelRule
                 pullBonus = pullBonus,
                 bonus = bonus,
                 state = state,
-                targets = new List<string>(targets)
+                targets = new List<string>(targets),
+                allowSpill = allowSpill
             };
             foreach (var o in overrides) copy.overrides.Add(o.Copy());
             return copy;
@@ -469,17 +472,21 @@ namespace AX.UdonSlot.REV1_0.Editor.ReelRule
                     }
                     targets.Add(new Goal { Kind = GoalKind.Prefer, Target = target });
                 }
-                // 基本目を狙う制御では、狙っていない基本目は出さず、小役も狙う出目でだけ揃える（リーチ目だけなら小役は通常どおり）
+                // 基本目を狙う制御では、狙っていない基本目は出さず、小役も狙う出目でだけ揃える（リーチ目だけなら小役は通常どおり）。
+                // こぼさない設定なら、小役を揃える割合を落とさない範囲で狙う出目にする。
                 bool basicTarget = false;
                 foreach (var goal in targets) if (!design.FindShape(goal.Target).Exclusive) basicTarget = true;
+                bool keepWin = basicTarget && !d.allowSpill;
                 if (bonusFirst) rule.Goals.AddRange(bonusPulls);
                 rule.Goals.AddRange(targets);
+                if (keepWin) rule.Goals.AddRange(smallPulls);
                 if (basicTarget)
                     foreach (var shape in design.shapes)
                         if (!shape.Exclusive && !string.IsNullOrEmpty(shape.name) && !d.targets.Contains(shape.name))
                             rule.Goals.Add(new Goal { Kind = GoalKind.Avoid, Target = shape.name });
-                foreach (var pull in smallPulls)
-                    rule.Goals.Add(basicTarget ? new Goal { Kind = GoalKind.AvoidRole, Target = pull.Target } : pull);
+                if (!keepWin)
+                    foreach (var pull in smallPulls)
+                        rule.Goals.Add(basicTarget ? new Goal { Kind = GoalKind.AvoidRole, Target = pull.Target } : pull);
                 if (!bonusFirst) rule.Goals.AddRange(bonusPulls);
                 rule.Goals.AddRange(transitionPulls);
                 foreach (var shape in design.shapes)
