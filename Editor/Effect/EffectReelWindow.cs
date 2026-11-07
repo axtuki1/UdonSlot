@@ -426,7 +426,34 @@ namespace AX.UdonSlot.REV1_0.Editor.Effect
         private void HandleKeyboard()
         {
             var e = Event.current;
-            if (e.type != EventType.KeyDown || EditorGUIUtility.editingTextField) return;
+            if ((e.type == EventType.ValidateCommand || e.type == EventType.ExecuteCommand) && !EditorGUIUtility.editingTextField)
+            {
+                bool run = e.type == EventType.ExecuteCommand;
+                switch (e.commandName)
+                {
+                    case "Copy":
+                        if (selection.Count == 0) return;
+                        if (run) CopySelected();
+                        break;
+                    case "Cut":
+                        if (selection.Count == 0) return;
+                        if (run) { CopySelected(); DeleteSelected(); }
+                        break;
+                    case "Paste":
+                        if (clipboard.Count == 0) return;
+                        if (run) Paste(Mathf.RoundToInt(time / TimeSnap) * TimeSnap, -1);
+                        break;
+                    case "SelectAll":
+                        if (run) { selection.Clear(); selection.AddRange(action.ReelKeys.Where(k => shown[k.Reel])); RememberSelection(); }
+                        break;
+                    default:
+                        return;
+                }
+                e.Use();
+                if (run) Repaint();
+                return;
+            }
+            if (e.type != EventType.KeyDown || EditorGUIUtility.editingTextField || e.control || e.command) return;
             switch (e.keyCode)
             {
                 case KeyCode.Delete:
@@ -973,6 +1000,9 @@ namespace AX.UdonSlot.REV1_0.Editor.Effect
                             if (additive) selection.Add(hit);
                             else if (!selection.Contains(hit)) SetSelection(hit);
                             GUI.FocusControl(null);
+                            // 再生ヘッドをキーに合わせ、プレビューがそのキーの位置を見せるようにする
+                            time = hit.Time;
+                            playing = false;
                             mode = DragMode.Move;
                             dragMoved = false;
                             dragStart = e.mousePosition;
@@ -1061,6 +1091,8 @@ namespace AX.UdonSlot.REV1_0.Editor.Effect
                         if (hit != null)
                         {
                             if (!selection.Contains(hit)) SetSelection(hit);
+                            menu.AddItem(new GUIContent("コピー"), false, CopySelected);
+                            menu.AddItem(new GUIContent("切り取り"), false, () => { CopySelected(); DeleteSelected(); });
                             menu.AddItem(new GUIContent("削除"), false, DeleteSelected);
                         }
                         else
@@ -1071,6 +1103,17 @@ namespace AX.UdonSlot.REV1_0.Editor.Effect
                                 int reel = r;
                                 menu.AddItem(new GUIContent("キーを追加/" + EffectModel.ReelNames[r]), false, () => AddKey(reel, at, n));
                             }
+                            if (clipboard.Count == 0) menu.AddDisabledItem(new GUIContent("貼り付け"));
+                            else if (clipboard.TrueForAll(k => k.Reel == clipboard[0].Reel))
+                            {
+                                // 1リール分なら貼り付け先のリールを選べる
+                                for (int r = 0; r < 3; r++)
+                                {
+                                    int reel = r;
+                                    menu.AddItem(new GUIContent("貼り付け/" + EffectModel.ReelNames[r]), false, () => Paste(at, reel));
+                                }
+                            }
+                            else menu.AddItem(new GUIContent("貼り付け"), false, () => Paste(at, -1));
                         }
                         menu.ShowAsContext();
                         e.Use();
@@ -1291,6 +1334,53 @@ namespace AX.UdonSlot.REV1_0.Editor.Effect
                 Rebase(positions, n);
             });
             SetSelection(key);
+        }
+
+        // ------------------------------------------------------------ コピー・貼り付け
+
+        /// <summary>コピーしたキー。Time は一番早いキーからの差。ウィンドウを閉じても残す。</summary>
+        private static readonly List<EffectReelKey> clipboard = new List<EffectReelKey>();
+
+        private void CopySelected()
+        {
+            if (selection.Count == 0) return;
+            int start = selection.Min(k => k.Time);
+            clipboard.Clear();
+            foreach (var k in selection)
+            {
+                var c = k.Copy();
+                c.Time -= start;
+                clipboard.Add(c);
+            }
+        }
+
+        /// <summary>
+        /// 時間 at から貼り付ける。reel が 0～2 ならそのリールへ（1リール分のとき）、-1 なら元のリールへ。
+        /// 相対キーは前のキーからのコマ数のまま貼り、後ろにあるキーは今の位置を保つ。同じ時間のキーは上書きする。
+        /// </summary>
+        private void Paste(int at, int reel)
+        {
+            if (clipboard.Count == 0) return;
+            int n = SymbolCount;
+            var pasted = new List<EffectReelKey>();
+            foreach (var c in clipboard)
+            {
+                var k = c.Copy();
+                k.Time += at;
+                if (reel >= 0) k.Reel = reel;
+                pasted.Add(k);
+            }
+            var positions = Positions(n);
+            Edit("リールキーの貼り付け", delegate
+            {
+                action.ReelKeys.RemoveAll(k => pasted.Exists(p => p.Reel == k.Reel && p.Time == k.Time));
+                action.ReelKeys.AddRange(pasted);
+                Rebase(positions, n);
+            });
+            for (int r = 0; r < 3; r++) if (pasted.Exists(k => k.Reel == r)) shown[r] = true;
+            selection.Clear();
+            selection.AddRange(pasted);
+            RememberSelection();
         }
 
         private void DeleteSelected()
