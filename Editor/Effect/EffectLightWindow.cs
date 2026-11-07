@@ -345,7 +345,34 @@ namespace AX.UdonSlot.REV1_0.Editor.Effect
         private void HandleKeyboard()
         {
             var e = Event.current;
-            if (e.type != EventType.KeyDown || EditorGUIUtility.editingTextField) return;
+            if ((e.type == EventType.ValidateCommand || e.type == EventType.ExecuteCommand) && !EditorGUIUtility.editingTextField)
+            {
+                bool run = e.type == EventType.ExecuteCommand;
+                switch (e.commandName)
+                {
+                    case "Copy":
+                        if (selection.Count == 0) return;
+                        if (run) CopySelected();
+                        break;
+                    case "Cut":
+                        if (selection.Count == 0) return;
+                        if (run) { CopySelected(); DeleteSelected(); }
+                        break;
+                    case "Paste":
+                        if (clipboard.Count == 0) return;
+                        if (run) Paste((int)Snap(time));
+                        break;
+                    case "SelectAll":
+                        if (run) { selection.Clear(); selection.AddRange(action.LightKeys); RememberSelection(); }
+                        break;
+                    default:
+                        return;
+                }
+                e.Use();
+                if (run) Repaint();
+                return;
+            }
+            if (e.type != EventType.KeyDown || EditorGUIUtility.editingTextField || e.control || e.command) return;
             switch (e.keyCode)
             {
                 case KeyCode.Delete:
@@ -813,6 +840,8 @@ namespace AX.UdonSlot.REV1_0.Editor.Effect
                         if (hit != null)
                         {
                             if (!selection.Contains(hit)) SetSelection(hit);
+                            menu.AddItem(new GUIContent("コピー"), false, CopySelected);
+                            menu.AddItem(new GUIContent("切り取り"), false, () => { CopySelected(); DeleteSelected(); });
                             menu.AddItem(new GUIContent("削除"), false, DeleteSelected);
                         }
                         else
@@ -824,6 +853,8 @@ namespace AX.UdonSlot.REV1_0.Editor.Effect
                                 int track = tracks[row];
                                 menu.AddItem(new GUIContent("キーを追加"), false, () => AddKey(track, at));
                             }
+                            if (clipboard.Count > 0) menu.AddItem(new GUIContent("貼り付け"), false, () => Paste(at));
+                            else menu.AddDisabledItem(new GUIContent("貼り付け"));
                         }
                         menu.ShowAsContext();
                         e.Use();
@@ -994,6 +1025,47 @@ namespace AX.UdonSlot.REV1_0.Editor.Effect
             Edit("照明キーの追加", () => action.LightKeys.AddRange(added));
             selection.Clear();
             selection.AddRange(added);
+            RememberSelection();
+        }
+
+        // ------------------------------------------------------------ コピー・貼り付け
+
+        /// <summary>コピーしたキー。Time は一番早いキーからの差。ウィンドウを閉じても残す。</summary>
+        private static readonly List<EffectLightKey> clipboard = new List<EffectLightKey>();
+
+        private void CopySelected()
+        {
+            if (selection.Count == 0) return;
+            int start = int.MaxValue;
+            foreach (var k in selection) start = Mathf.Min(start, k.Time);
+            clipboard.Clear();
+            foreach (var k in selection)
+                clipboard.Add(new EffectLightKey { Track = k.Track, Time = k.Time - start, Value = k.Value, Hold = k.Hold });
+        }
+
+        /// <summary>
+        /// 時間 at から貼り付ける。1トラック分のキーなら、選んでいる同じ種類（明るさ／色）のトラックそれぞれへ。
+        /// それ以外は元のトラックへ。同じ時間のキーは上書きする。
+        /// </summary>
+        private void Paste(int at)
+        {
+            if (clipboard.Count == 0) return;
+            bool single = clipboard.TrueForAll(k => k.Track == clipboard[0].Track);
+            var targets = TargetTracks().FindAll(t => IsColorTrack(t) == IsColorTrack(clipboard[0].Track));
+            var pasted = new List<EffectLightKey>();
+            foreach (var c in clipboard)
+            {
+                var tracks = single && targets.Count > 0 ? targets : new List<int> { c.Track };
+                foreach (int track in tracks)
+                    pasted.Add(new EffectLightKey { Track = track, Time = at + c.Time, Value = c.Value, Hold = c.Hold });
+            }
+            Edit("照明キーの貼り付け", () =>
+            {
+                action.LightKeys.RemoveAll(k => pasted.Exists(p => p.Track == k.Track && p.Time == k.Time));
+                action.LightKeys.AddRange(pasted);
+            });
+            selection.Clear();
+            selection.AddRange(pasted);
             RememberSelection();
         }
 
