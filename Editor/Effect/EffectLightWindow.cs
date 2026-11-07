@@ -483,9 +483,36 @@ namespace AX.UdonSlot.REV1_0.Editor.Effect
             GUILayout.Space(8);
         }
 
+        /// <summary>トラックを選ぶ（Shift／Ctrl で追加・解除）。キーの選択は外す。</summary>
+        private void SelectTrack(int track)
+        {
+            var e = Event.current;
+            var tracksNow = TargetTracks();
+            bool additive = e.shift || e.control || e.command;
+            if (!additive) tracksNow.Clear();
+            if (additive && tracksNow.Contains(track)) tracksNow.Remove(track);
+            else tracksNow.Add(track);
+            SetSelection(null);
+            selectedTracks.Clear();
+            selectedTracks.AddRange(tracksNow);
+            e.Use();
+            Repaint();
+        }
+
+        /// <summary>プレビューの1か所を描き、クリックでそのトラックを選ぶ。選んでいるトラックは枠で示す。</summary>
+        private void PreviewHit(Rect r, int track, List<int> targets)
+        {
+            var e = Event.current;
+            if (e.type == EventType.MouseDown && e.button == 0 && r.Contains(e.mousePosition)) SelectTrack(track);
+            if (targets.Contains(track)) Handles.DrawSolidRectangleWithOutline(new Rect(r.x - 1, r.y - 1, r.width + 2, r.height + 2), Color.clear, SelectOutlineColor);
+        }
+
+        private static readonly Color SelectOutlineColor = new Color(0.4f, 0.65f, 1f, 1f);
+
         private void DrawPreview(Rect rect)
         {
             int mask = PreviewMask();
+            var targets = TargetTracks();
             for (int reel = 0; reel < 3; reel++)
             {
                 float x = rect.x + reel * (CellW + 6);
@@ -494,6 +521,8 @@ namespace AX.UdonSlot.REV1_0.Editor.Effect
                 bool hasLower = TrackValue(EffectPlayer.LightTrackColor + reel * 2 + 1, LocalTime(time), out lower);
                 EditorGUI.DrawRect(new Rect(x, rect.y, CellW, BandH), hasUpper ? Display(upper) : HeaderColor);
                 EditorGUI.DrawRect(new Rect(x, rect.y + BandH + CellH * 3, CellW, BandH), hasLower ? Display(lower) : HeaderColor);
+                PreviewHit(new Rect(x, rect.y, CellW, BandH), EffectPlayer.LightTrackColor + reel * 2, targets);
+                PreviewHit(new Rect(x, rect.y + BandH + CellH * 3, CellW, BandH), EffectPlayer.LightTrackColor + reel * 2 + 1, targets);
                 for (int row = 0; row < 3; row++)
                 {
                     int cell = reel * 3 + row;
@@ -507,6 +536,7 @@ namespace AX.UdonSlot.REV1_0.Editor.Effect
                         Handles.DrawSolidRectangleWithOutline(r, Color.clear, WinOutlineColor);
                     }
                     if (b.HasValue) GUI.Label(r, Mathf.RoundToInt(v * 100f) + "%", CellLabel);
+                    PreviewHit(r, cell, targets);
                 }
             }
         }
@@ -546,19 +576,7 @@ namespace AX.UdonSlot.REV1_0.Editor.Effect
                 EditorGUI.DrawRect(r, selected ? RowSelectedColor : RowColor);
                 bool keyed = HasKeys(track);
                 GUI.Label(new Rect(r.x + 6, r.y, r.width - 6, r.height), TrackName(track), keyed ? EditorStyles.label : DimLabel);
-                if (e.type == EventType.MouseDown && e.button == 0 && r.Contains(e.mousePosition))
-                {
-                    var tracksNow = TargetTracks();
-                    bool additive = e.shift || e.control || e.command;
-                    if (!additive) tracksNow.Clear();
-                    if (additive && tracksNow.Contains(track)) tracksNow.Remove(track);
-                    else tracksNow.Add(track);
-                    SetSelection(null);
-                    selectedTracks.Clear();
-                    selectedTracks.AddRange(tracksNow);
-                    e.Use();
-                    Repaint();
-                }
+                if (e.type == EventType.MouseDown && e.button == 0 && r.Contains(e.mousePosition)) SelectTrack(track);
                 if (e.type == EventType.ContextClick && r.Contains(e.mousePosition))
                 {
                     var menu = new GenericMenu();
