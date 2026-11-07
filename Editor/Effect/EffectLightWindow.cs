@@ -111,7 +111,9 @@ namespace AX.UdonSlot.REV1_0.Editor.Effect
             time += (float)((now - lastTick) * 1000.0);
             lastTick = now;
             int length = action.LightEnd;
-            if (!action.LightLoop && time >= length + MaxDelay())
+            // ループは長さの終わりで再生ヘッドを最初に戻す。
+            if (action.LightLoop && length > 0) time = Mathf.Repeat(time, length);
+            else if (time >= length + MaxDelay())
             {
                 time = length + MaxDelay();
                 playing = false;
@@ -327,7 +329,11 @@ namespace AX.UdonSlot.REV1_0.Editor.Effect
                 GUILayout.Label("ms", GUILayout.Width(24));
                 GUILayout.Space(8);
                 int loop = GUILayout.Toolbar(action.LightLoop ? 1 : 0, LoopNames, EditorStyles.toolbarButton, GUILayout.Width(110));
-                if (loop != (action.LightLoop ? 1 : 0)) Edit("ループの変更", () => action.LightLoop = loop == 1);
+                if (loop != (action.LightLoop ? 1 : 0))
+                {
+                    Edit("ループの変更", () => action.LightLoop = loop == 1);
+                    time = 0f;
+                }
                 GUILayout.Space(8);
                 GUILayout.Label("終了時", GUILayout.Width(40));
                 int end = GUILayout.Toolbar(action.LightRestore ? 0 : 1, EndNames, EditorStyles.toolbarButton, GUILayout.Width(120));
