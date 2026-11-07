@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using System.Linq;
 using UnityEditor;
 using UnityEngine;
 
@@ -59,7 +60,7 @@ namespace AX.UdonSlot.REV1_0.Editor.Effect
         private bool playing;
         private double lastTick;
 
-        private enum DragMode { None, Scrub, Move, Box, Pan }
+        private enum DragMode { None, Scrub, Move, Box, Pan, Scale }
 
         private readonly List<EffectLightKey> selection = new List<EffectLightKey>();
         private readonly List<Vector2Int> selectionIds = new List<Vector2Int>();
@@ -68,6 +69,8 @@ namespace AX.UdonSlot.REV1_0.Editor.Effect
         private DragMode mode;
         /// <summary>ドラッグ中にマウスをつかんでおくための ID。ウィンドウの外に出ても操作を続けられる。</summary>
         private int dragId;
+        /// <summary>伸縮で動かさない側の端と、つかんだ側の端（ドラッグ開始時）の時間。</summary>
+        private float scaleAnchor, scaleEdge;
         private bool dragMoved;
         private Vector2 dragStart, boxStart, boxEnd;
         private List<int> dragTimes = new List<int>();
@@ -628,6 +631,7 @@ namespace AX.UdonSlot.REV1_0.Editor.Effect
                     if (row < 0) continue;
                     DrawKey(KeyPosition(rect, key, row), key);
                 }
+                DrawScaleHandles(rect);
                 if (mode == DragMode.Box)
                 {
                     var box = BoxRect();
@@ -640,6 +644,12 @@ namespace AX.UdonSlot.REV1_0.Editor.Effect
             EditorGUI.DrawRect(new Rect(X(rect, time) - 1, 0, 2, rect.height), PlayheadColor);
             GUI.EndClip();
 
+            Rect left, right;
+            if (ScaleHandles(rect, out left, out right))
+            {
+                EditorGUIUtility.AddCursorRect(left, MouseCursor.ResizeHorizontal);
+                EditorGUIUtility.AddCursorRect(right, MouseCursor.ResizeHorizontal);
+            }
             HandleGraphMouse(rect, tracks);
         }
 
@@ -714,6 +724,36 @@ namespace AX.UdonSlot.REV1_0.Editor.Effect
             return hit;
         }
 
+        /// <summary>
+        /// 選んだキーの範囲の両端に出す伸縮のつまみ（ウィンドウ座標）。
+        /// 時間の違うキーを2つ以上選んでいるときだけ出す。
+        /// </summary>
+        private bool ScaleHandles(Rect graph, out Rect left, out Rect right)
+        {
+            left = right = new Rect();
+            if (selection.Count < 2 || mode == DragMode.Box) return false;
+            int min = selection.Min(k => k.Time), max = selection.Max(k => k.Time);
+            if (min == max) return false;
+            float x0 = graph.x + X(graph, min), x1 = graph.x + X(graph, max);
+            // グラフの外にはみ出す時は内側に寄せる
+            left = new Rect(Mathf.Max(graph.x, x0 - 12f), graph.y, 7f, graph.height);
+            right = new Rect(Mathf.Min(graph.xMax - 7f, x1 + 5f), graph.y, 7f, graph.height);
+            return true;
+        }
+
+        private void DrawScaleHandles(Rect graph)
+        {
+            Rect left, right;
+            if (!ScaleHandles(graph, out left, out right)) return;
+            left.position -= graph.position;
+            right.position -= graph.position;
+            var band = new Rect(left.xMax, 0, right.x - left.xMax, graph.height);
+            EditorGUI.DrawRect(band, new Color(0.5f, 0.7f, 0.9f, 0.08f));
+            var handle = new Color(0.5f, 0.7f, 0.9f, mode == DragMode.Scale ? 0.7f : 0.4f);
+            EditorGUI.DrawRect(left, handle);
+            EditorGUI.DrawRect(right, handle);
+        }
+
         private Rect BoxRect()
         {
             return Rect.MinMaxRect(Mathf.Min(boxStart.x, boxEnd.x), Mathf.Min(boxStart.y, boxEnd.y),
@@ -752,6 +792,21 @@ namespace AX.UdonSlot.REV1_0.Editor.Effect
                     }
                     if (e.button != 0) break;
                     {
+                        Rect left, right;
+                        if (ScaleHandles(rect, out left, out right) && (left.Contains(e.mousePosition) || right.Contains(e.mousePosition)))
+                        {
+                            // つかんだ側の端を動かし、反対側の端を基準に選んだキーの間隔を伸び縮みさせる
+                            int min = selection.Min(k => k.Time), max = selection.Max(k => k.Time);
+                            bool leftSide = left.Contains(e.mousePosition);
+                            scaleAnchor = leftSide ? max : min;
+                            scaleEdge = leftSide ? min : max;
+                            dragTimes = selection.ConvertAll(k => k.Time);
+                            dragMoved = false;
+                            mode = DragMode.Scale;
+                            playing = false;
+                            e.Use();
+                            break;
+                        }
                         var hit = HitKey(e.mousePosition, rect, tracks);
                         if (hit != null)
                         {
@@ -805,6 +860,22 @@ namespace AX.UdonSlot.REV1_0.Editor.Effect
                         case DragMode.Box:
                             boxEnd = e.mousePosition;
                             break;
+                        case DragMode.Scale:
+                        {
+                            float edge = Snap(TimeAt(rect, e.mousePosition.x));
+                            float minSpan = Mathf.Max(1, TimeSnap);
+                            if (scaleEdge > scaleAnchor) edge = Mathf.Max(edge, scaleAnchor + minSpan);
+                            else edge = Mathf.Max(0f, Mathf.Min(edge, scaleAnchor - minSpan));
+                            float factor = (edge - scaleAnchor) / (scaleEdge - scaleAnchor);
+                            for (int i = 0; i < selection.Count; i++)
+                            {
+                                int newTime = Mathf.Max(0, (int)Snap(scaleAnchor + (dragTimes[i] - scaleAnchor) * factor));
+                                if (newTime != selection[i].Time) dragMoved = true;
+                                selection[i].Time = newTime;
+                            }
+                            RememberSelection();
+                            break;
+                        }
                         case DragMode.Move:
                         {
                             float dt = (e.mousePosition.x - dragStart.x) / rect.width * (ViewEnd - ViewStart);
@@ -827,6 +898,7 @@ namespace AX.UdonSlot.REV1_0.Editor.Effect
                 case EventType.MouseUp:
                     if (mode == DragMode.None) break;
                     if (mode == DragMode.Move && dragMoved) Edit("照明キーの移動", delegate { });
+                    if (mode == DragMode.Scale && dragMoved) Edit("照明キーの伸縮", delegate { });
                     if (mode == DragMode.Box)
                     {
                         var box = BoxRect();
