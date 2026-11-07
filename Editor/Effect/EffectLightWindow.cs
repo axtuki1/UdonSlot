@@ -66,6 +66,8 @@ namespace AX.UdonSlot.REV1_0.Editor.Effect
         /// <summary>名前をクリックして選んだトラック。キーを選んでいるときはそのキーのトラックが優先。</summary>
         private readonly List<int> selectedTracks = new List<int>();
         private DragMode mode;
+        /// <summary>ドラッグ中にマウスをつかんでおくための ID。ウィンドウの外に出ても操作を続けられる。</summary>
+        private int dragId;
         private bool dragMoved;
         private Vector2 dragStart, boxStart, boxEnd;
         private List<int> dragTimes = new List<int>();
@@ -306,10 +308,19 @@ namespace AX.UdonSlot.REV1_0.Editor.Effect
                 GUILayout.Label("演出エディタでアクションを開いてください。", EditorStyles.centeredGreyMiniLabel);
                 return;
             }
+            dragId = GUIUtility.GetControlID(FocusType.Passive);
             HandleKeyboard();
             DrawToolbar();
             DrawTop();
             DrawEditArea();
+            CaptureMouse(mode != DragMode.None);
+        }
+
+        /// <summary>ドラッグが始まったらマウスをつかみ、終わったら離す。</summary>
+        private void CaptureMouse(bool dragging)
+        {
+            if (dragging && GUIUtility.hotControl == 0) GUIUtility.hotControl = dragId;
+            else if (!dragging && GUIUtility.hotControl == dragId) GUIUtility.hotControl = 0;
         }
 
         private void DrawToolbar()
@@ -719,7 +730,7 @@ namespace AX.UdonSlot.REV1_0.Editor.Effect
         {
             var e = Event.current;
             bool additive = e.shift || e.control || e.command;
-            switch (e.type)
+            switch (e.GetTypeForControl(dragId))
             {
                 case EventType.ScrollWheel:
                     if (!rect.Contains(e.mousePosition)) break;

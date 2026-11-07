@@ -73,6 +73,8 @@ namespace AX.UdonSlot.REV1_0.Editor.Effect
         private readonly List<Vector2Int> selectionIds = new List<Vector2Int>();
 
         private DragMode mode;
+        /// <summary>ドラッグ中にマウスをつかんでおくための ID。ウィンドウの外に出ても操作を続けられる。</summary>
+        private int dragId;
         private bool dragMoved;
         private Vector2 dragStart, boxStart, boxEnd;
         private List<int> dragTimes = new List<int>();
@@ -405,6 +407,7 @@ namespace AX.UdonSlot.REV1_0.Editor.Effect
             if (shown == null || shown.Length != 3) shown = new[] { true, true, true };
             if (startFrame == null || startFrame.Length != 3) startFrame = new[] { 1, 1, 1 };
 
+            dragId = GUIUtility.GetControlID(FocusType.Passive);
             int n = SymbolCount;
             for (int r = 0; r < 3; r++) startFrame[r] = WrapFrame(startFrame[r], n);
             HandleKeyboard();
@@ -421,6 +424,14 @@ namespace AX.UdonSlot.REV1_0.Editor.Effect
 
             DrawPreview(n);
             DrawEditArea(n);
+            CaptureMouse(mode != DragMode.None || faceDragReel >= 0);
+        }
+
+        /// <summary>ドラッグが始まったらマウスをつかみ、終わったら離す。</summary>
+        private void CaptureMouse(bool dragging)
+        {
+            if (dragging && GUIUtility.hotControl == 0) GUIUtility.hotControl = dragId;
+            else if (!dragging && GUIUtility.hotControl == dragId) GUIUtility.hotControl = 0;
         }
 
         private void HandleKeyboard()
@@ -966,7 +977,7 @@ namespace AX.UdonSlot.REV1_0.Editor.Effect
         {
             var e = Event.current;
             bool additive = e.shift || e.control || e.command;
-            switch (e.type)
+            switch (e.GetTypeForControl(dragId))
             {
                 case EventType.ScrollWheel:
                     if (!rect.Contains(e.mousePosition)) break;
