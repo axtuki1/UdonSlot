@@ -63,6 +63,8 @@ namespace AX.UdonSlot.REV1_0.Editor.Effect
 
         private readonly List<EffectLightKey> selection = new List<EffectLightKey>();
         private readonly List<Vector2Int> selectionIds = new List<Vector2Int>();
+        /// <summary>名前をクリックして選んだトラック。キーを選んでいるときはそのキーのトラックが優先。</summary>
+        private readonly List<int> selectedTracks = new List<int>();
         private DragMode mode;
         private bool dragMoved;
         private Vector2 dragStart, boxStart, boxEnd;
@@ -82,6 +84,7 @@ namespace AX.UdonSlot.REV1_0.Editor.Effect
             window.action = action;
             window.actionName = action.Name;
             window.selection.Clear();
+            window.selectedTracks.Clear();
             window.selectionIds.Clear();
             window.viewSet = false;
             window.time = 0f;
@@ -498,10 +501,23 @@ namespace AX.UdonSlot.REV1_0.Editor.Effect
             {
                 int track = tracks[i];
                 var r = new Rect(rect.x, rect.y + i * TrackH, rect.width, TrackH - 1);
-                bool selected = selection.Exists(k => k.Track == track);
+                bool selected = TargetTracks().Contains(track);
                 EditorGUI.DrawRect(r, selected ? RowSelectedColor : RowColor);
                 bool keyed = HasKeys(track);
                 GUI.Label(new Rect(r.x + 6, r.y, r.width - 6, r.height), TrackName(track), keyed ? EditorStyles.label : DimLabel);
+                if (e.type == EventType.MouseDown && e.button == 0 && r.Contains(e.mousePosition))
+                {
+                    var tracksNow = TargetTracks();
+                    bool additive = e.shift || e.control || e.command;
+                    if (!additive) tracksNow.Clear();
+                    if (additive && tracksNow.Contains(track)) tracksNow.Remove(track);
+                    else tracksNow.Add(track);
+                    SetSelection(null);
+                    selectedTracks.Clear();
+                    selectedTracks.AddRange(tracksNow);
+                    e.Use();
+                    Repaint();
+                }
                 if (e.type == EventType.ContextClick && r.Contains(e.mousePosition))
                 {
                     var menu = new GenericMenu();
@@ -711,6 +727,9 @@ namespace AX.UdonSlot.REV1_0.Editor.Effect
                             if (additive) selection.Add(hit);
                             else if (!selection.Contains(hit)) SetSelection(hit);
                             RememberSelection();
+                            // 再生ヘッドをキーに合わせ、編集パレットの値がそのキーを指すようにする
+                            time = hit.Time;
+                            playing = false;
                             GUI.FocusControl(null);
                             mode = DragMode.Move;
                             dragMoved = false;
@@ -822,53 +841,58 @@ namespace AX.UdonSlot.REV1_0.Editor.Effect
                 if (GUILayout.Button("キー＋", GUILayout.Width(80))) AddKeysAtPlayhead();
                 GUILayout.FlexibleSpace();
             }
-            if (selection.Count == 0) return;
-            var first = selection[0];
-            bool sameTrack = selection.TrueForAll(k => k.Track == first.Track);
-            bool allColor = selection.TrueForAll(k => IsColorTrack(k.Track));
-            bool allBrightness = selection.TrueForAll(k => !IsColorTrack(k.Track));
+            var tracks = TargetTracks();
+            if (tracks.Count == 0) return;
+            int at = (int)Snap(time);
+            bool allColor = tracks.TrueForAll(IsColorTrack);
+            bool allBrightness = !tracks.Exists(IsColorTrack);
 
             GUILayout.Space(6);
             using (new EditorGUILayout.HorizontalScope())
             {
                 GUILayout.Label("トラック", GUILayout.Width(labelW));
-                GUILayout.Label(sameTrack ? TrackName(first.Track) : "—", EditorStyles.boldLabel, GUILayout.Width(140));
-                if (selection.Count > 1) GUILayout.Label(selection.Count + " キー");
+                GUILayout.Label(tracks.Count == 1 ? TrackName(tracks[0]) : tracks.Count + " トラック", EditorStyles.boldLabel, GUILayout.Width(160));
                 GUILayout.FlexibleSpace();
             }
 
+            // 再生ヘッドの位置の値。変えるとその時間にキーを打つ（あれば書き換える）。
+            var values = tracks.ConvertAll(t => ValueAt(t, at));
             GUILayout.Space(2);
             using (new EditorGUILayout.HorizontalScope())
             {
-                GUILayout.Label("時間", GUILayout.Width(labelW));
+                GUILayout.Label(allColor ? "色" : "明るさ", GUILayout.Width(labelW));
+                EditorGUI.showMixedValue = !values.TrueForAll(v => v == values[0]);
+                if (allBrightness)
+                {
+                    EditorGUI.BeginChangeCheck();
+                    float v = EditorGUILayout.Slider(values[0].r, 0f, 1f, GUILayout.Width(200));
+                    if (EditorGUI.EndChangeCheck()) SetValueAt(tracks, at, new Color(v, v, v, 1f));
+                }
+                else if (allColor)
+                {
+                    EditorGUI.BeginChangeCheck();
+                    var c = EditorGUILayout.ColorField(GUIContent.none, values[0], true, false, true, GUILayout.Width(200));
+                    if (EditorGUI.EndChangeCheck()) SetValueAt(tracks, at, c);
+                }
+                else GUILayout.Label("—");
+                EditorGUI.showMixedValue = false;
+                GUILayout.Label(at + " ms", EditorStyles.miniLabel);
+                GUILayout.FlexibleSpace();
+            }
+
+            if (selection.Count == 0) return;
+            var first = selection[0];
+            GUILayout.Space(8);
+            using (new EditorGUILayout.HorizontalScope())
+            {
+                GUILayout.Label("キーの時間", GUILayout.Width(labelW));
                 EditorGUI.showMixedValue = !selection.TrueForAll(k => k.Time == first.Time);
                 int t;
                 if (EffectFields.EditInt(first.Time, out t, GUILayout.Width(90)))
                     Edit("照明キーの変更", () => { foreach (var k in selection) k.Time = Mathf.Max(0, t); });
                 EditorGUI.showMixedValue = false;
                 GUILayout.Label("ms", GUILayout.Width(30));
-                GUILayout.FlexibleSpace();
-            }
-
-            GUILayout.Space(2);
-            using (new EditorGUILayout.HorizontalScope())
-            {
-                GUILayout.Label(allColor ? "色" : "明るさ", GUILayout.Width(labelW));
-                EditorGUI.showMixedValue = !selection.TrueForAll(k => k.Value == first.Value);
-                if (allBrightness)
-                {
-                    EditorGUI.BeginChangeCheck();
-                    float v = EditorGUILayout.Slider(first.Value.r, 0f, 1f, GUILayout.Width(200));
-                    if (EditorGUI.EndChangeCheck()) Edit("照明キーの変更", () => { foreach (var k in selection) k.Value = new Color(v, v, v, 1f); });
-                }
-                else if (allColor)
-                {
-                    EditorGUI.BeginChangeCheck();
-                    var c = EditorGUILayout.ColorField(GUIContent.none, first.Value, true, false, true, GUILayout.Width(200));
-                    if (EditorGUI.EndChangeCheck()) Edit("照明キーの変更", () => { foreach (var k in selection) k.Value = c; });
-                }
-                else GUILayout.Label("—");
-                EditorGUI.showMixedValue = false;
+                if (selection.Count > 1) GUILayout.Label(selection.Count + " キー");
                 GUILayout.FlexibleSpace();
             }
 
@@ -882,6 +906,39 @@ namespace AX.UdonSlot.REV1_0.Editor.Effect
                 if (picked != current && picked >= 0) Edit("照明キーの変更", () => { foreach (var k in selection) k.Hold = picked == 1; });
                 GUILayout.FlexibleSpace();
             }
+        }
+
+        /// <summary>値を編集する対象のトラック。キーを選んでいればそのトラック、なければ名前で選んだトラック。</summary>
+        private List<int> TargetTracks()
+        {
+            var list = new List<int>();
+            if (selection.Count > 0)
+            {
+                foreach (int t in TrackOrder) if (selection.Exists(k => k.Track == t)) list.Add(t);
+                return list;
+            }
+            foreach (int t in TrackOrder) if (selectedTracks.Contains(t)) list.Add(t);
+            return list;
+        }
+
+        private Color ValueAt(int track, int at)
+        {
+            Color v;
+            return TrackValue(track, at, out v) ? v : Color.white;
+        }
+
+        /// <summary>その時間にキーを打つ。同じ時間のキーがあれば値だけ書き換える。</summary>
+        private void SetValueAt(List<int> tracks, int at, Color value)
+        {
+            Edit("照明キーの変更", () =>
+            {
+                foreach (int track in tracks)
+                {
+                    var key = action.LightKeys.Find(k => k.Track == track && k.Time == at);
+                    if (key != null) key.Value = value;
+                    else action.LightKeys.Add(new EffectLightKey { Track = track, Time = at, Value = value });
+                }
+            });
         }
 
         // ------------------------------------------------------------ 編集
@@ -923,10 +980,11 @@ namespace AX.UdonSlot.REV1_0.Editor.Effect
         {
             int at = (int)Snap(time);
             var added = new List<EffectLightKey>();
-            // キーのあるトラックだけに打つ（全行に打つと、触っていない照明まで動かしてしまう）
+            // 選んでいるトラック、なければキーのあるトラックだけに打つ（全行に打つと、触っていない照明まで動かしてしまう）
+            var targets = TargetTracks();
             foreach (int track in Tracks())
             {
-                if (!HasKeys(track)) continue;
+                if (targets.Count > 0 ? !targets.Contains(track) : !HasKeys(track)) continue;
                 if (action.LightKeys.Exists(k => k.Track == track && k.Time == at)) continue;
                 Color value;
                 if (!TrackValue(track, at, out value)) value = Color.white;
