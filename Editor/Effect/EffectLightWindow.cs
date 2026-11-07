@@ -50,8 +50,6 @@ namespace AX.UdonSlot.REV1_0.Editor.Effect
         }
 
         [SerializeField] private string actionName;
-        /// <summary>キーはまだ無いが行を出しているトラック。</summary>
-        [SerializeField] private List<int> extraTracks = new List<int>();
         /// <summary>プレビューで入賞図柄として光らせるライン（配当表の有効ラインの番号）。</summary>
         [SerializeField] private int previewLine = -1;
 
@@ -79,11 +77,10 @@ namespace AX.UdonSlot.REV1_0.Editor.Effect
         {
             var window = GetWindow<EffectLightWindow>();
             window.titleContent = new GUIContent("リール照明");
-            window.minSize = new Vector2(900, 560);
+            window.minSize = new Vector2(900, 680);
             window.owner = owner;
             window.action = action;
             window.actionName = action.Name;
-            window.extraTracks.Clear();
             window.selection.Clear();
             window.selectionIds.Clear();
             window.viewSet = false;
@@ -178,16 +175,12 @@ namespace AX.UdonSlot.REV1_0.Editor.Effect
             return EffectModel.ReelNames[track / 3] + RowNames[track % 3];
         }
 
-        /// <summary>表示する行。入賞図柄・入賞図柄以外、9コマ、照明の色の順。</summary>
-        private List<int> Tracks()
-        {
-            var used = new HashSet<int>(extraTracks);
-            foreach (var k in action.LightKeys) used.Add(k.Track);
-            var list = new List<int>();
-            int[] order = { EffectPlayer.LightTrackWin, EffectPlayer.LightTrackNotWin, 0, 1, 2, 3, 4, 5, 6, 7, 8, 11, 12, 13, 14, 15, 16 };
-            foreach (int t in order) if (used.Contains(t)) list.Add(t);
-            return list;
-        }
+        private static readonly int[] TrackOrder = { EffectPlayer.LightTrackWin, EffectPlayer.LightTrackNotWin, 0, 1, 2, 3, 4, 5, 6, 7, 8, 11, 12, 13, 14, 15, 16 };
+
+        /// <summary>表示する行。入賞図柄・入賞図柄以外、9コマ、照明の色の順で全部出す。キーの無い行は動かさない。</summary>
+        private List<int> Tracks() { return new List<int>(TrackOrder); }
+
+        private bool HasKeys(int track) { return action.LightKeys.Exists(k => k.Track == track); }
 
         // ------------------------------------------------------------ 値の計算（実行時と同じ）
 
@@ -484,7 +477,7 @@ namespace AX.UdonSlot.REV1_0.Editor.Effect
         private void DrawEditArea()
         {
             var tracks = Tracks();
-            float height = RulerH + Mathf.Max(1, tracks.Count) * TrackH + 28;
+            float height = RulerH + Mathf.Max(1, tracks.Count) * TrackH + 8;
             var area = GUILayoutUtility.GetRect(10, height, GUILayout.ExpandWidth(true), GUILayout.ExpandHeight(true));
             area.xMin += 8;
             area.xMax -= 8;
@@ -494,7 +487,6 @@ namespace AX.UdonSlot.REV1_0.Editor.Effect
             var graph = new Rect(ruler.x, ruler.yMax, ruler.width, Mathf.Max(TrackH, tracks.Count * TrackH));
 
             DrawTrackNames(names, tracks);
-            if (GUI.Button(new Rect(area.x, names.yMax + 4, NameW, 20), "＋ トラック")) ShowAddTrackMenu(tracks);
             DrawRuler(ruler);
             DrawGraph(graph, tracks);
         }
@@ -508,33 +500,18 @@ namespace AX.UdonSlot.REV1_0.Editor.Effect
                 var r = new Rect(rect.x, rect.y + i * TrackH, rect.width, TrackH - 1);
                 bool selected = selection.Exists(k => k.Track == track);
                 EditorGUI.DrawRect(r, selected ? RowSelectedColor : RowColor);
-                GUI.Label(new Rect(r.x + 6, r.y, r.width - 6, r.height), TrackName(track));
+                bool keyed = HasKeys(track);
+                GUI.Label(new Rect(r.x + 6, r.y, r.width - 6, r.height), TrackName(track), keyed ? EditorStyles.label : DimLabel);
                 if (e.type == EventType.ContextClick && r.Contains(e.mousePosition))
                 {
                     var menu = new GenericMenu();
-                    menu.AddItem(new GUIContent("トラックを削除"), false, () =>
-                    {
-                        extraTracks.Remove(track);
-                        Edit("トラックの削除", () => action.LightKeys.RemoveAll(k => k.Track == track));
-                    });
+                    if (keyed) menu.AddItem(new GUIContent("キーを全部消す"), false, () =>
+                        Edit("照明キーの削除", () => action.LightKeys.RemoveAll(k => k.Track == track)));
+                    else menu.AddDisabledItem(new GUIContent("キーを全部消す"));
                     menu.ShowAsContext();
                     e.Use();
                 }
             }
-        }
-
-        private void ShowAddTrackMenu(List<int> shown)
-        {
-            var menu = new GenericMenu();
-            int[] order = { EffectPlayer.LightTrackWin, EffectPlayer.LightTrackNotWin, 0, 1, 2, 3, 4, 5, 6, 7, 8, 11, 12, 13, 14, 15, 16 };
-            foreach (int t in order)
-            {
-                int track = t;
-                string path = track <= 8 ? "コマ/" + TrackName(track) : IsColorTrack(track) ? "照明の色/" + TrackName(track) : TrackName(track);
-                if (shown.Contains(track)) menu.AddDisabledItem(new GUIContent(path));
-                else menu.AddItem(new GUIContent(path), false, () => { extraTracks.Add(track); Repaint(); });
-            }
-            menu.ShowAsContext();
         }
 
         private void DrawRuler(Rect rect)
@@ -939,7 +916,6 @@ namespace AX.UdonSlot.REV1_0.Editor.Effect
             if (!TrackValue(track, at, out value)) value = Color.white;
             var key = new EffectLightKey { Track = track, Time = at, Value = value };
             Edit("照明キーの追加", () => action.LightKeys.Add(key));
-            extraTracks.Remove(track);
             SetSelection(key);
         }
 
@@ -947,8 +923,10 @@ namespace AX.UdonSlot.REV1_0.Editor.Effect
         {
             int at = (int)Snap(time);
             var added = new List<EffectLightKey>();
+            // キーのあるトラックだけに打つ（全行に打つと、触っていない照明まで動かしてしまう）
             foreach (int track in Tracks())
             {
+                if (!HasKeys(track)) continue;
                 if (action.LightKeys.Exists(k => k.Track == track && k.Time == at)) continue;
                 Color value;
                 if (!TrackValue(track, at, out value)) value = Color.white;
@@ -956,7 +934,6 @@ namespace AX.UdonSlot.REV1_0.Editor.Effect
             }
             if (added.Count == 0) return;
             Edit("照明キーの追加", () => action.LightKeys.AddRange(added));
-            foreach (var k in added) extraTracks.Remove(k.Track);
             selection.Clear();
             selection.AddRange(added);
             RememberSelection();
@@ -966,13 +943,26 @@ namespace AX.UdonSlot.REV1_0.Editor.Effect
         {
             if (selection.Count == 0) return;
             var removed = new List<EffectLightKey>(selection);
-            // キーを全部消したトラックも行は残す
-            foreach (var k in removed) if (!extraTracks.Contains(k.Track)) extraTracks.Add(k.Track);
             Edit("照明キーの削除", () => action.LightKeys.RemoveAll(removed.Contains));
             SetSelection(null);
         }
 
         // ------------------------------------------------------------ 見た目
+
+        private static GUIStyle dimLabel;
+
+        private static GUIStyle DimLabel
+        {
+            get
+            {
+                if (dimLabel == null)
+                {
+                    dimLabel = new GUIStyle(EditorStyles.label);
+                    dimLabel.normal.textColor = new Color(0.5f, 0.5f, 0.5f);
+                }
+                return dimLabel;
+            }
+        }
 
         private static GUIStyle TickLabel
         {
