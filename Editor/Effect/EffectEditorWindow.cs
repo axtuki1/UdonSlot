@@ -29,7 +29,7 @@ namespace AX.UdonSlot.REV1_0.Editor.Effect
         private static readonly Color CellSelectedColor = new Color(0.17f, 0.36f, 0.53f);
         private static readonly Color ChipColor = new Color(0.32f, 0.32f, 0.32f);
         private static readonly Color HeaderColor = new Color(0.16f, 0.16f, 0.16f);
-        private static readonly string[] Tabs = { "パターン", "アクション" };
+        private static readonly string[] Tabs = { "パターン", "アクション", "入賞演出" };
         private static readonly string[] BranchNames = { "共通", "入賞", "非入賞", "左押し", "中押し", "右押し" };
         private static readonly string[] SoundTypeNames = Enum.GetNames(typeof(SoundType));
 
@@ -38,6 +38,7 @@ namespace AX.UdonSlot.REV1_0.Editor.Effect
         private int tab;
         private int patternIndex;
         private int actionIndex;
+        private int winSetIndex;
         private int selectedLayer = -1;
         private int selectedStep = -1;
         private string search = "";
@@ -45,6 +46,7 @@ namespace AX.UdonSlot.REV1_0.Editor.Effect
 
         private EffectPattern Pattern { get { return model != null && patternIndex >= 0 && patternIndex < model.Patterns.Count ? model.Patterns[patternIndex] : null; } }
         private EffectAction Action { get { return model != null && actionIndex >= 0 && actionIndex < model.Actions.Count ? model.Actions[actionIndex] : null; } }
+        private EffectWinSet WinSet { get { return model != null && winSetIndex >= 0 && winSetIndex < model.WinSets.Count ? model.WinSets[winSetIndex] : null; } }
 
         private void OnEnable()
         {
@@ -150,7 +152,8 @@ namespace AX.UdonSlot.REV1_0.Editor.Effect
             {
                 DrawList();
                 if (tab == 0) DrawPatternView();
-                else DrawActionView();
+                else if (tab == 1) DrawActionView();
+                else DrawWinView();
             }
         }
 
@@ -234,8 +237,8 @@ namespace AX.UdonSlot.REV1_0.Editor.Effect
                     if (GUILayout.Button("＋", GUILayout.Width(28))) AddItem();
                 }
                 listScroll = EditorGUILayout.BeginScrollView(listScroll);
-                var names = tab == 0 ? model.PatternNames() : model.ActionNames();
-                int selected = tab == 0 ? patternIndex : actionIndex;
+                var names = tab == 0 ? model.PatternNames() : tab == 1 ? model.ActionNames() : model.WinSetNames();
+                int selected = tab == 0 ? patternIndex : tab == 1 ? actionIndex : winSetIndex;
                 for (int i = 0; i < names.Count; i++)
                 {
                     if (search.Length > 0 && names[i].IndexOf(search, StringComparison.OrdinalIgnoreCase) < 0) continue;
@@ -247,7 +250,8 @@ namespace AX.UdonSlot.REV1_0.Editor.Effect
                     {
                         int index = i;
                         if (tab == 0) { patternIndex = index; selectedLayer = selectedStep = -1; }
-                        else actionIndex = index;
+                        else if (tab == 1) actionIndex = index;
+                        else winSetIndex = index;
                         GUI.FocusControl(null);
                         if (e.button == 1) ShowItemMenu(index);
                         e.Use();
@@ -269,11 +273,17 @@ namespace AX.UdonSlot.REV1_0.Editor.Effect
                     model.Patterns.Add(p);
                     patternIndex = model.Patterns.Count - 1;
                 });
-            else
+            else if (tab == 1)
                 Edit("アクションの追加", delegate
                 {
                     model.Actions.Add(new EffectAction { Name = EffectModel.UniqueName("アクション", model.ActionNames()) });
                     actionIndex = model.Actions.Count - 1;
+                });
+            else
+                Edit("セットの追加", delegate
+                {
+                    model.WinSets.Add(new EffectWinSet { Name = EffectModel.UniqueName(model.WinSets.Count == 0 ? "通常" : "セット", model.WinSetNames()) });
+                    winSetIndex = model.WinSets.Count - 1;
                 });
         }
 
@@ -294,6 +304,32 @@ namespace AX.UdonSlot.REV1_0.Editor.Effect
                 {
                     model.RemovePattern(model.Patterns[index]);
                     patternIndex = Mathf.Clamp(patternIndex, 0, model.Patterns.Count - 1);
+                }));
+            }
+            else if (tab == 2)
+            {
+                menu.AddItem(new GUIContent("複製"), false, () => Edit("セットの複製", delegate
+                {
+                    var src = model.WinSets[index];
+                    var set = new EffectWinSet { Name = EffectModel.UniqueName(src.Name, model.WinSetNames()) };
+                    foreach (var e in src.Entries) set.Entries.Add(new EffectWinEntry { Role = e.Role, Action = e.Action });
+                    model.WinSets.Insert(index + 1, set);
+                    winSetIndex = index + 1;
+                }));
+                // 一番上が既定のセット
+                if (index > 0)
+                    menu.AddItem(new GUIContent("既定にする"), false, () => Edit("既定のセットの変更", delegate
+                    {
+                        var set = model.WinSets[index];
+                        model.WinSets.RemoveAt(index);
+                        model.WinSets.Insert(0, set);
+                        winSetIndex = 0;
+                    }));
+                else menu.AddDisabledItem(new GUIContent("既定にする"));
+                menu.AddItem(new GUIContent("削除"), false, () => Edit("セットの削除", delegate
+                {
+                    model.RemoveWinSet(model.WinSets[index]);
+                    winSetIndex = Mathf.Clamp(winSetIndex, 0, model.WinSets.Count - 1);
                 }));
             }
             else
@@ -614,6 +650,10 @@ namespace AX.UdonSlot.REV1_0.Editor.Effect
                     GUILayout.Space(8);
                     DrawReelSection(action);
                     GUILayout.Space(8);
+                    DrawLightSection(action);
+                    GUILayout.Space(8);
+                    DrawWinSetSection(action);
+                    GUILayout.Space(8);
                     DrawCodeSection(action);
                 }
                 EditorGUILayout.EndScrollView();
@@ -873,6 +913,149 @@ namespace AX.UdonSlot.REV1_0.Editor.Effect
                 {
                     if (GUILayout.Button("クリア", GUILayout.Width(80))) Edit("リールのクリア", () => action.ReelKeys.Clear());
                 }
+            }
+        }
+
+        private static readonly string[] StopNames = { "BET", "レバーオン", "次の入賞" };
+        private static readonly int[] StopBits = { EffectPlayer.StopOnBet, EffectPlayer.StopOnLeverOn, EffectPlayer.StopOnWin };
+
+        private void DrawLightSection(EffectAction action)
+        {
+            var rect = GUILayoutUtility.GetRect(10, 22, GUILayout.ExpandWidth(true));
+            EditorGUI.DrawRect(rect, HeaderColor);
+            GUI.Label(new Rect(rect.x + 6, rect.y, rect.width, rect.height), "リール照明", EditorStyles.boldLabel);
+            using (new EditorGUILayout.HorizontalScope())
+            {
+                string summary = action.LightKeys.Count == 0 ? "なし" : action.LightEnd + " ms" + (action.LightLoop ? "  ループ" : "");
+                GUILayout.Label(summary, GUILayout.Width(120));
+                if (GUILayout.Button("編集", GUILayout.Width(80))) EffectLightWindow.Open(this, action);
+                using (new EditorGUI.DisabledScope(action.LightKeys.Count == 0))
+                {
+                    if (GUILayout.Button("クリア", GUILayout.Width(80))) Edit("リール照明のクリア", () => action.LightKeys.Clear());
+                }
+            }
+            if (action.LightKeys.Count == 0) return;
+            using (new EditorGUILayout.HorizontalScope())
+            {
+                GUILayout.Label("止めるきっかけ", GUILayout.Width(EditorGUIUtility.labelWidth - 4));
+                for (int i = 0; i < StopNames.Length; i++)
+                {
+                    int bit = StopBits[i];
+                    bool on = (action.StopMask & bit) != 0;
+                    bool picked = GUILayout.Toggle(on, StopNames[i], GUILayout.Width(84));
+                    if (picked != on) Edit("止めるきっかけの変更", () => action.StopMask = picked ? action.StopMask | bit : action.StopMask & ~bit);
+                }
+                GUILayout.FlexibleSpace();
+            }
+        }
+
+        private void DrawWinSetSection(EffectAction action)
+        {
+            var rect = GUILayoutUtility.GetRect(10, 22, GUILayout.ExpandWidth(true));
+            EditorGUI.DrawRect(rect, HeaderColor);
+            GUI.Label(new Rect(rect.x + 6, rect.y, rect.width, rect.height), "入賞演出セット切替", EditorStyles.boldLabel);
+            var options = new List<string> { "なし" };
+            options.AddRange(model.WinSetNames());
+            int current = action.WinSet != null ? model.WinSets.IndexOf(action.WinSet) + 1 : 0;
+            int picked = EditorGUILayout.Popup(current, options.ToArray(), GUILayout.Width(200));
+            if (picked != current) Edit("入賞演出セット切替の変更", () => action.WinSet = picked == 0 ? null : model.WinSets[picked - 1]);
+        }
+
+        // ------------------------------------------------------------ 入賞演出
+
+        /// <summary>配当表の役（内部名, 表示名）。同じ内部名は1つにまとめる。</summary>
+        private List<KeyValuePair<string, string>> Roles()
+        {
+            var list = new List<KeyValuePair<string, string>>();
+            var controller = player.mainBoard != null ? player.mainBoard.reelOutputController : null;
+            if (controller == null) return list;
+            var table = new SerializedObject(controller).FindProperty("payoutTable");
+            var payoutTable = table != null ? table.objectReferenceValue as PayoutTable : null;
+            if (payoutTable == null || payoutTable.winPairNames == null) return list;
+            for (int i = 0; i < payoutTable.winPairNames.Length; i++)
+            {
+                string name = payoutTable.winPairNames[i];
+                if (string.IsNullOrEmpty(name) || list.Exists(r => r.Key == name)) continue;
+                string display = payoutTable.winPairDisplayNames != null && i < payoutTable.winPairDisplayNames.Length ? payoutTable.winPairDisplayNames[i] : "";
+                list.Add(new KeyValuePair<string, string>(name, string.IsNullOrEmpty(display) ? name : display));
+            }
+            return list;
+        }
+
+        private void DrawWinView()
+        {
+            var set = WinSet;
+            using (new EditorGUILayout.VerticalScope())
+            {
+                if (set == null) { GUILayout.FlexibleSpace(); return; }
+                EditorGUI.BeginChangeCheck();
+                string name = EditorGUILayout.DelayedTextField(set.Name, EditorStyles.boldLabel, GUILayout.MaxWidth(240));
+                if (EditorGUI.EndChangeCheck() && name.Trim().Length > 0 && name != set.Name)
+                {
+                    var used = model.WinSetNames();
+                    used.Remove(set.Name);
+                    Edit("セット名の変更", () => set.Name = EffectModel.UniqueName(name.Trim(), used));
+                }
+                GUILayout.Space(4);
+
+                var roles = Roles();
+                // 配当表から消えた役の行も出す（消せるように）
+                foreach (var e in set.Entries)
+                    if (!roles.Exists(r => r.Key == e.Role)) roles.Add(new KeyValuePair<string, string>(e.Role, e.Role));
+                bool isDefault = model.WinSets.IndexOf(set) == 0;
+
+                mainScroll = EditorGUILayout.BeginScrollView(mainScroll);
+                foreach (var role in roles) DrawWinRow(set, role.Key, role.Value, isDefault);
+                EditorGUILayout.EndScrollView();
+            }
+        }
+
+        private void DrawWinRow(EffectWinSet set, string role, string label, bool isDefault)
+        {
+            const float labelWidth = 160;
+            var entries = set.Row(role);
+            float height = Mathf.Max(26, entries.Count * 22 + 6);
+            var row = GUILayoutUtility.GetRect(10, height + 2, GUILayout.ExpandWidth(true));
+            var nameRect = new Rect(row.x, row.y + 1, labelWidth - 4, height);
+            EditorGUI.DrawRect(nameRect, HeaderColor);
+            GUI.Label(new Rect(nameRect.x + 6, nameRect.y, nameRect.width - 6, nameRect.height), label);
+            var cell = new Rect(row.x + labelWidth, row.y + 1, row.width - labelWidth - 34, height);
+            EditorGUI.DrawRect(cell, CellColor);
+            if (entries.Count == 0) GUI.Label(cell, isDefault ? "—" : "既定", CenterMuted);
+            float y = cell.y + 3;
+            foreach (var e in entries)
+            {
+                var entry = e;
+                var chip = new Rect(cell.x + 4, y, Mathf.Min(260, cell.width - 32), 20);
+                DrawChip(chip, e.Action != null ? e.Action.Name : "なし");
+                if (e.Action != null)
+                {
+                    EditorGUIUtility.AddCursorRect(chip, MouseCursor.Link);
+                    if (Event.current.type == EventType.MouseDown && chip.Contains(Event.current.mousePosition))
+                    {
+                        tab = 1;
+                        actionIndex = model.Actions.IndexOf(e.Action);
+                        Event.current.Use();
+                    }
+                }
+                if (GUI.Button(new Rect(chip.xMax + 4, y, 22, 20), "×")) Edit("アクションを外す", () => set.Entries.Remove(entry));
+                y += 22;
+            }
+            if (GUI.Button(new Rect(cell.xMax + 6, row.y + 1 + (height - 22) / 2, 26, 22), "＋"))
+            {
+                var menu = new GenericMenu();
+                menu.AddItem(new GUIContent("アクション"), false, () => EffectActionPicker.Show(this, picked => Edit("アクションの配置", delegate
+                {
+                    set.Entries.RemoveAll(x => x.Role == role && x.Action == null);
+                    set.Entries.Add(new EffectWinEntry { Role = role, Action = picked });
+                })));
+                if (!isDefault && !entries.Exists(x => x.Action == null))
+                    menu.AddItem(new GUIContent("なし"), false, () => Edit("なしにする", delegate
+                    {
+                        set.Entries.RemoveAll(x => x.Role == role);
+                        set.Entries.Add(new EffectWinEntry { Role = role });
+                    }));
+                menu.ShowAsContext();
             }
         }
 

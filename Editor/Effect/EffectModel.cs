@@ -49,6 +49,19 @@ namespace AX.UdonSlot.REV1_0.Editor.Effect
         public EffectReelKey Copy() { return (EffectReelKey)MemberwiseClone(); }
     }
 
+    public sealed class EffectLightKey
+    {
+        /// <summary>EffectPlayer の LightTrack（0～8 は1コマ、9 入賞図柄、10 入賞図柄以外、11～16 照明の色）。</summary>
+        public int Track;
+        public int Time;
+        /// <summary>明るさのトラックは r だけを使う（0～1）。</summary>
+        public Color Value = Color.white;
+        /// <summary>次のキーまで値をそのまま保つ（切り替え）。false はリニア。</summary>
+        public bool Hold;
+
+        public EffectLightKey Copy() { return (EffectLightKey)MemberwiseClone(); }
+    }
+
     public sealed class EffectAction
     {
         public string Name = "";
@@ -63,6 +76,29 @@ namespace AX.UdonSlot.REV1_0.Editor.Effect
         public int SoundClip;
         public List<EffectReelKey> ReelKeys = new List<EffectReelKey>();
         public List<EffectCode> Codes = new List<EffectCode>();
+        public List<EffectLightKey> LightKeys = new List<EffectLightKey>();
+        /// <summary>リール照明の1回の長さ(ms)。0 は最後のキーの時間。</summary>
+        public int LightLength;
+        public bool LightLoop;
+        public bool LightRestore = true;
+        /// <summary>「入賞図柄」「入賞図柄以外」トラックの左・中・右の遅れ(ms)。</summary>
+        public int[] LightDelay = new int[3];
+        /// <summary>再生中のリール照明を止めるきっかけ（EffectPlayer.StopOnBet など）。</summary>
+        public int StopMask = EffectPlayer.StopOnBet | EffectPlayer.StopOnLeverOn;
+        /// <summary>流したときに切り替える入賞演出のセット。null は切り替えない。</summary>
+        public EffectWinSet WinSet;
+
+        /// <summary>リール照明の1回の長さ（未設定なら最後のキーの時間）。</summary>
+        public int LightEnd
+        {
+            get
+            {
+                if (LightLength > 0) return LightLength;
+                int max = 0;
+                foreach (var k in LightKeys) max = Mathf.Max(max, k.Time);
+                return max;
+            }
+        }
 
         public int ReelLength
         {
@@ -76,7 +112,12 @@ namespace AX.UdonSlot.REV1_0.Editor.Effect
 
         public EffectAction Copy(string name)
         {
-            var a = new EffectAction { Name = name, DelayMs = DelayMs, LockMs = LockMs, MuteStopSound = MuteStopSound, SoundType = SoundType, SoundClip = SoundClip };
+            var a = new EffectAction
+            {
+                Name = name, DelayMs = DelayMs, LockMs = LockMs, MuteStopSound = MuteStopSound, SoundType = SoundType, SoundClip = SoundClip,
+                LightLength = LightLength, LightLoop = LightLoop, LightRestore = LightRestore, LightDelay = (int[])LightDelay.Clone(), StopMask = StopMask, WinSet = WinSet
+            };
+            foreach (var x in LightKeys) a.LightKeys.Add(x.Copy());
             foreach (var x in Anims) a.Anims.Add(new EffectAnim { Target = x.Target, Name = x.Name, Kind = x.Kind, Value = x.Value });
             foreach (var x in Actives) a.Actives.Add(new EffectActive { Target = x.Target, Component = x.Component, Value = x.Value });
             foreach (var x in ReelKeys) a.ReelKeys.Add(x.Copy());
@@ -133,6 +174,25 @@ namespace AX.UdonSlot.REV1_0.Editor.Effect
         }
     }
 
+    /// <summary>入賞演出の1行。Action が null なら「なし」（既定のセットも流さない）。</summary>
+    public sealed class EffectWinEntry
+    {
+        public string Role = "";
+        public EffectAction Action;
+    }
+
+    /// <summary>入賞演出のセット。役ごとに入賞時に流すアクションを持つ。</summary>
+    public sealed class EffectWinSet
+    {
+        public string Name = "";
+        public List<EffectWinEntry> Entries = new List<EffectWinEntry>();
+
+        public List<EffectWinEntry> Row(string role)
+        {
+            return Entries.FindAll(e => e.Role == role);
+        }
+    }
+
     public sealed class EffectModel
     {
         public static readonly string[] StepNames = { "レバーオン", "リール回転開始", "第一停止", "第二停止", "第三停止", "ゲーム終了" };
@@ -141,6 +201,7 @@ namespace AX.UdonSlot.REV1_0.Editor.Effect
         public EffectPlayer Player;
         public List<EffectAction> Actions = new List<EffectAction>();
         public List<EffectPattern> Patterns = new List<EffectPattern>();
+        public List<EffectWinSet> WinSets = new List<EffectWinSet>();
 
         public const int SplitNone = 0;
         public const int SplitResult = 1;
@@ -206,6 +267,21 @@ namespace AX.UdonSlot.REV1_0.Editor.Effect
             var keyDir = so.FindProperty("reelKeyDirection");
             var keyTurns = so.FindProperty("reelKeyTurns");
             var keyEase = so.FindProperty("reelKeyEase");
+            var lightStart = so.FindProperty("actionLightStart");
+            var lightCount = so.FindProperty("actionLightCount");
+            var lightLength = so.FindProperty("actionLightLength");
+            var lightLoop = so.FindProperty("actionLightLoop");
+            var lightRestore = so.FindProperty("actionLightRestore");
+            var lightDelay = so.FindProperty("actionLightDelay");
+            var stopMask = so.FindProperty("actionStopMask");
+            var winSetOf = so.FindProperty("actionWinSet");
+            var lightTrack = so.FindProperty("lightKeyTrack");
+            var lightTime = so.FindProperty("lightKeyTime");
+            var lightValue = so.FindProperty("lightKeyValue");
+            var lightHold = so.FindProperty("lightKeyHold");
+
+            var setNames = so.FindProperty("winSetNames");
+            for (int i = 0; i < setNames.arraySize; i++) m.WinSets.Add(new EffectWinSet { Name = Str(setNames, i) });
 
             for (int a = 0; a < names.arraySize; a++)
             {
@@ -232,6 +308,16 @@ namespace AX.UdonSlot.REV1_0.Editor.Effect
                     action.Codes.Add(new EffectCode { Target = codeTargets.GetArrayElementAtIndex(i).objectReferenceValue as UdonSharpBehaviour, Method = Str(codeMethods, i) });
                 foreach (int i in Range(reelStart, reelCount, a, keyReel.arraySize))
                     action.ReelKeys.Add(new EffectReelKey { Reel = Int(keyReel, i), Time = Int(keyTime, i), Value = Float(keyValue, i), Absolute = Bool(keyAbs, i), Direction = Int(keyDir, i), Turns = Int(keyTurns, i), Ease = Int(keyEase, i) });
+                foreach (int i in Range(lightStart, lightCount, a, lightTrack.arraySize))
+                    action.LightKeys.Add(new EffectLightKey { Track = Int(lightTrack, i), Time = Int(lightTime, i), Value = i < lightValue.arraySize ? lightValue.GetArrayElementAtIndex(i).colorValue : Color.white, Hold = Bool(lightHold, i) });
+                action.LightLength = Int(lightLength, a);
+                action.LightLoop = Bool(lightLoop, a);
+                // 照明の項目が無かったころのデータは既定値（戻す、BET・レバーオンで止める）。
+                action.LightRestore = a >= lightRestore.arraySize || Bool(lightRestore, a);
+                for (int r = 0; r < 3; r++) action.LightDelay[r] = Int(lightDelay, a * 3 + r);
+                if (a < stopMask.arraySize) action.StopMask = Int(stopMask, a);
+                int winSet = a < winSetOf.arraySize ? Int(winSetOf, a) : -1;
+                if (winSet >= 0 && winSet < m.WinSets.Count) action.WinSet = m.WinSets[winSet];
                 m.Actions.Add(action);
             }
 
@@ -282,6 +368,16 @@ namespace AX.UdonSlot.REV1_0.Editor.Effect
                 if (layer < 0 || layer >= pattern.Layers.Count) continue;
                 pattern.Entries.Add(new EffectEntry { Layer = layer, Step = OldStep(Int(eStep, i), oldSteps), Branch = Int(eBranch, i), Action = m.Actions[action] });
             }
+
+            var wSet = so.FindProperty("winEntrySet");
+            var wRole = so.FindProperty("winEntryRole");
+            var wAction = so.FindProperty("winEntryAction");
+            for (int i = 0; i < wSet.arraySize; i++)
+            {
+                int set = Int(wSet, i), action = Int(wAction, i);
+                if (set < 0 || set >= m.WinSets.Count || action >= m.Actions.Count) continue;
+                m.WinSets[set].Entries.Add(new EffectWinEntry { Role = Str(wRole, i), Action = action >= 0 ? m.Actions[action] : null });
+            }
             return m;
         }
 
@@ -306,6 +402,21 @@ namespace AX.UdonSlot.REV1_0.Editor.Effect
             var codeCount = Resize(so, "actionCodeCount", n);
             var reelStart = Resize(so, "actionReelStart", n);
             var reelCount = Resize(so, "actionReelCount", n);
+            var lightStart = Resize(so, "actionLightStart", n);
+            var lightCount = Resize(so, "actionLightCount", n);
+            var lightLength = Resize(so, "actionLightLength", n);
+            var lightLoop = Resize(so, "actionLightLoop", n);
+            var lightRestore = Resize(so, "actionLightRestore", n);
+            var lightDelay = Resize(so, "actionLightDelay", n * 3);
+            var stopMask = Resize(so, "actionStopMask", n);
+            var winSetOf = Resize(so, "actionWinSet", n);
+            int lightKeys = 0;
+            foreach (var a in Actions) lightKeys += a.LightKeys.Count;
+            var lightTrack = Resize(so, "lightKeyTrack", lightKeys);
+            var lightTime = Resize(so, "lightKeyTime", lightKeys);
+            var lightValue = Resize(so, "lightKeyValue", lightKeys);
+            var lightHold = Resize(so, "lightKeyHold", lightKeys);
+            lightKeys = 0;
 
             int anims = 0, actives = 0, codes = 0, keys = 0;
             int enables = 0;
@@ -399,7 +510,50 @@ namespace AX.UdonSlot.REV1_0.Editor.Effect
                     keyEase.GetArrayElementAtIndex(keys).intValue = x.Ease;
                     keys++;
                 }
+                lightStart.GetArrayElementAtIndex(i).intValue = lightKeys;
+                lightCount.GetArrayElementAtIndex(i).intValue = a.LightKeys.Count;
+                // 再生時はトラックごとに時間順に読むので、トラック順・時間順に並べる。
+                var sortedLight = new List<EffectLightKey>(a.LightKeys);
+                sortedLight.Sort((x, y) => x.Track != y.Track ? x.Track.CompareTo(y.Track) : x.Time.CompareTo(y.Time));
+                foreach (var x in sortedLight)
+                {
+                    lightTrack.GetArrayElementAtIndex(lightKeys).intValue = x.Track;
+                    lightTime.GetArrayElementAtIndex(lightKeys).intValue = Mathf.Max(0, x.Time);
+                    lightValue.GetArrayElementAtIndex(lightKeys).colorValue = x.Value;
+                    lightHold.GetArrayElementAtIndex(lightKeys).boolValue = x.Hold;
+                    lightKeys++;
+                }
+                lightLength.GetArrayElementAtIndex(i).intValue = Mathf.Max(0, a.LightLength);
+                lightLoop.GetArrayElementAtIndex(i).boolValue = a.LightLoop;
+                lightRestore.GetArrayElementAtIndex(i).boolValue = a.LightRestore;
+                for (int r = 0; r < 3; r++) lightDelay.GetArrayElementAtIndex(i * 3 + r).intValue = Mathf.Max(0, a.LightDelay[r]);
+                stopMask.GetArrayElementAtIndex(i).intValue = a.StopMask;
+                winSetOf.GetArrayElementAtIndex(i).intValue = a.WinSet != null ? WinSets.IndexOf(a.WinSet) : -1;
             }
+
+            var setNames = Resize(so, "winSetNames", WinSets.Count);
+            int winEntries = 0;
+            foreach (var set in WinSets) winEntries += set.Entries.Count;
+            var wSet = Resize(so, "winEntrySet", winEntries);
+            var wRole = Resize(so, "winEntryRole", winEntries);
+            var wAction = Resize(so, "winEntryAction", winEntries);
+            winEntries = 0;
+            for (int w = 0; w < WinSets.Count; w++)
+            {
+                setNames.GetArrayElementAtIndex(w).stringValue = WinSets[w].Name;
+                foreach (var e in WinSets[w].Entries)
+                {
+                    int action = e.Action != null ? Actions.IndexOf(e.Action) : -1;
+                    if (e.Action != null && action < 0) continue;
+                    wSet.GetArrayElementAtIndex(winEntries).intValue = w;
+                    wRole.GetArrayElementAtIndex(winEntries).stringValue = e.Role ?? "";
+                    wAction.GetArrayElementAtIndex(winEntries).intValue = action;
+                    winEntries++;
+                }
+            }
+            Resize(so, "winEntrySet", winEntries);
+            Resize(so, "winEntryRole", winEntries);
+            Resize(so, "winEntryAction", winEntries);
 
             int pc = Patterns.Count;
             var pNames = Resize(so, "patternNames", pc);
@@ -523,6 +677,20 @@ namespace AX.UdonSlot.REV1_0.Editor.Effect
         {
             Actions.Remove(action);
             foreach (var p in Patterns) p.Entries.RemoveAll(e => e.Action == action);
+            foreach (var set in WinSets) set.Entries.RemoveAll(e => e.Action == action);
+        }
+
+        public List<string> WinSetNames()
+        {
+            var list = new List<string>();
+            foreach (var set in WinSets) list.Add(set.Name);
+            return list;
+        }
+
+        public void RemoveWinSet(EffectWinSet set)
+        {
+            WinSets.Remove(set);
+            foreach (var a in Actions) if (a.WinSet == set) a.WinSet = null;
         }
 
         public void RemovePattern(EffectPattern pattern)
