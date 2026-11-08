@@ -344,7 +344,10 @@ namespace AX.UdonSlot.REV1_0
 
             if (Utilities.IsValid(segView))
             {
+                // 1の位
                 segView.SetNumberSeg(0, lastPayout);
+                // 10の位
+                segView.SetNumberSeg(1, lastPayout / 10);
             }
             
             if (!scheduledRollActive[0]) UpdateReel(0, reel1Transform, isRollingReel1, currentServerMs, isLocalOwner, maxStopStepDeg);
