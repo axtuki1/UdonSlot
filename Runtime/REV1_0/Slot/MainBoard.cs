@@ -619,12 +619,17 @@ namespace AX.UdonSlot.REV1_0
             
         }
 
+        /// <summary>今のBETでゲームを始められるか。ボーナス作動中は規定BET（RBの2枚など）、通常時は requiredBet 以上。</summary>
+        public bool CanStartGame()
+        {
+            int bonusBet = Utilities.IsValid(reelOutputController) ? reelOutputController.GetRequiredBet() : 0;
+            return bet > 0 && bet >= (bonusBet > 0 ? bonusBet : requiredBet);
+        }
+
         public virtual void LeverOn()
         {
             if (!isControllable || requestGameStart) return;
-            // ボーナス作動中は規定BET（RBの2枚など）で回せる。通常時は requiredBet。
-            int bonusBet = Utilities.IsValid(reelOutputController) ? reelOutputController.GetRequiredBet() : 0;
-            if (bet == 0 || bet < (bonusBet > 0 ? bonusBet : requiredBet)) return;
+            if (!CanStartGame()) return;
             if (isRollingReel1 || isRollingReel2 || isRollingReel3) return;
             SetOwner();
             OffControllable(0.75f);
