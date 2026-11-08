@@ -708,6 +708,8 @@ namespace AX.UdonSlot.REV1_0
             if (busy && !force) return false;
             SetOwner();
             if (busy) AbortGame();
+            // ボーナス作動時のゲーム停止やフリーズなど、長い操作禁止を取り消す（遊技中でなくても）。
+            OffControllable(0.25f);
             // リプレイの自動BETはクレジットから引いていないので返さない。
             if (!isReplay) credit += bet;
             bet = 0;
@@ -788,8 +790,6 @@ namespace AX.UdonSlot.REV1_0
             stoppedReelsStopOrder = new int[] { -1, -1, -1 };
             isGaming = false;
             if (isMockPlay) SetMockPlay(false);
-            // フリーズなどの長い操作禁止を取り消す。
-            OffControllable(0.25f);
         }
 
         /// <summary>リール演出（scheduleRoll系）の予約をすべて取り消す。ResetMachine の force から全員へ送る。</summary>
