@@ -48,12 +48,19 @@ namespace AX.UdonSlot.REV1_0
 
         public void SetActiveSeg(int index)
         {
+            if (!HasSeg(index)) return;
             activeSegFlgs[index] = 0;
         }
         
         public byte GetActiveSeg(int index)
         {
-            return activeSegFlgs[index];
+            return HasSeg(index) ? activeSegFlgs[index] : (byte)0;
+        }
+
+        /// <summary>そのセグユニットがあるか。無い番号への書き込みは無視する（桁数の少ない機種向け）。</summary>
+        public bool HasSeg(int index)
+        {
+            return activeSegFlgs != null && index >= 0 && index < activeSegFlgs.Length;
         }
         
         /// <summary>
@@ -73,6 +80,7 @@ namespace AX.UdonSlot.REV1_0
         /// <param name="dot">ドット</param>
         public void SetNumberSeg(int index, int number, bool dot = false)
         {
+            if (!HasSeg(index)) return;
             number = number % 10;
             activeSegFlgs[index] = (byte)(numberSegPatterns[number] | (dot ? 0b10000000 : 0));
         }
