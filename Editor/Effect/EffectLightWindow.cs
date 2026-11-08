@@ -345,9 +345,9 @@ namespace AX.UdonSlot.REV1_0.Editor.Effect
                     time = 0f;
                 }
                 GUILayout.Space(8);
-                GUILayout.Label("終了時", GUILayout.Width(40));
+                GUILayout.Label("止めた時", GUILayout.Width(52));
                 int end = GUILayout.Toolbar(action.LightRestore ? 0 : 1, EndNames, EditorStyles.toolbarButton, GUILayout.Width(120));
-                if (end != (action.LightRestore ? 0 : 1)) Edit("終了時の変更", () => action.LightRestore = end == 0);
+                if (end != (action.LightRestore ? 0 : 1)) Edit("止めた時の変更", () => action.LightRestore = end == 0);
                 GUILayout.FlexibleSpace();
                 GUILayout.Label("スナップ", GUILayout.Width(50));
                 int snapIndex = System.Array.IndexOf(SnapSteps, TimeSnap);

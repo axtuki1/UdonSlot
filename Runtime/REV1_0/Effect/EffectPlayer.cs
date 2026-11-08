@@ -119,7 +119,7 @@ namespace AX.UdonSlot.REV1_0
         /// <summary>1回の長さ(ms)。0 以下は最後のキーの時間。</summary>
         public int[] actionLightLength = new int[0];
         public bool[] actionLightLoop = new bool[0];
-        /// <summary>終わったとき（止められたときも）、触ったコマ・照明を始まる前の値に戻す。</summary>
+        /// <summary>止めるきっかけで止めたとき、触ったコマ・照明を始まる前の値に戻す。1回再生は最後まで進んでも止めるまで最後の値のまま。</summary>
         public bool[] actionLightRestore = new bool[0];
         /// <summary>「入賞図柄」「入賞図柄以外」トラックのリールごとの遅れ(ms)。アクションごとに左・中・右の3つ。</summary>
         public int[] actionLightDelay = new int[0];
@@ -234,6 +234,8 @@ namespace AX.UdonSlot.REV1_0
         private const int LightSlotCount = 8;
         private int[] lightAction = new int[] { -1, -1, -1, -1, -1, -1, -1, -1 };
         private float[] lightStartTime = new float[LightSlotCount];
+        /// <summary>1回再生が最後まで進んだスロット。止めるきっかけが来るまで最後の値のまま残す。</summary>
+        private bool[] lightDone = new bool[LightSlotCount];
         private int[] lightMask = new int[LightSlotCount];
         /// <summary>始まった順番。大きいほど後から始まったもので、同じトラックは後のものが勝つ。</summary>
         private int[] lightOrder = new int[LightSlotCount];
@@ -959,7 +961,8 @@ namespace AX.UdonSlot.REV1_0
             }
             if (slot < 0)
             {
-                EndLight(oldest);
+                // 追い出すときは戻さない（後から始まった照明の値を古い値で上書きしないため）。
+                lightAction[oldest] = -1;
                 slot = oldest;
             }
             for (int c = 0; c < 9; c++) lightSavedBrightness[slot * 9 + c] = sub.GetReelSymbolBrightness(c / 3, c % 3);
@@ -971,6 +974,7 @@ namespace AX.UdonSlot.REV1_0
             lightAction[slot] = action;
             lightStartTime[slot] = Time.time;
             lightMask[slot] = winMask;
+            lightDone[slot] = false;
             lightOrder[slot] = ++lightOrderCounter;
             ApplyLight(slot, sub);
         }
@@ -987,7 +991,7 @@ namespace AX.UdonSlot.REV1_0
             }
         }
 
-        /// <summary>再生を終える。「戻す」なら、そのアクションが触ったコマ・照明を始まる前の値に戻す。</summary>
+        /// <summary>再生を止める。「戻す」なら、そのアクションが触ったコマ・照明を始まる前の値に戻す。</summary>
         private void EndLight(int slot)
         {
             int action = lightAction[slot];
@@ -1019,7 +1023,7 @@ namespace AX.UdonSlot.REV1_0
                 int next = -1;
                 for (int i = 0; i < LightSlotCount; i++)
                 {
-                    if (lightAction[i] < 0 || lightOrder[i] <= done) continue;
+                    if (lightAction[i] < 0 || lightDone[i] || lightOrder[i] <= done) continue;
                     if (next < 0 || lightOrder[i] < lightOrder[next]) next = i;
                 }
                 if (next < 0) return;
@@ -1059,7 +1063,8 @@ namespace AX.UdonSlot.REV1_0
                 else sub.SetReelLowerLightColor(k / 2, color);
             }
 
-            if (!loop && elapsed >= length) EndLight(slot);
+            // 1回再生は最後の値で止めたまま残し、止めるきっかけ（BET など）で戻す。
+            if (!loop && elapsed >= length) lightDone[slot] = true;
         }
 
         /// <summary>TrackValue でそのトラックにキーがあったか。</summary>
