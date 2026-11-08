@@ -27,7 +27,7 @@ namespace AX.UdonSlot.REV1_0
             bool replay = mainBoard.isReplay;
             // INSERT: まだ掛けられる（リプレイ中は自動BETなので消す）。最大BETはボーナス作動中に変わる。
             bool insert = !replay && bet < mainBoard.GetMaxBet();
-            bool start = mainBoard.CanStartGame();
+            bool start = !mainBoard.IsGameInProgress() && mainBoard.CanStartGame();
             int state = (bet >= 1 ? 1 : 0) | (bet >= 2 ? 2 : 0) | (bet >= 3 ? 4 : 0)
                         | (replay ? 8 : 0) | (insert ? 16 : 0) | (start ? 32 : 0);
             if (state == shownState) return;

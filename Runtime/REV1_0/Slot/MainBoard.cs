@@ -84,7 +84,7 @@ namespace AX.UdonSlot.REV1_0
 
         /// <summary>
         /// リプレイ成立によって前回BETが再装填され、クレジットへ戻せない状態か。
-        /// 次のリール回転開始までtrueを維持する。
+        /// リプレイで始めたゲームが終わるまでtrueを維持する。
         /// </summary>
         [UdonSynced]
         public bool isReplay = false;
@@ -626,6 +626,13 @@ namespace AX.UdonSlot.REV1_0
             return bet > 0 && bet >= (bonusBet > 0 ? bonusBet : requiredBet);
         }
 
+        /// <summary>遊技中か（レバーオン後〜ゲーム終了）。リール演出でゲームを始める予約中も含む。</summary>
+        public bool IsGameInProgress()
+        {
+            return isGaming || requestGameStart || isLeverOnPending || reelEffectStartsGame ||
+                   isRollingReel1 || isRollingReel2 || isRollingReel3;
+        }
+
         public virtual void LeverOn()
         {
             if (!isControllable || requestGameStart) return;
@@ -708,8 +715,7 @@ namespace AX.UdonSlot.REV1_0
         /// <returns>戻したら true。</returns>
         public bool ResetMachine(bool force)
         {
-            bool busy = isGaming || requestGameStart || isLeverOnPending || reelEffectStartsGame ||
-                        isRollingReel1 || isRollingReel2 || isRollingReel3;
+            bool busy = IsGameInProgress();
             if (busy && !force) return false;
             SetOwner();
             if (busy) AbortGame();
@@ -817,7 +823,6 @@ namespace AX.UdonSlot.REV1_0
         {
             if (!requestGameStart) return;
             int now = Networking.GetServerTimeInMilliseconds();
-            isReplay = false;
             isGaming = true;
             gameStartTime = now;
             requestGameStart = false;
