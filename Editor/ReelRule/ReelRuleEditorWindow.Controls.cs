@@ -20,6 +20,10 @@ namespace AX.UdonSlot.REV1_0.Editor.ReelRule
         private int secondStop = -1;
         private Vector2 controlListScroll, tableScroll, mapScroll, controlSideScroll;
         private int mapRow = -1, mapColumn = -1;
+        // 一覧から飛んだ先の滑り表の行（白枠で示す）
+        private string focusControl;
+        private long focusTable = -1;
+        private int focusPress = -1;
 
         private DesignControl SelectedControl
         {
@@ -643,6 +647,8 @@ namespace AX.UdonSlot.REV1_0.Editor.ReelRule
                     Outline(row, ManualColor, 1);
                 }
                 else if (i % 2 == 1) EditorGUI.DrawRect(row, new Color(0.18f, 0.18f, 0.18f));
+                if (press == focusPress && control.name == focusControl && ReelRuleEngine.Key(table.Pattern, table.Prior) == focusTable)
+                    Outline(row, Color.white, 2);
                 GUI.Label(new Rect(row.x + 2, row.y, 24, row.height), (table.Slips.Length - press).ToString(), EditorStyles.miniLabel);
                 DrawStripSymbol(new Rect(row.x + 28, row.y + 2, 51, row.height - 4), table.Reel, press);
                 GUI.Label(new Rect(row.x + 87, row.y, 24, row.height), table.Slips[press].ToString(), EditorStyles.boldLabel);
@@ -1099,7 +1105,119 @@ namespace AX.UdonSlot.REV1_0.Editor.ReelRule
                 GUI.Label(new Rect(header.xMax - 100, header.y, 94, header.height), control.overrides.Count + "コマ指定中", style);
             }
             manualEditing = EditorGUILayout.ToggleLeft("有効", manualEditing);
+            DrawOverrideList(control);
             GUILayout.Space(8);
+        }
+
+        /// <summary>
+        /// 手動指定の一覧。クリックでその滑り表へ飛ぶ。
+        /// 配列や設定が変わって到達しなくなった指定は灰色で、まとめて解除できる。
+        /// </summary>
+        private void DrawOverrideList(DesignControl control)
+        {
+            var result = ResultOf(control.name);
+            if (control.overrides.Count == 0 || result == null || engine == null || machine == null) return;
+            GUILayout.Space(4);
+            var lost = new List<DesignOverride>();
+            DesignOverride remove = null;
+            foreach (var o in control.overrides)
+            {
+                var prior = new[] { o.left, o.center, o.right };
+                int stage = (o.left >= 0 ? 1 : 0) + (o.center >= 0 ? 1 : 0) + (o.right >= 0 ? 1 : 0);
+                int ord = ReelRuleEngine.OrderOfPattern(o.pattern, stage);
+                var table = ord < 0 ? null : engine.FindTable(result, o.pattern, prior);
+                if (table != null && (o.press < 0 || o.press >= table.Slips.Length)) table = null;
+                if (table == null) lost.Add(o);
+                bool warn = table != null && table.Unavoidable[o.press];
+                using (new EditorGUILayout.HorizontalScope())
+                {
+                    var row = GUILayoutUtility.GetRect(10, 18, GUILayout.ExpandWidth(true));
+                    var style = new GUIStyle(EditorStyles.miniLabel);
+                    if (table == null) style.normal.textColor = new Color(0.5f, 0.5f, 0.5f);
+                    else if (warn) style.normal.textColor = new Color(1f, 0.56f, 0.56f);
+                    GUI.Label(row, (warn ? "⚠ " : "") + OverrideLabel(o, ord, stage, prior), style);
+                    if (table != null)
+                    {
+                        EditorGUIUtility.AddCursorRect(row, MouseCursor.Link);
+                        if (Clicked(row, 0)) JumpToSlip(control, ord, stage, prior, table, o.press);
+                    }
+                    if (GUILayout.Button("×", EditorStyles.miniButton, GUILayout.Width(20))) remove = o;
+                }
+            }
+            if (remove != null)
+            {
+                var target = remove;
+                Edit("滑り数の手動指定を解除", delegate { control.overrides.Remove(target); });
+            }
+            else if (lost.Count > 0 && GUILayout.Button("到達しない指定を解除（" + lost.Count + "）", EditorStyles.miniButton))
+                Edit("滑り数の手動指定を解除", delegate { foreach (var o in lost) control.overrides.Remove(o); });
+        }
+
+        /// <summary>「左中右 左5 中12 右3押し→2」の形。番号は下が1。</summary>
+        private string OverrideLabel(DesignOverride o, int ord, int stage, int[] prior)
+        {
+            var parts = new List<string>();
+            if (ord >= 0 && stage > 0) parts.Add(ReelRuleEngine.OrderNames[ord]);
+            int reel = -1;
+            if (ord >= 0)
+            {
+                int[] reels = ReelRuleEngine.Orders[ord];
+                for (int k = 0; k < stage; k++) parts.Add(ReelRuleEngine.ReelNames[reels[k]] + (machine.Strips[reels[k]].Length - prior[reels[k]]));
+                reel = reels[stage];
+            }
+            string press = reel >= 0 ? ReelRuleEngine.ReelNames[reel] + (machine.Strips[reel].Length - o.press) : "?" + (o.press + 1);
+            parts.Add(press + "押し→" + o.slip);
+            return string.Join(" ", parts.ToArray());
+        }
+
+        private void JumpToSlip(DesignControl control, int ord, int stage, int[] prior, SlipTable table, int press)
+        {
+            int[] reels = ReelRuleEngine.Orders[ord];
+            view = 0;
+            order = ord;
+            if (stage >= 1) firstStop = prior[reels[0]];
+            if (stage >= 2) secondStop = prior[reels[1]];
+            mapCache = null;
+            mapRow = mapColumn = -1;
+            focusControl = control.name;
+            focusTable = ReelRuleEngine.Key(table.Pattern, table.Prior);
+            focusPress = press;
+            tableScroll.y = Mathf.Max(0, press * 29f - 120f);
+            GUI.FocusControl(null);
+            Repaint();
+        }
+
+        /// <summary>非成立役の入賞が出る押し順・第1停止位置の一覧。クリックでその出目マップへ飛ぶ。</summary>
+        private void DrawViolationSpots(ControlStats s)
+        {
+            if (s.ViolationsByFirst == null || s.ViolationsByFirst.Count == 0 || machine == null) return;
+            const int limit = 12;
+            int shown = 0;
+            foreach (var pair in s.ViolationsByFirst)
+            {
+                if (shown++ >= limit) break;
+                int ord = pair.Key / 1000, pos = pair.Key % 1000;
+                int reel = ReelRuleEngine.Orders[ord][0];
+                var row = GUILayoutUtility.GetRect(10, 16, GUILayout.ExpandWidth(true));
+                row.xMin += 10;
+                var style = new GUIStyle(EditorStyles.miniLabel);
+                style.normal.textColor = new Color(1f, 0.56f, 0.56f);
+                GUI.Label(row, ReelRuleEngine.OrderNames[ord] + " " + ReelRuleEngine.ReelNames[reel] + (machine.Strips[reel].Length - pos) + "停止", style);
+                var count = new GUIStyle(style) { alignment = TextAnchor.MiddleRight };
+                GUI.Label(row, pair.Value.ToString(), count);
+                EditorGUIUtility.AddCursorRect(row, MouseCursor.Link);
+                if (Clicked(row, 0))
+                {
+                    view = 1;
+                    order = ord;
+                    firstStop = pos;
+                    mapCache = null;
+                    mapRow = mapColumn = -1;
+                    Repaint();
+                }
+            }
+            if (s.ViolationsByFirst.Count > limit)
+                GUILayout.Label("    他 " + (s.ViolationsByFirst.Count - limit), EditorStyles.miniLabel);
         }
 
         private void DrawResultPanel(DesignControl control)
@@ -1130,6 +1248,7 @@ namespace AX.UdonSlot.REV1_0.Editor.ReelRule
                     if (t.Manual[p]) manualWarnings++; else unavoidable++;
                 }
             CheckRow("非成立役の入賞", s.ViolationPaths);
+            DrawViolationSpots(s);
             CheckRow("リーチ目・禁止目の漏れ", leaks);
             CheckRow("手動指定による警告", manualWarnings);
             if (unavoidable > 0) CheckRow("回避不能", unavoidable);

@@ -728,7 +728,15 @@ namespace AX.UdonSlot.REV1_0.Editor.ReelRule
                         stats.ShapeMatchedByOrder[k, o]++;
                         if (p.Denied.Contains(shapeIds[k])) violation = true;
                     }
-                    if (violation) stats.ViolationPaths++;
+                    if (violation)
+                    {
+                        stats.ViolationPaths++;
+                        int first = Orders[o][0];
+                        long count;
+                        int spot = o * 1000 + stops[first];
+                        stats.ViolationsByFirst.TryGetValue(spot, out count);
+                        stats.ViolationsByFirst[spot] = count + 1;
+                    }
                     stats.AddWindow(WindowKey(stops));
                 }
             }
@@ -774,6 +782,13 @@ namespace AX.UdonSlot.REV1_0.Editor.ReelRule
             return stops;
         }
 
+        /// <summary>停止パターンと停止済みリール数から押し順を探す。第1停止のパターンは2通りあるので先の方。</summary>
+        public static int OrderOfPattern(int pattern, int stage)
+        {
+            for (int o = 0; o < Orders.Length; o++) if (PatternFor(o, stage) == pattern) return o;
+            return -1;
+        }
+
         /// <summary>第1停止で止まりうる位置（下段インデックス）。</summary>
         public bool[] FirstStops(ControlResult result, int order)
         {
@@ -816,6 +831,8 @@ namespace AX.UdonSlot.REV1_0.Editor.ReelRule
         public long Paths;
         public long[] PathsByOrder = new long[6];
         public long ViolationPaths;
+        /// <summary>非成立役の入賞・禁止停止形の経路数。キーは 押し順×1000＋第1停止位置。</summary>
+        public SortedDictionary<int, long> ViolationsByFirst = new SortedDictionary<int, long>();
         public int UnavoidableCells;
         public string[] RoleNames;
         public bool[] RoleWon;
