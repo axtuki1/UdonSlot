@@ -103,9 +103,16 @@ namespace AX.UdonSlot.REV1_0.Editor.ReelRule
         }
 
         /// <summary>
-        /// 小役優先では小役のあるフラグでボーナスを揃えないので、そのボーナス成立中のマスは使わない（通常の制御になる）。
+        /// 小役優先では小役のあるフラグでボーナスを揃えないので、そのボーナス成立中のマスは
+        /// 通常と別に作ったときだけ使う（作っていなければ通常の制御になる）。
         /// </summary>
         public bool IsUnusedCell(DesignControl c, Machine machine)
+        {
+            return IsSmallOnlyCell(c, machine) && !c.ownCell;
+        }
+
+        /// <summary>小役優先で、小役のあるフラグのボーナス成立中のマス（ボーナスは揃えない）。</summary>
+        public bool IsSmallOnlyCell(DesignControl c, Machine machine)
         {
             if (!c.IsCell || string.IsNullOrEmpty(c.bonus) || priority != ControlPriority.SmallFirst) return false;
             return HasSmallRoles(c.flag, machine);
@@ -273,6 +280,8 @@ namespace AX.UdonSlot.REV1_0.Editor.ReelRule
         public List<string> targets = new List<string>();
         /// <summary>基本目を狙うとき、狙う形にできなければ小役をこぼすか。false なら形を崩しても揃える。</summary>
         public bool allowSpill;
+        /// <summary>小役優先で小役のあるフラグのボーナス成立中のマスを、通常と別に作ったか。false なら通常の制御を使う。</summary>
+        public bool ownCell;
         public List<DesignOverride> overrides = new List<DesignOverride>();
 
         public DesignControl Copy()
@@ -287,7 +296,8 @@ namespace AX.UdonSlot.REV1_0.Editor.ReelRule
                 bonus = bonus,
                 state = state,
                 targets = new List<string>(targets),
-                allowSpill = allowSpill
+                allowSpill = allowSpill,
+                ownCell = ownCell
             };
             foreach (var o in overrides) copy.overrides.Add(o.Copy());
             return copy;

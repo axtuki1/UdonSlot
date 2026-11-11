@@ -288,7 +288,7 @@ namespace AX.UdonSlot.REV1_0.Editor.ReelRule
             });
         }
 
-        /// <summary>小役優先で、小役のあるフラグのボーナス成立中（使わないマス）。</summary>
+        /// <summary>小役優先で、小役のあるフラグのボーナス成立中（作るまでは通常の制御を使うマス）。</summary>
         private bool SkipCell(string flag, string bonus)
         {
             return Design.priority == ControlPriority.SmallFirst && ReelDesign.HasSmallRoles(flag, machine);
@@ -407,10 +407,37 @@ namespace AX.UdonSlot.REV1_0.Editor.ReelRule
                 {
                     if (SkipCell(flag, pair.Key))
                     {
-                        var none = GUILayoutUtility.GetRect(10, AssignSubH, GUILayout.ExpandWidth(true));
-                        EditorGUI.DrawRect(none, SubRowColor);
-                        GUI.Label(new Rect(none.x + 30, none.y + 3, none.width - 110, 16), pair.Value + "中", MutedLabel);
-                        GUI.Label(new Rect(none.xMax - 74, none.y + 3, 68, 16), "-", CenteredMini);
+                        var own = Design.FindCell(flag, pair.Key);
+                        if (own != null && !own.ownCell) own = null;
+                        var line = GUILayoutUtility.GetRect(10, AssignSubH, GUILayout.ExpandWidth(true));
+                        EditorGUI.DrawRect(line, own != null && own == selected ? SelectedColor : SubRowColor);
+                        if (own != null)
+                            GUI.Label(new Rect(line.x + 30, line.y + 3, line.width - 110, 16), (HasViolation(own) ? "⚠ " : "") + pair.Value + "中");
+                        else
+                        {
+                            // 作るまでは通常と同じ制御。クリックで通常のコピーから作る。
+                            GUI.Label(new Rect(line.x + 30, line.y + 3, line.width - 110, 16), pair.Value + "中", MutedLabel);
+                            GUI.Label(new Rect(line.xMax - 74, line.y + 3, 68, 16), "＝通常", CenteredMini);
+                        }
+                        string bonusKey = pair.Key;
+                        var normalCell = normal;
+                        if (Clicked(line, 0))
+                        {
+                            if (own != null) SelectControl(Design.controls.IndexOf(own));
+                            else CreateOwnCell(flag, bonusKey, normalCell);
+                        }
+                        else if (own != null && Clicked(line, 1))
+                        {
+                            var target = own;
+                            var menu = new GenericMenu();
+                            menu.AddItem(new GUIContent("通常の内容をコピー"), false, delegate { CopyCellFrom(normalCell, target); });
+                            menu.AddItem(new GUIContent("通常と同じに戻す"), false, delegate
+                            {
+                                Edit("通常と同じに戻す", delegate { target.ownCell = false; });
+                                if (normalCell != null) SelectControl(Design.controls.IndexOf(normalCell));
+                            });
+                            menu.ShowAsContext();
+                        }
                         continue;
                     }
                     var cell = Design.FindCell(flag, pair.Key);
@@ -456,6 +483,39 @@ namespace AX.UdonSlot.REV1_0.Editor.ReelRule
                 }
             }
             EditorGUILayout.EndScrollView();
+        }
+
+        /// <summary>小役優先で使わないマスを、通常のコピーから作る。ボーナスは揃えない。</summary>
+        private void CreateOwnCell(string flag, string bonus, DesignControl normal)
+        {
+            if (normal == null) return;
+            DesignControl created = null;
+            Edit("制御を作る", delegate
+            {
+                var cell = Design.FindCell(flag, bonus);
+                if (cell == null)
+                {
+                    cell = normal.Copy();
+                    cell.bonus = bonus;
+                    cell.state = "";
+                    cell.lotteryFlags.Clear();
+                    cell.name = FreeCellName(flag, bonus);
+                    Design.controls.Add(cell);
+                }
+                else
+                {
+                    cell.targets = new List<string>(normal.targets);
+                    cell.allowSpill = normal.allowSpill;
+                    cell.overrides.Clear();
+                    foreach (var o in normal.overrides) cell.overrides.Add(o.Copy());
+                    foreach (var shape in Design.shapes) shape.RemoveControl(cell.name);
+                }
+                foreach (var shape in Design.shapes) shape.CopyControl(normal.name, cell.name);
+                cell.pullBonus = false;
+                cell.ownCell = true;
+                created = cell;
+            });
+            if (created != null) SelectControl(Design.controls.IndexOf(created));
         }
 
         private bool HasViolation(DesignControl cell)
@@ -537,7 +597,7 @@ namespace AX.UdonSlot.REV1_0.Editor.ReelRule
                 GUILayout.Space(4);
                 if (Link("抽選表で編集")) { screen = 2; GUI.FocusControl(null); }
                 GUILayout.FlexibleSpace();
-                if (control.IsCell && !string.IsNullOrEmpty(control.bonus))
+                if (control.IsCell && !string.IsNullOrEmpty(control.bonus) && !(machine != null && Design.IsSmallOnlyCell(control, machine)))
                 {
                     bool pull = GUILayout.Toggle(control.pullBonus, "ボーナスを揃える", GUILayout.ExpandWidth(false));
                     if (pull != control.pullBonus) Edit("ボーナスを揃えるの変更", delegate { control.pullBonus = pull; });
