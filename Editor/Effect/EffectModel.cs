@@ -140,7 +140,12 @@ namespace AX.UdonSlot.REV1_0.Editor.Effect
         public string Name = "";
         /// <summary>コードから呼ぶときの名前（英数字と _）。</summary>
         public string Id = "";
+        /// <summary>次ゲームの予定。パターンか抽選テーブルのどちらか（両方 null はなし）。</summary>
         public EffectPattern Next;
+        public EffectLotTable NextTable;
+        /// <summary>次のレバーオンでボーナス成立中のときの予定。両方 null は通常の予定と同じ。</summary>
+        public EffectPattern NextBonus;
+        public EffectLotTable NextBonusTable;
         /// <summary>チャンネルから外れたら、触ったオブジェクトの ON/OFF を開始時に戻す。</summary>
         public bool ResetOnLeave = true;
         public List<string> Layers = new List<string>();
@@ -174,6 +179,79 @@ namespace AX.UdonSlot.REV1_0.Editor.Effect
         }
     }
 
+    /// <summary>振り分けの1行。Pattern が null なら「停止」。</summary>
+    public sealed class EffectLotRow
+    {
+        public EffectPattern Pattern;
+        public int Parameter;
+        /// <summary>設定ごとの値（65536 分のいくつか）。全設定共通のときは 0 番だけを使う。</summary>
+        public int[] Values = new int[1];
+
+        public EffectLotRow Copy()
+        {
+            return new EffectLotRow { Pattern = Pattern, Parameter = Parameter, Values = (int[])Values.Clone() };
+        }
+    }
+
+    /// <summary>成立フラグ（＋成立中のボーナス）ごとの振り分け表。</summary>
+    public sealed class EffectLotCell
+    {
+        /// <summary>成立フラグの内部名。空は「共通」。</summary>
+        public string Flag = "";
+        /// <summary>成立中のボーナスの内部名。空は通常。</summary>
+        public string Bonus = "";
+        public bool PerSetting;
+        public List<EffectLotRow> Rows = new List<EffectLotRow>();
+
+        /// <summary>その設定での値。全設定共通なら 0 番。</summary>
+        public int Value(EffectLotRow row, int setting)
+        {
+            int index = PerSetting ? Mathf.Clamp(setting, 0, row.Values.Length - 1) : 0;
+            return row.Values[index];
+        }
+
+        public int Sum(int setting)
+        {
+            int sum = 0;
+            foreach (var r in Rows) sum += Value(r, setting);
+            return sum;
+        }
+
+        public EffectLotCell Copy(string flag, string bonus)
+        {
+            var c = new EffectLotCell { Flag = flag, Bonus = bonus, PerSetting = PerSetting };
+            foreach (var r in Rows) c.Rows.Add(r.Copy());
+            return c;
+        }
+    }
+
+    /// <summary>演出の抽選テーブル。</summary>
+    public sealed class EffectLotTable
+    {
+        public string Name = "";
+        /// <summary>コードから引くときの名前（英数字と _）。</summary>
+        public string Id = "";
+        public int Channel;
+        public bool Auto = true;
+        /// <summary>自動で引く演出モード。空は指定なし。</summary>
+        public string Mode = "";
+        /// <summary>自動で引く状態（「S:状態」「B:役物」）。空はすべて。</summary>
+        public List<string> Situations = new List<string>();
+        public List<EffectLotCell> Cells = new List<EffectLotCell>();
+
+        public EffectLotCell Cell(string flag, string bonus)
+        {
+            return Cells.Find(c => c.Flag == flag && c.Bonus == bonus);
+        }
+
+        public EffectLotTable Copy(string name, string id)
+        {
+            var t = new EffectLotTable { Name = name, Id = id, Channel = Channel, Auto = Auto, Mode = Mode, Situations = new List<string>(Situations) };
+            foreach (var c in Cells) t.Cells.Add(c.Copy(c.Flag, c.Bonus));
+            return t;
+        }
+    }
+
     /// <summary>入賞演出の1行。Action が null なら「なし」（既定のセットも流さない）。</summary>
     public sealed class EffectWinEntry
     {
@@ -202,6 +280,11 @@ namespace AX.UdonSlot.REV1_0.Editor.Effect
         public List<EffectAction> Actions = new List<EffectAction>();
         public List<EffectPattern> Patterns = new List<EffectPattern>();
         public List<EffectWinSet> WinSets = new List<EffectWinSet>();
+        public List<EffectLotTable> LotTables = new List<EffectLotTable>();
+        /// <summary>演出モードの名前。</summary>
+        public List<string> Modes = new List<string>();
+        /// <summary>設定の数（機種の抽選表から）。振り分けの値はこの数だけ持つ。</summary>
+        public int SettingCount = 1;
 
         public const int SplitNone = 0;
         public const int SplitResult = 1;
@@ -378,7 +461,164 @@ namespace AX.UdonSlot.REV1_0.Editor.Effect
                 if (set < 0 || set >= m.WinSets.Count || action >= m.Actions.Count) continue;
                 m.WinSets[set].Entries.Add(new EffectWinEntry { Role = Str(wRole, i), Action = action >= 0 ? m.Actions[action] : null });
             }
+            LoadLottery(m, so);
             return m;
+        }
+
+        private static int MachineSettingCount(EffectPlayer player)
+        {
+            var controller = player.mainBoard != null ? player.mainBoard.reelOutputController : null;
+            if (controller == null) return 0;
+            var lottery = new SerializedObject(controller).FindProperty("lotteryTable");
+            var table = lottery != null ? lottery.objectReferenceValue as LotteryTable : null;
+            return table != null ? table.GetSettingCount() : 0;
+        }
+
+        private static void LoadLottery(EffectModel m, SerializedObject so)
+        {
+            var modeNames = so.FindProperty("effectModeNames");
+            for (int i = 0; i < modeNames.arraySize; i++) m.Modes.Add(Str(modeNames, i));
+
+            int stored = Mathf.Max(1, so.FindProperty("lotSettingCount").intValue);
+            int machine = MachineSettingCount(m.Player);
+            m.SettingCount = machine > 0 ? machine : stored;
+
+            var names = so.FindProperty("lotNames");
+            var ids = so.FindProperty("lotIds");
+            var channels = so.FindProperty("lotChannel");
+            var autos = so.FindProperty("lotAuto");
+            var modes = so.FindProperty("lotMode");
+            var sitStart = so.FindProperty("lotSituationStart");
+            var sitCount = so.FindProperty("lotSituationCount");
+            var situations = so.FindProperty("lotSituations");
+            var cellStart = so.FindProperty("lotCellStart");
+            var cellCount = so.FindProperty("lotCellCount");
+            var cellFlag = so.FindProperty("lotCellFlag");
+            var cellBonus = so.FindProperty("lotCellBonus");
+            var rowStart = so.FindProperty("lotCellRowStart");
+            var rowCount = so.FindProperty("lotCellRowCount");
+            var perSetting = so.FindProperty("lotCellPerSetting");
+            var rowPattern = so.FindProperty("lotRowPattern");
+            var rowParameter = so.FindProperty("lotRowParameter");
+            var rowValues = so.FindProperty("lotRowValues");
+
+            for (int t = 0; t < ids.arraySize; t++)
+            {
+                int mode = Int(modes, t);
+                var table = new EffectLotTable
+                {
+                    Name = Str(names, t), Id = Str(ids, t), Channel = Int(channels, t), Auto = Bool(autos, t),
+                    Mode = t < modes.arraySize && mode >= 0 && mode < m.Modes.Count ? m.Modes[mode] : ""
+                };
+                foreach (int i in Range(sitStart, sitCount, t, situations.arraySize)) table.Situations.Add(Str(situations, i));
+                foreach (int c in Range(cellStart, cellCount, t, cellFlag.arraySize))
+                {
+                    var cell = new EffectLotCell { Flag = Str(cellFlag, c), Bonus = Str(cellBonus, c), PerSetting = Bool(perSetting, c) };
+                    foreach (int r in Range(rowStart, rowCount, c, rowPattern.arraySize))
+                    {
+                        int pattern = Int(rowPattern, r);
+                        if (pattern >= m.Patterns.Count) continue;
+                        var row = new EffectLotRow { Pattern = pattern >= 0 ? m.Patterns[pattern] : null, Parameter = Int(rowParameter, r), Values = new int[m.SettingCount] };
+                        // 設定の数が変わっていたら、足りない分は最後の設定の値で埋める。
+                        for (int s = 0; s < m.SettingCount; s++) row.Values[s] = Int(rowValues, r * stored + Mathf.Min(s, stored - 1));
+                        cell.Rows.Add(row);
+                    }
+                    table.Cells.Add(cell);
+                }
+                m.LotTables.Add(table);
+            }
+
+            var pNextTable = so.FindProperty("patternNextTable");
+            var pNextBonus = so.FindProperty("patternNextBonus");
+            var pNextBonusTable = so.FindProperty("patternNextBonusTable");
+            for (int p = 0; p < m.Patterns.Count; p++)
+            {
+                int nextTable = p < pNextTable.arraySize ? Int(pNextTable, p) : -1;
+                int nextBonus = p < pNextBonus.arraySize ? Int(pNextBonus, p) : -1;
+                int nextBonusTable = p < pNextBonusTable.arraySize ? Int(pNextBonusTable, p) : -1;
+                if (m.Patterns[p].Next == null && nextTable >= 0 && nextTable < m.LotTables.Count) m.Patterns[p].NextTable = m.LotTables[nextTable];
+                if (nextBonus >= 0 && nextBonus < m.Patterns.Count) m.Patterns[p].NextBonus = m.Patterns[nextBonus];
+                else if (nextBonusTable >= 0 && nextBonusTable < m.LotTables.Count) m.Patterns[p].NextBonusTable = m.LotTables[nextBonusTable];
+            }
+        }
+
+        private void SaveLottery(SerializedObject so)
+        {
+            var modeNames = Resize(so, "effectModeNames", Modes.Count);
+            for (int i = 0; i < Modes.Count; i++) modeNames.GetArrayElementAtIndex(i).stringValue = Modes[i];
+            int columns = Mathf.Max(1, SettingCount);
+            so.FindProperty("lotSettingCount").intValue = columns;
+
+            int tc = LotTables.Count, situationTotal = 0, cellTotal = 0, rowTotal = 0;
+            foreach (var t in LotTables)
+            {
+                situationTotal += t.Situations.Count;
+                cellTotal += t.Cells.Count;
+                foreach (var c in t.Cells) rowTotal += c.Rows.Count;
+            }
+            var names = Resize(so, "lotNames", tc);
+            var ids = Resize(so, "lotIds", tc);
+            var channels = Resize(so, "lotChannel", tc);
+            var autos = Resize(so, "lotAuto", tc);
+            var modes = Resize(so, "lotMode", tc);
+            var sitStart = Resize(so, "lotSituationStart", tc);
+            var sitCount = Resize(so, "lotSituationCount", tc);
+            var situations = Resize(so, "lotSituations", situationTotal);
+            var cellStart = Resize(so, "lotCellStart", tc);
+            var cellCount = Resize(so, "lotCellCount", tc);
+            var cellFlag = Resize(so, "lotCellFlag", cellTotal);
+            var cellBonus = Resize(so, "lotCellBonus", cellTotal);
+            var rowStart = Resize(so, "lotCellRowStart", cellTotal);
+            var rowCount = Resize(so, "lotCellRowCount", cellTotal);
+            var perSetting = Resize(so, "lotCellPerSetting", cellTotal);
+            var rowPattern = Resize(so, "lotRowPattern", rowTotal);
+            var rowParameter = Resize(so, "lotRowParameter", rowTotal);
+            var rowValues = Resize(so, "lotRowValues", rowTotal * columns);
+
+            int si = 0, ci = 0, ri = 0;
+            for (int t = 0; t < tc; t++)
+            {
+                var table = LotTables[t];
+                names.GetArrayElementAtIndex(t).stringValue = table.Name;
+                ids.GetArrayElementAtIndex(t).stringValue = table.Id;
+                channels.GetArrayElementAtIndex(t).intValue = Mathf.Clamp(table.Channel, 0, EffectPlayer.ChannelCount - 1);
+                autos.GetArrayElementAtIndex(t).boolValue = table.Auto;
+                modes.GetArrayElementAtIndex(t).intValue = Modes.IndexOf(table.Mode);
+                sitStart.GetArrayElementAtIndex(t).intValue = si;
+                sitCount.GetArrayElementAtIndex(t).intValue = table.Situations.Count;
+                foreach (string key in table.Situations) situations.GetArrayElementAtIndex(si++).stringValue = key;
+                cellStart.GetArrayElementAtIndex(t).intValue = ci;
+                cellCount.GetArrayElementAtIndex(t).intValue = table.Cells.Count;
+                foreach (var cell in table.Cells)
+                {
+                    cellFlag.GetArrayElementAtIndex(ci).stringValue = cell.Flag ?? "";
+                    cellBonus.GetArrayElementAtIndex(ci).stringValue = cell.Bonus ?? "";
+                    perSetting.GetArrayElementAtIndex(ci).boolValue = cell.PerSetting;
+                    rowStart.GetArrayElementAtIndex(ci).intValue = ri;
+                    rowCount.GetArrayElementAtIndex(ci).intValue = cell.Rows.Count;
+                    foreach (var row in cell.Rows)
+                    {
+                        rowPattern.GetArrayElementAtIndex(ri).intValue = row.Pattern != null ? Patterns.IndexOf(row.Pattern) : -1;
+                        rowParameter.GetArrayElementAtIndex(ri).intValue = row.Parameter;
+                        for (int s = 0; s < columns; s++)
+                            rowValues.GetArrayElementAtIndex(ri * columns + s).intValue = Mathf.Max(0, cell.Value(row, s));
+                        ri++;
+                    }
+                    ci++;
+                }
+            }
+
+            int pc = Patterns.Count;
+            var pNextTable = Resize(so, "patternNextTable", pc);
+            var pNextBonus = Resize(so, "patternNextBonus", pc);
+            var pNextBonusTable = Resize(so, "patternNextBonusTable", pc);
+            for (int p = 0; p < pc; p++)
+            {
+                var pattern = Patterns[p];
+                pNextTable.GetArrayElementAtIndex(p).intValue = pattern.Next == null && pattern.NextTable != null ? LotTables.IndexOf(pattern.NextTable) : -1;
+                pNextBonus.GetArrayElementAtIndex(p).intValue = pattern.NextBonus != null ? Patterns.IndexOf(pattern.NextBonus) : -1;
+                pNextBonusTable.GetArrayElementAtIndex(p).intValue = pattern.NextBonus == null && pattern.NextBonusTable != null ? LotTables.IndexOf(pattern.NextBonusTable) : -1;
+            }
         }
 
         public void Save(string label)
@@ -605,6 +845,7 @@ namespace AX.UdonSlot.REV1_0.Editor.Effect
             Resize(so, "entryStep", entries);
             Resize(so, "entryBranch", entries);
             Resize(so, "entryAction", entries);
+            SaveLottery(so);
             so.ApplyModifiedProperties();
             EditorUtility.SetDirty(Player);
         }
@@ -696,7 +937,51 @@ namespace AX.UdonSlot.REV1_0.Editor.Effect
         public void RemovePattern(EffectPattern pattern)
         {
             Patterns.Remove(pattern);
-            foreach (var p in Patterns) if (p.Next == pattern) p.Next = null;
+            foreach (var p in Patterns)
+            {
+                if (p.Next == pattern) p.Next = null;
+                if (p.NextBonus == pattern) p.NextBonus = null;
+            }
+            foreach (var t in LotTables)
+                foreach (var c in t.Cells) c.Rows.RemoveAll(r => r.Pattern == pattern);
+        }
+
+        public List<string> LotTableNames()
+        {
+            var list = new List<string>();
+            foreach (var t in LotTables) list.Add(t.Name);
+            return list;
+        }
+
+        public List<string> LotTableIds()
+        {
+            var list = new List<string>();
+            foreach (var t in LotTables) list.Add(t.Id);
+            return list;
+        }
+
+        public void RemoveLotTable(EffectLotTable table)
+        {
+            LotTables.Remove(table);
+            foreach (var p in Patterns)
+            {
+                if (p.NextTable == table) p.NextTable = null;
+                if (p.NextBonusTable == table) p.NextBonusTable = null;
+            }
+        }
+
+        public void RenameMode(string oldName, string newName)
+        {
+            int index = Modes.IndexOf(oldName);
+            if (index < 0) return;
+            Modes[index] = newName;
+            foreach (var t in LotTables) if (t.Mode == oldName) t.Mode = newName;
+        }
+
+        public void RemoveMode(string name)
+        {
+            Modes.Remove(name);
+            foreach (var t in LotTables) if (t.Mode == name) t.Mode = "";
         }
 
         private static IEnumerable<int> Range(SerializedProperty starts, SerializedProperty counts, int index, int limit)

@@ -13,7 +13,7 @@ namespace AX.UdonSlot.REV1_0.Editor.Effect
     /// 演出エディタ。パターン（1ゲームの流れ）とアクション（Animator・表示・音・リール・コードの箱）を編集し、
     /// シーンの EffectPlayer に直接書き込む。
     /// </summary>
-    public sealed class EffectEditorWindow : EditorWindow
+    public sealed partial class EffectEditorWindow : EditorWindow
     {
         [MenuItem("UdonSlot/演出エディタ")]
         public static void Open()
@@ -29,7 +29,7 @@ namespace AX.UdonSlot.REV1_0.Editor.Effect
         private static readonly Color CellSelectedColor = new Color(0.17f, 0.36f, 0.53f);
         private static readonly Color ChipColor = new Color(0.32f, 0.32f, 0.32f);
         private static readonly Color HeaderColor = new Color(0.16f, 0.16f, 0.16f);
-        private static readonly string[] Tabs = { "パターン", "アクション", "入賞演出" };
+        private static readonly string[] Tabs = { "パターン", "アクション", "入賞演出", "抽選" };
         private static readonly string[] BranchNames = { "共通", "入賞", "非入賞", "左押し", "中押し", "右押し" };
         private static readonly string[] SoundTypeNames = Enum.GetNames(typeof(SoundType));
 
@@ -153,7 +153,8 @@ namespace AX.UdonSlot.REV1_0.Editor.Effect
                 DrawList();
                 if (tab == 0) DrawPatternView();
                 else if (tab == 1) DrawActionView();
-                else DrawWinView();
+                else if (tab == 2) DrawWinView();
+                else DrawLotteryView();
             }
         }
 
@@ -237,27 +238,30 @@ namespace AX.UdonSlot.REV1_0.Editor.Effect
                     if (GUILayout.Button("＋", GUILayout.Width(28))) AddItem();
                 }
                 listScroll = EditorGUILayout.BeginScrollView(listScroll);
-                var names = tab == 0 ? model.PatternNames() : tab == 1 ? model.ActionNames() : model.WinSetNames();
-                int selected = tab == 0 ? patternIndex : tab == 1 ? actionIndex : winSetIndex;
+                var names = tab == 0 ? model.PatternNames() : tab == 1 ? model.ActionNames() : tab == 2 ? model.WinSetNames() : model.LotTableNames();
+                int selected = tab == 0 ? patternIndex : tab == 1 ? actionIndex : tab == 2 ? winSetIndex : lotIndex;
                 for (int i = 0; i < names.Count; i++)
                 {
                     if (search.Length > 0 && names[i].IndexOf(search, StringComparison.OrdinalIgnoreCase) < 0) continue;
                     var rect = GUILayoutUtility.GetRect(10, 22, GUILayout.ExpandWidth(true));
                     if (i == selected) EditorGUI.DrawRect(rect, CellSelectedColor);
                     GUI.Label(new Rect(rect.x + 6, rect.y, rect.width - 6, rect.height), names[i]);
+                    if (tab == 3 && LotTableConflicts(model.LotTables[i])) GUI.Label(new Rect(rect.xMax - 22, rect.y, 20, rect.height), new GUIContent("⚠", "同じチャンネル・状態・演出モードの自動抽選が重なっています"));
                     var e = Event.current;
                     if (e.type == EventType.MouseDown && rect.Contains(e.mousePosition))
                     {
                         int index = i;
                         if (tab == 0) { patternIndex = index; selectedLayer = selectedStep = -1; }
                         else if (tab == 1) actionIndex = index;
-                        else winSetIndex = index;
+                        else if (tab == 2) winSetIndex = index;
+                        else { lotIndex = index; lotSelection.Clear(); }
                         GUI.FocusControl(null);
                         if (e.button == 1) ShowItemMenu(index);
                         e.Use();
                     }
                 }
                 EditorGUILayout.EndScrollView();
+                if (tab == 3) DrawModeList();
             }
             var line = GUILayoutUtility.GetRect(1, 1, GUILayout.Width(1), GUILayout.ExpandHeight(true));
             EditorGUI.DrawRect(line, HeaderColor);
@@ -279,6 +283,7 @@ namespace AX.UdonSlot.REV1_0.Editor.Effect
                     model.Actions.Add(new EffectAction { Name = EffectModel.UniqueName("アクション", model.ActionNames()) });
                     actionIndex = model.Actions.Count - 1;
                 });
+            else if (tab == 3) AddLotTable();
             else
                 Edit("セットの追加", delegate
                 {
@@ -290,12 +295,18 @@ namespace AX.UdonSlot.REV1_0.Editor.Effect
         private void ShowItemMenu(int index)
         {
             var menu = new GenericMenu();
+            if (tab == 3)
+            {
+                AddLotTableMenu(menu, index);
+                menu.ShowAsContext();
+                return;
+            }
             if (tab == 0)
             {
                 menu.AddItem(new GUIContent("複製"), false, () => Edit("パターンの複製", delegate
                 {
                     var src = model.Patterns[index];
-                    var p = new EffectPattern { Name = EffectModel.UniqueName(src.Name, model.PatternNames()), Id = EffectModel.UniqueId(src.Id, model.PatternIds()), Next = src.Next, ResetOnLeave = src.ResetOnLeave, Layers = new List<string>(src.Layers) };
+                    var p = new EffectPattern { Name = EffectModel.UniqueName(src.Name, model.PatternNames()), Id = EffectModel.UniqueId(src.Id, model.PatternIds()), Next = src.Next, NextTable = src.NextTable, NextBonus = src.NextBonus, NextBonusTable = src.NextBonusTable, ResetOnLeave = src.ResetOnLeave, Layers = new List<string>(src.Layers) };
                     foreach (var e in src.Entries) p.Entries.Add(new EffectEntry { Layer = e.Layer, Step = e.Step, Branch = e.Branch, Action = e.Action });
                     model.Patterns.Insert(index + 1, p);
                     patternIndex = index + 1;
@@ -381,13 +392,15 @@ namespace AX.UdonSlot.REV1_0.Editor.Effect
                     EditorGUI.BeginChangeCheck();
                     bool reset = GUILayout.Toggle(pattern.ResetOnLeave, "切り替え時に表示を戻す", GUILayout.Width(150));
                     if (EditorGUI.EndChangeCheck()) Edit("切り替え時に表示を戻すの変更", () => pattern.ResetOnLeave = reset);
-                    GUILayout.Space(16);
+                }
+                using (new EditorGUILayout.HorizontalScope())
+                {
                     GUILayout.Label("次ゲームの予定", GUILayout.Width(92));
-                    var options = new List<string> { "なし" };
-                    options.AddRange(model.PatternNames());
-                    int current = pattern.Next != null ? model.Patterns.IndexOf(pattern.Next) + 1 : 0;
-                    int next = EditorGUILayout.Popup(current, options.ToArray(), GUILayout.Width(180));
-                    if (next != current) Edit("次のパターンの変更", () => pattern.Next = next == 0 ? null : model.Patterns[next - 1]);
+                    DrawNextPopup(pattern, false);
+                    GUILayout.Space(16);
+                    GUILayout.Label("ボーナス成立中", GUILayout.Width(92));
+                    DrawNextPopup(pattern, true);
+                    GUILayout.FlexibleSpace();
                 }
                 GUILayout.Space(4);
                 using (new EditorGUILayout.HorizontalScope())

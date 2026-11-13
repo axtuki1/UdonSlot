@@ -33,7 +33,7 @@ namespace AX.UdonSlot.REV1_0.Editor.Effect
 
         private static string Text(string path, EffectModel model)
         {
-            return Build(Identifier(Path.GetFileNameWithoutExtension(path), new HashSet<string>()), model.Patterns);
+            return Build(Identifier(Path.GetFileNameWithoutExtension(path), new HashSet<string>()), model);
         }
 
         /// <summary>書き出し先が決まっていれば書き出す。中身が変わらなければ書かない（再コンパイルを避ける）。</summary>
@@ -49,21 +49,45 @@ namespace AX.UdonSlot.REV1_0.Editor.Effect
             AssetDatabase.ImportAsset(path);
         }
 
-        private static string Build(string className, List<EffectPattern> patterns)
+        /// <summary>
+        /// パターンは「ファイル名」のクラス。抽選テーブルは「ファイル名＋Tables」、演出モードは「ファイル名＋Modes」のクラス（あるときだけ出す）。
+        /// </summary>
+        private static string Build(string className, EffectModel model)
         {
             var sb = new StringBuilder();
             sb.Append("// 演出エディタが書き出したファイルです。演出エディタの「定数ファイル書き出し」で書き直されます。\n");
+            var entries = new List<KeyValuePair<string, string>>();
+            foreach (var pattern in model.Patterns) entries.Add(new KeyValuePair<string, string>(pattern.Id, pattern.Name));
+            AppendClass(sb, className, entries);
+            if (model.LotTables.Count > 0)
+            {
+                entries.Clear();
+                foreach (var table in model.LotTables) entries.Add(new KeyValuePair<string, string>(table.Id, table.Name));
+                sb.Append("\n");
+                AppendClass(sb, className + "Tables", entries);
+            }
+            if (model.Modes.Count > 0)
+            {
+                entries.Clear();
+                foreach (string mode in model.Modes) entries.Add(new KeyValuePair<string, string>(mode, mode));
+                sb.Append("\n");
+                AppendClass(sb, className + "Modes", entries);
+            }
+            return sb.ToString();
+        }
+
+        private static void AppendClass(StringBuilder sb, string className, List<KeyValuePair<string, string>> entries)
+        {
             sb.Append("public static class ").Append(className).Append("\n{\n");
             var used = new HashSet<string>();
-            foreach (var pattern in patterns)
+            foreach (var entry in entries)
             {
-                string name = (pattern.Name ?? "").Replace("\r", " ").Replace("\n", " ").Replace("&", "&amp;").Replace("<", "&lt;").Replace(">", "&gt;");
+                string name = (entry.Value ?? "").Replace("\r", " ").Replace("\n", " ").Replace("&", "&amp;").Replace("<", "&lt;").Replace(">", "&gt;");
                 sb.Append("    /// <summary>").Append(name).Append("</summary>\n");
-                sb.Append("    public const string ").Append(Identifier(pattern.Id, used)).Append(" = \"")
-                  .Append(pattern.Id.Replace("\\", "\\\\").Replace("\"", "\\\"")).Append("\";\n");
+                sb.Append("    public const string ").Append(Identifier(entry.Key, used)).Append(" = \"")
+                  .Append(entry.Key.Replace("\\", "\\\\").Replace("\"", "\\\"")).Append("\";\n");
             }
             sb.Append("}\n");
-            return sb.ToString();
         }
 
         private static readonly HashSet<string> Keywords = new HashSet<string>
