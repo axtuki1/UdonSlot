@@ -11,6 +11,7 @@ namespace AX.UdonSlot.REV1_0
     /// 演出エディタで作ったパターンを再生する。
     /// パターンは「レバーオン／リール回転開始／第一停止／第二停止／第三停止／ゲーム終了」の6列に、アクション（映像・表示・音・リール・コード）を並べたもの。
     /// どのパターンを流すかは機種コードが決め、メイン基板の Owner が CallEffectPattern で呼ぶ。
+    /// 抽選テーブルを作っておくと、レバーオンで Owner が成立フラグごとの振り分けを引いて流す（作らなければ何もしない）。
     /// 呼ぶと全員へ届き、次のステップから新しいパターンに差し替わる。チャンネルごとに別のパターンを重ねて流せる。
     /// チャンネル0（CallEffectPattern）はそのゲームだけ。常駐チャンネル（1〜residentChannelCount）は差し替えられない限り毎ゲーム繰り返し、それより後はそのゲームで止まる。
     /// 入賞演出は役ごとに決めたアクションで、パターンとは別にゲーム終了で毎回流れる（セットを切り替えられる）。
@@ -164,6 +165,11 @@ namespace AX.UdonSlot.REV1_0
         public string[] patternIds = new string[0];
         /// <summary>ゲーム終了の後、次のレバーオンから差し替わる次のパターン。-1 はなし（常駐チャンネルは同じパターンを繰り返し、それ以外は止まる）。</summary>
         public int[] patternNext = new int[0];
+        /// <summary>次ゲームの予定が抽選テーブルのとき、そのテーブル。-1 はなし（patternNext を使う）。次のレバーオンで Owner が引く。</summary>
+        public int[] patternNextTable = new int[0];
+        /// <summary>次のレバーオンでボーナス成立中のときの予定（パターン／抽選テーブル）。どちらも -1 なら通常の予定と同じ。</summary>
+        public int[] patternNextBonus = new int[0];
+        public int[] patternNextBonusTable = new int[0];
         /// <summary>true のパターンは、チャンネルから外れても表示（オブジェクトの ON/OFF）を戻さない。既定は戻す。</summary>
         public bool[] patternKeepActive = new bool[0];
         /// <summary>パターン名の定数ファイルの書き出し先（エディタ用）。</summary>
@@ -180,6 +186,46 @@ namespace AX.UdonSlot.REV1_0
         public int stepVersion = 0;
         public int[] entryBranch = new int[0];
         public int[] entryAction = new int[0];
+
+        // ---------------------------------------------------------------- 抽選テーブル
+
+        /// <summary>振り分けの分母。値は 65536 分のいくつか（乱数 0〜65535）。</summary>
+        public const int LotteryDenominator = 65536;
+
+        /// <summary>エディタに出す名前。</summary>
+        public string[] lotNames = new string[0];
+        /// <summary>コードから引くときの名前（英数字）。</summary>
+        public string[] lotIds = new string[0];
+        /// <summary>当たったパターンを流すチャンネル。</summary>
+        public int[] lotChannel = new int[0];
+        /// <summary>true ならレバーオンで自動で引く。false はコードや次ゲームの予定から引くときだけ。</summary>
+        public bool[] lotAuto = new bool[0];
+        /// <summary>自動で引く演出モード。-1 は指定なし（どのモードでも）。</summary>
+        public int[] lotMode = new int[0];
+        /// <summary>自動で引く状態。テーブルごとに連続して並ぶ。0件はすべての状態。「S:状態の内部名」「B:役物の内部名」。</summary>
+        public int[] lotSituationStart = new int[0];
+        public int[] lotSituationCount = new int[0];
+        public string[] lotSituations = new string[0];
+        public int[] lotCellStart = new int[0];
+        public int[] lotCellCount = new int[0];
+
+        /// <summary>振り分け表1つ = (成立フラグ, 成立中のボーナス)。フラグが空は「共通」、ボーナスが空は通常。</summary>
+        public string[] lotCellFlag = new string[0];
+        public string[] lotCellBonus = new string[0];
+        public int[] lotCellRowStart = new int[0];
+        public int[] lotCellRowCount = new int[0];
+        /// <summary>設定ごとに値を分けているか（エディタ用。false は全設定共通で、同じ値が並ぶ）。</summary>
+        public bool[] lotCellPerSetting = new bool[0];
+
+        /// <summary>振り分けの1行。パターン -1 は「停止」。</summary>
+        public int[] lotRowPattern = new int[0];
+        public int[] lotRowParameter = new int[0];
+        /// <summary>行ごとに lotSettingCount 個ずつ、設定順に並ぶ。</summary>
+        public int[] lotRowValues = new int[0];
+        public int lotSettingCount = 1;
+
+        /// <summary>演出モードの名前。SetEffectMode で切り替える。</summary>
+        public string[] effectModeNames = new string[0];
 
         // ---------------------------------------------------------------- 再生状態
 
@@ -209,6 +255,8 @@ namespace AX.UdonSlot.REV1_0
         private int[] pendingPattern = new int[ChannelCount];
         private int[] pendingParameter = new int[ChannelCount];
         private int[] pendingFromStep = new int[ChannelCount];
+        /// <summary>差し替え待ちが、ゲーム終了でローカルに決めたもの（次ゲームの予定など）か。呼び出しで届いたものは false。</summary>
+        private bool[] pendingIsLocal = new bool[ChannelCount];
         /// <summary>最後に処理したステップ。ゲームの外（終了〜次のレバー）は StepGameEnd。</summary>
         private int lastStep = StepGameEnd;
         private bool lastWon = false;
@@ -227,6 +275,22 @@ namespace AX.UdonSlot.REV1_0
         /// <summary>今の入賞演出のセット。途中参加者向けに同期する。</summary>
         [UdonSynced] private int syncedWinSet = 0;
         private int currentWinSet = 0;
+
+        /// <summary>今の演出モード＋1（0 は指定なし）。Owner が替わっても続きから引けるように同期する。</summary>
+        [UdonSynced] private int syncedMode = 0;
+        private int currentMode = -1;
+
+        private const int DrawKeep = -2;
+        private const int DrawStop = -1;
+        /// <summary>レバーオンで決めた、このゲームに流すもの（チャンネルごと）。パターン番号、DrawStop、DrawKeep。Owner だけが使う。</summary>
+        private int[] drawTarget = new int[ChannelCount];
+        private int[] drawParameter = new int[ChannelCount];
+        private bool[] drawSet = new bool[ChannelCount];
+        /// <summary>PrepareLeverOn から CommitLeverOn の間（機種の LeverOnLogic の中）。</summary>
+        private bool preparing = false;
+        private int lastDrawParameter = 0;
+        /// <summary>前のレバーオンの状態。変わったら連続演出の予定を捨てる。Owner でないときは空（分からない）。</summary>
+        private string lastSituation = "";
         /// <summary>最後のゲーム終了で入賞したコマ（9ビット）。パターンから流すリール照明の「入賞図柄」にも使う。</summary>
         private int lastWinMask = 0;
 
@@ -337,7 +401,11 @@ namespace AX.UdonSlot.REV1_0
                 currentPattern[c] = -1;
                 currentParameter[c] = 0;
                 hasPending[c] = false;
+                drawSet[c] = false;
             }
+            preparing = false;
+            currentMode = -1;
+            lastSituation = "";
             for (int i = 0; i < queueAction.Length; i++) queueAction[i] = -1;
             for (int slot = 0; slot < LightSlotCount; slot++) EndLight(slot);
             currentWinSet = 0;
@@ -363,12 +431,14 @@ namespace AX.UdonSlot.REV1_0
                 syncedParameters[c] = 0;
             }
             syncedWinSet = 0;
+            syncedMode = 0;
             RequestSerialization();
         }
 
         public override void OnDeserialization()
         {
             if (syncedWinSet >= 0 && syncedWinSet < winSetNames.Length) currentWinSet = syncedWinSet;
+            currentMode = syncedMode - 1;
             ApplySynced();
         }
 
@@ -428,6 +498,8 @@ namespace AX.UdonSlot.REV1_0
 
         private void Send(int channel, int pattern, int parameter)
         {
+            // LeverOnLogic の中で直接呼んだチャンネルは、抽選テーブル・次ゲームの予定の結果を使わない。
+            if (preparing) drawSet[channel] = false;
             if (IsResidentChannel(channel))
             {
                 if (!Networking.IsOwner(gameObject)) Networking.SetOwner(Networking.LocalPlayer, gameObject);
@@ -486,6 +558,7 @@ namespace AX.UdonSlot.REV1_0
                 return;
             }
             hasPending[channel] = true;
+            pendingIsLocal[channel] = false;
             pendingPattern[channel] = pattern;
             pendingParameter[channel] = parameter;
             pendingFromStep[channel] = fromStep;
@@ -507,6 +580,7 @@ namespace AX.UdonSlot.REV1_0
         {
             if (step < 0 || step >= StepCount) return;
             if (step == StepLeverOn) StopLights(StopOnLeverOn);
+            if (step == StepLeverOn && !IsMainBoardOwner()) lastSituation = "";
             stopSoundMuted = false;
             lastStep = step;
             lastWon = won;
@@ -528,6 +602,8 @@ namespace AX.UdonSlot.REV1_0
         /// <summary>
         /// ゲーム終了の後：次のレバーオンから次のパターンへ進む。常駐でないチャンネルは、次がなければ止まる。
         /// 表示を戻すのも次のレバーオンまで待つ（第三停止を離した直後に消えないように）。
+        /// ここで決めるのはローカルで分かる分だけ。予定が抽選テーブルのとき・ボーナス成立中の予定へ進むときは、
+        /// 次のレバーオンで Owner が決めて送ってくる（PrepareLeverOn）。
         /// </summary>
         private void EndGame(int channel)
         {
@@ -537,9 +613,331 @@ namespace AX.UdonSlot.REV1_0
             if (next >= patternNames.Length) next = -1;
             if (next < 0 && IsResidentChannel(channel)) return;
             hasPending[channel] = true;
+            pendingIsLocal[channel] = true;
             pendingPattern[channel] = next;
             pendingParameter[channel] = currentParameter[channel];
             pendingFromStep[channel] = StepLeverOn;
+        }
+
+        // ---------------------------------------------------------------- 抽選テーブル（Owner）
+
+        /// <summary>
+        /// レバーオンで、このゲームに流すパターンをチャンネルごとに決める。メイン基板が LeverOnLogic の前に呼ぶ（Owner だけ）。
+        /// 次ゲームの予定があるチャンネルは予定を進め（連続演出）、それ以外は自動抽選のテーブルを引く。
+        /// ここではまだ送らない。機種の LeverOnLogic で GetEffectDraw／SetEffectDraw／CancelEffectDraw で見て変えられる。
+        /// </summary>
+        /// <param name="flag">このゲームの成立フラグ（ボーナス付きの行は元のフラグ）</param>
+        public void PrepareLeverOn(string flag)
+        {
+            preparing = false;
+            for (int c = 0; c < ChannelCount; c++) drawSet[c] = false;
+            if (!IsMainBoardOwner()) return;
+            string bonus = PendingBonusName();
+            string situation = SituationKey();
+            bool situationChanged = lastSituation.Length > 0 && lastSituation != situation;
+            lastSituation = situation;
+            int setting = SettingIndex();
+            for (int c = 0; c < ChannelCount; c++)
+            {
+                // ゲームの外でコードから呼ばれているチャンネルは、その呼び出しを優先する。
+                if (hasPending[c] && !pendingIsLocal[c]) continue;
+                int current = currentPattern[c];
+                bool resident = IsResidentChannel(c);
+                if (current >= 0 && current < patternNames.Length)
+                {
+                    int nextPattern = PlanPattern(current, bonus.Length > 0);
+                    int nextTable = PlanTable(current, bonus.Length > 0);
+                    // 状態が変わったら（ボーナス作動など）、そのゲームだけのチャンネルの予定は捨てる。
+                    bool dropped = situationChanged && !resident;
+                    if (!dropped && nextTable >= 0)
+                    {
+                        int row = DrawRow(nextTable, flag, bonus, setting);
+                        drawSet[c] = true;
+                        drawTarget[c] = row >= 0 ? lotRowPattern[row] : (resident ? DrawKeep : DrawStop);
+                        drawParameter[c] = row >= 0 ? lotRowParameter[row] : 0;
+                        continue;
+                    }
+                    if (!dropped && nextPattern >= 0)
+                    {
+                        drawSet[c] = true;
+                        drawTarget[c] = nextPattern;
+                        drawParameter[c] = currentParameter[c];
+                        continue;
+                    }
+                    if (dropped && (nextTable >= 0 || nextPattern >= 0))
+                    {
+                        drawSet[c] = true;
+                        drawTarget[c] = DrawStop;
+                        drawParameter[c] = 0;
+                    }
+                }
+                int table = FindAutoTable(c, situation);
+                if (table < 0) continue;
+                int hit = DrawRow(table, flag, bonus, setting);
+                if (hit < 0) continue;
+                drawSet[c] = true;
+                drawTarget[c] = lotRowPattern[hit];
+                drawParameter[c] = lotRowParameter[hit];
+            }
+            preparing = true;
+        }
+
+        /// <summary>PrepareLeverOn で決めた結果を送る。メイン基板が LeverOnLogic の後に呼ぶ。ローカルで同じ結果になるチャンネルには送らない。</summary>
+        public void CommitLeverOn()
+        {
+            if (!preparing) return;
+            preparing = false;
+            if (!IsMainBoardOwner()) return;
+            for (int c = 0; c < ChannelCount; c++)
+            {
+                if (!drawSet[c]) continue;
+                drawSet[c] = false;
+                int target = drawTarget[c];
+                int local = LocalDefault(c);
+                bool playing = currentPattern[c] >= 0;
+                if (target == DrawKeep && !IsResidentChannel(c)) target = DrawStop;
+                if (target == DrawKeep)
+                {
+                    if (local != DrawKeep && playing) Send(c, currentPattern[c], currentParameter[c]);
+                }
+                else if (target == DrawStop)
+                {
+                    if (local >= 0 || (local == DrawKeep && playing)) Send(c, -1, 0);
+                }
+                else if (target < patternNames.Length)
+                {
+                    if (local != target || drawParameter[c] != currentParameter[c]) Send(c, target, drawParameter[c]);
+                }
+            }
+        }
+
+        /// <summary>何も送らなかったとき、次のレバーオンでそのチャンネルに起きること（全員がローカルで同じように決める）。</summary>
+        private int LocalDefault(int channel)
+        {
+            if (hasPending[channel] && pendingIsLocal[channel]) return pendingPattern[channel] >= 0 ? pendingPattern[channel] : DrawStop;
+            return DrawKeep;
+        }
+
+        private int PlanPattern(int pattern, bool bonusPending)
+        {
+            if (bonusPending && HasBonusPlan(pattern))
+                return pattern < patternNextBonus.Length && patternNextBonus[pattern] < patternNames.Length ? patternNextBonus[pattern] : -1;
+            return pattern < patternNext.Length && patternNext[pattern] < patternNames.Length ? patternNext[pattern] : -1;
+        }
+
+        private int PlanTable(int pattern, bool bonusPending)
+        {
+            if (bonusPending && HasBonusPlan(pattern))
+                return pattern < patternNextBonusTable.Length && patternNextBonusTable[pattern] < lotIds.Length ? patternNextBonusTable[pattern] : -1;
+            // 予定のパターンがあればそちら（どちらか一方だけが入る）。
+            if (pattern < patternNext.Length && patternNext[pattern] >= 0) return -1;
+            return pattern < patternNextTable.Length && patternNextTable[pattern] < lotIds.Length ? patternNextTable[pattern] : -1;
+        }
+
+        private bool HasBonusPlan(int pattern)
+        {
+            return (pattern < patternNextBonus.Length && patternNextBonus[pattern] >= 0) ||
+                   (pattern < patternNextBonusTable.Length && patternNextBonusTable[pattern] >= 0);
+        }
+
+        /// <summary>そのチャンネルへ出す自動抽選のテーブルのうち、今の状態・演出モードに合うもの。演出モード・状態を指定したテーブルを優先する。</summary>
+        private int FindAutoTable(int channel, string situation)
+        {
+            int best = -1, bestScore = -1;
+            for (int t = 0; t < lotIds.Length; t++)
+            {
+                if (!lotAuto[t] || lotChannel[t] != channel) continue;
+                if (lotMode[t] >= 0 && lotMode[t] != currentMode) continue;
+                int count = lotSituationCount[t];
+                bool match = count == 0;
+                for (int i = lotSituationStart[t]; !match && i < lotSituationStart[t] + count && i < lotSituations.Length; i++)
+                    match = lotSituations[i] == situation;
+                if (!match) continue;
+                int score = (lotMode[t] >= 0 ? 2 : 0) + (count > 0 ? 1 : 0);
+                if (score <= bestScore) continue;
+                best = t;
+                bestScore = score;
+            }
+            return best;
+        }
+
+        /// <summary>
+        /// テーブルを引く。成立フラグ（＋成立中のボーナス）の振り分け表、無ければ「共通」の振り分け表を使う。
+        /// 当たった行の番号を返す。どの行にも当たらなかった（なし）・振り分け表が無いときは -1。
+        /// </summary>
+        private int DrawRow(int table, string flag, string bonus, int setting)
+        {
+            if (table < 0 || table >= lotIds.Length) return -1;
+            int cell = FindCell(table, flag, bonus);
+            if (cell < 0) cell = FindCell(table, "", bonus);
+            if (cell < 0) return -1;
+            int columns = lotSettingCount < 1 ? 1 : lotSettingCount;
+            int column = setting < 0 ? 0 : (setting >= columns ? columns - 1 : setting);
+            int random = Random.Range(0, LotteryDenominator);
+            int sum = 0;
+            int end = lotCellRowStart[cell] + lotCellRowCount[cell];
+            for (int row = lotCellRowStart[cell]; row < end && row < lotRowPattern.Length; row++)
+            {
+                int index = row * columns + column;
+                if (index >= lotRowValues.Length) break;
+                sum += lotRowValues[index];
+                if (random < sum) return lotRowPattern[row] < patternNames.Length ? row : -1;
+            }
+            return -1;
+        }
+
+        private int FindCell(int table, string flag, string bonus)
+        {
+            int end = lotCellStart[table] + lotCellCount[table];
+            for (int i = lotCellStart[table]; i < end && i < lotCellFlag.Length; i++)
+                if (lotCellFlag[i] == flag && lotCellBonus[i] == bonus) return i;
+            return -1;
+        }
+
+        private string PendingBonusName()
+        {
+            if (!Utilities.IsValid(mainBoard) || !Utilities.IsValid(mainBoard.reelOutputController)) return "";
+            return mainBoard.reelOutputController.GetPendingBonusName();
+        }
+
+        /// <summary>今の状態。役物の作動中は「B:役物の内部名」（連続作動中はその役物）、それ以外は「S:状態の内部名」。</summary>
+        private string SituationKey()
+        {
+            if (!Utilities.IsValid(mainBoard) || !Utilities.IsValid(mainBoard.reelOutputController)) return "S:";
+            ReelOutputController controller = mainBoard.reelOutputController;
+            string bonus = controller.GetActiveChildBonusName();
+            if (bonus.Length == 0) bonus = controller.GetActiveBonusName();
+            return bonus.Length > 0 ? "B:" + bonus : "S:" + controller.GetStateName();
+        }
+
+        private int SettingIndex()
+        {
+            if (!Utilities.IsValid(mainBoard) || !Utilities.IsValid(mainBoard.reelOutputController)) return 0;
+            return mainBoard.reelOutputController.GetSettingIndex();
+        }
+
+        /// <summary>
+        /// このゲームでチャンネルに流れる予定のパターンの内部名（抽選テーブル・次ゲームの予定の結果）。なければ空。
+        /// 機種の LeverOnLogic の中で使う（Owner だけ）。
+        /// </summary>
+        public string GetEffectDraw(int channel)
+        {
+            if (channel < 0 || channel >= ChannelCount) return "";
+            int target = drawSet[channel] ? drawTarget[channel] : LocalDefault(channel);
+            if (target == DrawKeep) target = IsResidentChannel(channel) ? currentPattern[channel] : -1;
+            return target >= 0 && target < patternIds.Length ? patternIds[target] : "";
+        }
+
+        /// <summary>GetEffectDraw のパターンに渡すパラメータ。</summary>
+        public int GetEffectDrawParameter(int channel)
+        {
+            if (channel < 0 || channel >= ChannelCount) return 0;
+            return drawSet[channel] ? drawParameter[channel] : currentParameter[channel];
+        }
+
+        /// <summary>このゲームでチャンネルに流すパターンを差し替える。機種の LeverOnLogic の中で使う（Owner だけ）。null や空なら止める。</summary>
+        public void SetEffectDraw(int channel, string patternName, int parameter)
+        {
+            if (!preparing || channel < 0 || channel >= ChannelCount) return;
+            int pattern = DrawStop;
+            if (patternName != null && patternName.Length > 0)
+            {
+                pattern = FindPattern(patternName);
+                if (pattern < 0)
+                {
+                    Debug.LogWarning("[EffectPlayer] パターンがありません: " + patternName);
+                    return;
+                }
+            }
+            drawSet[channel] = true;
+            drawTarget[channel] = pattern;
+            drawParameter[channel] = parameter;
+        }
+
+        /// <summary>
+        /// このゲームは、チャンネルに抽選テーブル・次ゲームの予定の結果を流さない。機種の LeverOnLogic の中で使う（Owner だけ）。
+        /// 常駐チャンネルは今のパターンのまま、それ以外は止まる（連続演出もここで終わる）。
+        /// </summary>
+        public void CancelEffectDraw(int channel)
+        {
+            if (!preparing || channel < 0 || channel >= ChannelCount) return;
+            drawSet[channel] = true;
+            drawTarget[channel] = IsResidentChannel(channel) ? DrawKeep : DrawStop;
+            drawParameter[channel] = 0;
+        }
+
+        /// <summary>
+        /// 抽選テーブルを内部名で引き、当たったパターンの内部名を返す（流しはしない）。なし・停止は空。
+        /// 今のゲームの成立フラグと、成立中のボーナスで引く。パラメータは GetLastEffectDrawParameter。
+        /// </summary>
+        public string DrawEffectTable(string tableName)
+        {
+            string flag = "";
+            if (Utilities.IsValid(mainBoard) && Utilities.IsValid(mainBoard.reelOutputController))
+                flag = mainBoard.reelOutputController.GetActiveBaseFlag();
+            return DrawEffectTableWithFlag(tableName, flag, PendingBonusName());
+        }
+
+        /// <summary>DrawEffectTable の、成立フラグと成立中のボーナスを指定する版。</summary>
+        /// <param name="tableName">抽選テーブルの内部名</param>
+        /// <param name="flag">成立フラグの内部名</param>
+        /// <param name="bonusName">成立中のボーナスの内部名。なければ空</param>
+        public string DrawEffectTableWithFlag(string tableName, string flag, string bonusName)
+        {
+            lastDrawParameter = 0;
+            int table = FindLotteryTable(tableName);
+            if (table < 0)
+            {
+                Debug.LogWarning("[EffectPlayer] 抽選テーブルがありません: " + tableName);
+                return "";
+            }
+            int row = DrawRow(table, flag == null ? "" : flag, bonusName == null ? "" : bonusName, SettingIndex());
+            if (row < 0 || lotRowPattern[row] < 0) return "";
+            lastDrawParameter = lotRowParameter[row];
+            return patternIds[lotRowPattern[row]];
+        }
+
+        /// <summary>最後に DrawEffectTable で当たった行のパラメータ。</summary>
+        public int GetLastEffectDrawParameter()
+        {
+            return lastDrawParameter;
+        }
+
+        /// <summary>内部名から抽選テーブルの番号を探す。ないときは -1。</summary>
+        public int FindLotteryTable(string tableName)
+        {
+            for (int i = 0; i < lotIds.Length; i++) if (lotIds[i] == tableName) return i;
+            return -1;
+        }
+
+        /// <summary>
+        /// 演出モードを名前で切り替える。メイン基板の Owner だけが呼べる。null や空なら指定なしに戻す。
+        /// 自動抽選は、演出モードが合うテーブルを優先して引く。
+        /// </summary>
+        public void SetEffectMode(string modeName)
+        {
+            if (!IsMainBoardOwner()) return;
+            int mode = -1;
+            if (modeName != null && modeName.Length > 0)
+            {
+                for (int i = 0; i < effectModeNames.Length; i++) if (effectModeNames[i] == modeName) mode = i;
+                if (mode < 0)
+                {
+                    Debug.LogWarning("[EffectPlayer] 演出モードがありません: " + modeName);
+                    return;
+                }
+            }
+            if (mode == currentMode && syncedMode == mode + 1) return;
+            currentMode = mode;
+            if (!Networking.IsOwner(gameObject)) Networking.SetOwner(Networking.LocalPlayer, gameObject);
+            syncedMode = mode + 1;
+            RequestSerialization();
+        }
+
+        /// <summary>今の演出モードの名前。指定なしは空。</summary>
+        public string GetEffectMode()
+        {
+            return currentMode >= 0 && currentMode < effectModeNames.Length ? effectModeNames[currentMode] : "";
         }
 
         private bool HasPassed(int step)

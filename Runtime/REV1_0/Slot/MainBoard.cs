@@ -529,6 +529,71 @@ namespace AX.UdonSlot.REV1_0
             if (Utilities.IsValid(subBoard) && Utilities.IsValid(subBoard.effectPlayer)) subBoard.effectPlayer.StopEffectPattern(channel);
         }
 
+        /// <summary>
+        /// このゲームでチャンネルに流れる予定のパターンの内部名（演出の抽選テーブル・次ゲームの予定の結果）。なければ空。
+        /// LeverOnLogic の中で使う。
+        /// </summary>
+        public string GetEffectDraw(int channel)
+        {
+            return Utilities.IsValid(subBoard) && Utilities.IsValid(subBoard.effectPlayer) ? subBoard.effectPlayer.GetEffectDraw(channel) : "";
+        }
+
+        /// <summary>GetEffectDraw のパターンに渡すパラメータ。</summary>
+        public int GetEffectDrawParameter(int channel)
+        {
+            return Utilities.IsValid(subBoard) && Utilities.IsValid(subBoard.effectPlayer) ? subBoard.effectPlayer.GetEffectDrawParameter(channel) : 0;
+        }
+
+        /// <summary>このゲームでチャンネルに流すパターンを差し替える。LeverOnLogic の中で使う。null や空なら止める。</summary>
+        public void SetEffectDraw(int channel, string patternName, int parameter)
+        {
+            if (Utilities.IsValid(subBoard) && Utilities.IsValid(subBoard.effectPlayer))
+                subBoard.effectPlayer.SetEffectDraw(channel, patternName, parameter);
+        }
+
+        /// <summary>このゲームは、チャンネルに演出の抽選テーブル・次ゲームの予定の結果を流さない。LeverOnLogic の中で使う。</summary>
+        public void CancelEffectDraw(int channel)
+        {
+            if (Utilities.IsValid(subBoard) && Utilities.IsValid(subBoard.effectPlayer)) subBoard.effectPlayer.CancelEffectDraw(channel);
+        }
+
+        /// <summary>
+        /// 演出の抽選テーブルを内部名で引き、当たったパターンの内部名を返す（流しはしない）。なし・停止は空。
+        /// 今のゲームの成立フラグと、成立中のボーナスで引く。パラメータは GetLastEffectDrawParameter。
+        /// </summary>
+        public string DrawEffectTable(string tableName)
+        {
+            return Utilities.IsValid(subBoard) && Utilities.IsValid(subBoard.effectPlayer) ? subBoard.effectPlayer.DrawEffectTable(tableName) : "";
+        }
+
+        /// <summary>DrawEffectTable の、成立フラグと成立中のボーナスを指定する版。</summary>
+        /// <param name="tableName">抽選テーブルの内部名</param>
+        /// <param name="flag">成立フラグの内部名</param>
+        /// <param name="bonusName">成立中のボーナスの内部名。なければ空</param>
+        public string DrawEffectTableWithFlag(string tableName, string flag, string bonusName)
+        {
+            return Utilities.IsValid(subBoard) && Utilities.IsValid(subBoard.effectPlayer)
+                ? subBoard.effectPlayer.DrawEffectTableWithFlag(tableName, flag, bonusName) : "";
+        }
+
+        /// <summary>最後に DrawEffectTable で当たった行のパラメータ。</summary>
+        public int GetLastEffectDrawParameter()
+        {
+            return Utilities.IsValid(subBoard) && Utilities.IsValid(subBoard.effectPlayer) ? subBoard.effectPlayer.GetLastEffectDrawParameter() : 0;
+        }
+
+        /// <summary>演出モードを名前で切り替える（メイン基板の Owner だけ）。null や空なら指定なしに戻す。</summary>
+        public void SetEffectMode(string modeName)
+        {
+            if (Utilities.IsValid(subBoard) && Utilities.IsValid(subBoard.effectPlayer)) subBoard.effectPlayer.SetEffectMode(modeName);
+        }
+
+        /// <summary>今の演出モードの名前。指定なしは空。</summary>
+        public string GetEffectMode()
+        {
+            return Utilities.IsValid(subBoard) && Utilities.IsValid(subBoard.effectPlayer) ? subBoard.effectPlayer.GetEffectMode() : "";
+        }
+
         /// <summary>入賞演出のセットを名前で切り替える（メイン基板の Owner だけ）。全員へ届き、途中参加者（Late Joiner）にも同期する。</summary>
         public void SetWinEffectSet(string setName)
         {
@@ -651,7 +716,11 @@ namespace AX.UdonSlot.REV1_0
             // メイン基板の処理（LeverOnLogic）を終えてからサブ基板へ通知する。
             reelEffectStartsGame = false;
             string activeFlag = Utilities.IsValid(reelOutputController) ? reelOutputController.GetActiveBaseFlag() : "";
+            // 演出の抽選テーブル・次ゲームの予定は LeverOnLogic の前に決め、LeverOnLogic で差し替え・取り消しができるようにする。
+            EffectPlayer effectPlayer = Utilities.IsValid(subBoard) ? subBoard.effectPlayer : null;
+            if (Utilities.IsValid(effectPlayer)) effectPlayer.PrepareLeverOn(activeFlag);
             bool startNow = LeverOnLogic(activeFlag);
+            if (Utilities.IsValid(effectPlayer)) effectPlayer.CommitLeverOn();
             // 同期変数より先にイベントが届いても、全員が今回のフラグを読めるように引数で渡す。
             subBoard.SendCustomNetworkEvent(NetworkEventTarget.All, nameof(subBoard.LeverOn), activeFlag);
             // サブ基板の演出（演出エディタのリールアクションなど）がゲーム開始を引き受けたときも、ここでは開始しない。
