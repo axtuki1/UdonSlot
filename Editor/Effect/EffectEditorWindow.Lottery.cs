@@ -401,33 +401,37 @@ namespace AX.UdonSlot.REV1_0.Editor.Effect
             if (mark.Length > 0) GUI.Label(new Rect(rect.xMax - 44, rect.y, 40, rect.height), mark, mark == "●" || mark == "⚠" ? CenterLabel : CenterMuted);
 
             if (e.type != EventType.MouseDown || !rect.Contains(e.mousePosition)) return;
-            GUI.FocusControl(null);
-            if (e.button == 1)
+            bool menu = e.button == 1, toggle = e.control || e.command, range = e.shift;
+            Switch(delegate
             {
-                if (!selected) { lotSelection.Clear(); lotSelection.Add(key); }
-                ShowLotCellMenu(table);
-            }
-            else if (e.control || e.command)
-            {
-                if (selected) lotSelection.Remove(key);
-                else lotSelection.Add(key);
-            }
-            else if (e.shift && lotSelection.Count > 0)
-            {
-                int from = lotVisible.IndexOf(lotSelection[lotSelection.Count - 1]), to = lotVisible.IndexOf(key);
-                if (from >= 0 && to >= 0)
+                bool on = lotSelection.Contains(key);
+                if (menu)
                 {
-                    for (int i = Mathf.Min(from, to); i <= Mathf.Max(from, to); i++)
-                        if (!lotSelection.Contains(lotVisible[i])) lotSelection.Add(lotVisible[i]);
-                    lotSelection.Remove(key);
+                    if (!on) { lotSelection.Clear(); lotSelection.Add(key); }
+                    ShowLotCellMenu(table);
                 }
-                lotSelection.Add(key);
-            }
-            else
-            {
-                lotSelection.Clear();
-                lotSelection.Add(key);
-            }
+                else if (toggle)
+                {
+                    if (on) lotSelection.Remove(key);
+                    else lotSelection.Add(key);
+                }
+                else if (range && lotSelection.Count > 0)
+                {
+                    int from = lotVisible.IndexOf(lotSelection[lotSelection.Count - 1]), to = lotVisible.IndexOf(key);
+                    if (from >= 0 && to >= 0)
+                    {
+                        for (int i = Mathf.Min(from, to); i <= Mathf.Max(from, to); i++)
+                            if (!lotSelection.Contains(lotVisible[i])) lotSelection.Add(lotVisible[i]);
+                        lotSelection.Remove(key);
+                    }
+                    lotSelection.Add(key);
+                }
+                else
+                {
+                    lotSelection.Clear();
+                    lotSelection.Add(key);
+                }
+            });
             e.Use();
             Repaint();
         }
@@ -531,13 +535,13 @@ namespace AX.UdonSlot.REV1_0.Editor.Effect
                         EditorGUI.BeginChangeCheck();
                         bool common = GUILayout.Toggle(!perSetting, "全設定共通", GUILayout.Width(90));
                         if (EditorGUI.EndChangeCheck() && cell != null)
-                            Edit("全設定共通の変更", delegate
+                            Switch(() => Edit("全設定共通の変更", delegate
                             {
                                 // どちらへ切り替えても、設定1の値を全設定へ広げる。
                                 foreach (var row in cell.Rows)
                                     for (int s = 1; s < row.Values.Length; s++) row.Values[s] = row.Values[0];
                                 cell.PerSetting = !common;
-                            });
+                            }));
                     }
                 }
                 GUILayout.Space(2);
@@ -582,11 +586,11 @@ namespace AX.UdonSlot.REV1_0.Editor.Effect
                                 GUILayout.Space(4);
                             }
                             if (GUILayout.Button("×", GUILayout.Width(22)))
-                                Edit("振り分けの削除", delegate
+                                Switch(() => Edit("振り分けの削除", delegate
                                 {
                                     cell.Rows.Remove(row);
                                     if (cell.Rows.Count == 0) table.Cells.Remove(cell);
-                                });
+                                }));
                             GUILayout.FlexibleSpace();
                         }
                     }

@@ -156,6 +156,44 @@ namespace AX.UdonSlot.REV1_0.Editor.Effect
                 else if (tab == 2) DrawWinView();
                 else DrawLotteryView();
             }
+            RunSwitch();
+        }
+
+        private Action pendingSwitch;
+        private int pendingSwitchWait;
+
+        /// <summary>
+        /// 選択やタブを切り替える。入力途中の欄があれば、先にその欄を確定させてから切り替える。
+        /// すぐ切り替えると、入力途中の値が捨てられたり、切り替えた先の同じ位置の欄に入ったりする。
+        /// </summary>
+        private void Switch(Action apply)
+        {
+            if (!EditorGUIUtility.editingTextField)
+            {
+                GUI.FocusControl(null);
+                apply();
+                return;
+            }
+            pendingSwitch = apply;
+            pendingSwitchWait = 2;
+            GUI.FocusControl(null);
+            Repaint();
+        }
+
+        /// <summary>欄の確定（フォーカスが外れた後の描画で届く）を待ってから、切り替えを行う。</summary>
+        private void RunSwitch()
+        {
+            if (pendingSwitch == null) return;
+            if (Event.current.type == EventType.Repaint) pendingSwitchWait--;
+            if (pendingSwitchWait > 0)
+            {
+                Repaint();
+                return;
+            }
+            var apply = pendingSwitch;
+            pendingSwitch = null;
+            apply();
+            Repaint();
         }
 
         // ------------------------------------------------------------ ツールバー
@@ -231,7 +269,7 @@ namespace AX.UdonSlot.REV1_0.Editor.Effect
             using (new EditorGUILayout.VerticalScope(GUILayout.Width(240)))
             {
                 int newTab = GUILayout.Toolbar(tab, Tabs, GUILayout.Height(24));
-                if (newTab != tab) { tab = newTab; GUI.FocusControl(null); }
+                if (newTab != tab) Switch(() => tab = newTab);
                 using (new EditorGUILayout.HorizontalScope())
                 {
                     search = EditorGUILayout.TextField(search, EditorStyles.toolbarSearchField);
@@ -251,12 +289,15 @@ namespace AX.UdonSlot.REV1_0.Editor.Effect
                     if (e.type == EventType.MouseDown && rect.Contains(e.mousePosition))
                     {
                         int index = i;
-                        if (tab == 0) { patternIndex = index; selectedLayer = selectedStep = -1; }
-                        else if (tab == 1) actionIndex = index;
-                        else if (tab == 2) winSetIndex = index;
-                        else { lotIndex = index; lotSelection.Clear(); }
-                        GUI.FocusControl(null);
-                        if (e.button == 1) ShowItemMenu(index);
+                        bool menu = e.button == 1;
+                        Switch(delegate
+                        {
+                            if (tab == 0) { patternIndex = index; selectedLayer = selectedStep = -1; }
+                            else if (tab == 1) actionIndex = index;
+                            else if (tab == 2) winSetIndex = index;
+                            else { lotIndex = index; lotSelection.Clear(); }
+                            if (menu) ShowItemMenu(index);
+                        });
                         e.Use();
                     }
                 }
