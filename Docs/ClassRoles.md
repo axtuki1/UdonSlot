@@ -37,7 +37,6 @@ UdonSlot package 内の各クラスの役割メモです。
 - `BetView`: BET 表示。
 - `CreditView`: クレジット、払い出し等のセグメント表示。
 - `SoundBoard`: SE/BGM の再生、停止、遅延再生、ネットワーク再生管理。
-- `PlayHistory2QR`: スロット本体のプレイ履歴/結果を QR 化する処理。
 - `PlayerTracking`: 指定ボーンへオブジェクトを追従させる補助。
 - `DebugTextView`: 対象 Transform 名を表示するデバッグ補助。現状は仮置きに近い。
 - `CameraRenderManager`: 現状は空。名前上はカメラ/RenderTexture 管理予定。
@@ -65,10 +64,6 @@ UdonSlot package 内の各クラスの役割メモです。
 ## Runtime/REV1_0/Example
 
 - `BasicReelOutputController`: 基底だけで共通抽選、自動滑り、成立判定、払出が動くことを示す空のサンプル派生。実際の機種では`ReelOutputController`を継承して専用Controllerを作成する。
-
-## Runtime/REV1_0/lib
-
-- `UdonHashLib`: `PlayHistory2QR` の HMAC/ハッシュ処理で利用する外部ライブラリ。配置は元のまま維持する。
 
 ## Editor/ReelRule
 

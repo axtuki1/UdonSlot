@@ -10,7 +10,7 @@ Current version: `1.0.0`
 
 `<REV>` は互換性を保つためのリビジョンフォルダです。現在のリビジョンは `REV1_0` です。
 
-- `Runtime/<REV>/Slot`: メイン基板、サブ基板、リール制御、抽選テーブル、入力、表示、サウンド、プレイ履歴QR、追従補助などのスロット本体用部品
+- `Runtime/<REV>/Slot`: メイン基板、サブ基板、リール制御、抽選テーブル、入力、表示、サウンド、追従補助などのスロット本体用部品
 - `Runtime/<REV>/Slot/Mobile`: モバイル向け表示/フォーカス補助
 - `Runtime/<REV>/Slot/WatchDog`: Udon 監視とエラー表示切り替え用の補助
 - `Runtime/<REV>/Slot/Serialize`: リール配列、図柄、滑り定義の ScriptableObject
