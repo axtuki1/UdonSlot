@@ -34,6 +34,20 @@ Current version: `1.0.0`
 - 基礎遊技フローの構成とInspector設定は `Docs/BasicSlotFlow.md` にまとめています。
 - リール上下照明シェーダーは `Docs/ReelLighting.md` にまとめています。
 
+## ライセンス
+
+UdonSlot は MIT License です。全文は `LICENSE` を確認してください。
+
+### ワールドでのクレジット表記
+
+UdonSlot を使ったワールドを公開するときは、ワールド内のクレジット・ライセンス表示に次の表記を入れてください。
+
+```
+UdonSlot © axtuki1 / MIT License
+```
+
+アップロードしたワールドには `LICENSE` ファイルが含まれないため、この表記で MIT License の著作権表示の条件を満たしたものとします。
+
 ## Version History
 
 ### 1.0.0
