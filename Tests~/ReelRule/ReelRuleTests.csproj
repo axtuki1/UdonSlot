@@ -13,5 +13,7 @@
     <Compile Include="../../Editor/ReelRule/Core/*.cs" />
     <Compile Include="../../Runtime/REV1_0/Slot/ReelControlData.cs" />
     <Compile Include="*.cs" />
+    <!-- 追加の検証コード（パッケージ外）。例: dotnet run -c Release -p:ExtraTests=C:\path\to\folder -->
+    <Compile Include="$(ExtraTests)/*.cs" Condition="'$(ExtraTests)' != ''" />
   </ItemGroup>
 </Project>

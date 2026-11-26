@@ -11,6 +11,9 @@ public static partial class Program
     private static int checks;
     private static int failures;
 
+    // 実機データでの検証。パッケージ外の .cs で実装し、ExtraTests で読み込む（無ければ何もしない）。
+    static partial void RealMachineChecks();
+
     private static void Check(string name, bool ok)
     {
         checks++;

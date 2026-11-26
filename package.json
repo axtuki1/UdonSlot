@@ -9,7 +9,8 @@
   "license": "MIT",
   "unity": "2022.3",
   "vpmDependencies": {
-    "com.vrchat.worlds": ">=3.10.4"
+    "com.vrchat.worlds": ">=3.10.4",
+    "jp.lilxyzw.liltoon": ">=2.3.2"
   },
   "gitDependencies": {},
   "legacyFolders": {},

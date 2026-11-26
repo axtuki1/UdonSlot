@@ -6,6 +6,11 @@ Current version: `1.0.0`
 
 リール制御、抽選、配当、入力、表示、サウンド、貸出機など、パチスロワールドを構成するための基本部品をまとめています。
 
+## Requirements
+
+- VRChat SDK - Worlds 3.10.4 以降
+- [lilToon](https://github.com/lilxyzw/lilToon) 2.3.2 以降（リール照明シェーダー `UdonSlot/Reel/lilToon` が使います。VCC では lilToon のリポジトリを追加してから導入してください）
+
 ## Structure
 
 `<REV>` は互換性を保つためのリビジョンフォルダです。現在のリビジョンは `REV1_0` です。
@@ -38,6 +43,8 @@ Current version: `1.0.0`
 
 UdonSlot は MIT License です。全文は `LICENSE` を確認してください。
 
+リール照明シェーダーには lilToon（MIT License, © lilxyzw）を元にしたコードが含まれます。著作権表示とライセンス全文は `THIRD_PARTY_NOTICES.md` にあります。
+
 ### ワールドでのクレジット表記
 
 UdonSlot を使ったワールドを公開するときは、ワールド内のクレジット・ライセンス表示に次の表記を入れてください。
@@ -47,6 +54,8 @@ UdonSlot © axtuki1 / MIT License
 ```
 
 アップロードしたワールドには `LICENSE` ファイルが含まれないため、この表記で MIT License の著作権表示の条件を満たしたものとします。
+
+リール照明シェーダーを使う場合は、lilToon の表記（例: `lilToon © lilxyzw / MIT License`）も入れてください。
 
 ## Version History
 
