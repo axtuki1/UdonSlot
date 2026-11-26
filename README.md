@@ -30,10 +30,6 @@ Current version: `1.0.0`
 - `Editor/ReelRule`: 機種エディタ（`UdonSlot > 機種エディタ`）。抽選表・配当表・ボーナス/RT・リール制御をまとめて編集し、滑りテーブルを生成する
 - `Samples~/BasicSlot`: 基本的な機種実装サンプル
 
-## Namespace
-
-既存の `AX.Slot` 実装と同じ Unity project 内で共存できるよう、package 版は `AX.UdonSlot.REV1_0` 名前空間に分離しています。
-
 ## Notes
 
 - 新しいスロットを作り始める手順は `Docs/GetStarted.md` にまとめています。
