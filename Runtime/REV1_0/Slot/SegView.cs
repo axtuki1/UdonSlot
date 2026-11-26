@@ -46,7 +46,13 @@ namespace AX.UdonSlot.REV1_0
             }
         }
 
-        public void SetActiveSeg(int index)
+        public void SetActiveSeg(int index, byte segFlg)
+        {
+            if (!HasSeg(index)) return;
+            activeSegFlgs[index] = segFlg;
+        }
+        
+        public void ClearActiveSeg(int index)
         {
             if (!HasSeg(index)) return;
             activeSegFlgs[index] = 0;
@@ -99,12 +105,12 @@ namespace AX.UdonSlot.REV1_0
         {
             0b00111111, // 0
             0b00000110, // 1
-            0b01110011, // 2
+            0b01011011, // 2
             0b01001111, // 3
-            0b01100111, // 4
+            0b01100110, // 4
             0b01101101, // 5
             0b01111101, // 6
-            0b01100110, // 7
+            0b00100111, // 7
             0b01111111, // 8
             0b01101111, // 9
         };
