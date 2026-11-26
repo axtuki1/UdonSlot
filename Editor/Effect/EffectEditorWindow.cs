@@ -29,7 +29,7 @@ namespace AX.UdonSlot.REV1_0.Editor.Effect
         private static readonly Color CellSelectedColor = new Color(0.17f, 0.36f, 0.53f);
         private static readonly Color ChipColor = new Color(0.32f, 0.32f, 0.32f);
         private static readonly Color HeaderColor = new Color(0.16f, 0.16f, 0.16f);
-        private static readonly string[] Tabs = { "パターン", "アクション", "入賞演出", "抽選" };
+        private static readonly string[] Tabs = { "パターン", "アクション", "入賞演出", "抽選", "BGM" };
         private static readonly string[] BranchNames = { "共通", "入賞", "非入賞", "左押し", "中押し", "右押し" };
         private static readonly string[] SoundTypeNames = Enum.GetNames(typeof(SoundType));
 
@@ -154,7 +154,8 @@ namespace AX.UdonSlot.REV1_0.Editor.Effect
                 if (tab == 0) DrawPatternView();
                 else if (tab == 1) DrawActionView();
                 else if (tab == 2) DrawWinView();
-                else DrawLotteryView();
+                else if (tab == 3) DrawLotteryView();
+                else DrawBgmView();
             }
             RunSwitch();
         }
@@ -209,6 +210,8 @@ namespace AX.UdonSlot.REV1_0.Editor.Effect
                     player = picked;
                     Reload();
                 }
+                GUILayout.Space(12);
+                DrawPreviewVolume();
                 GUILayout.FlexibleSpace();
                 using (new EditorGUI.DisabledScope(player == null || model == null))
                 {
@@ -276,8 +279,8 @@ namespace AX.UdonSlot.REV1_0.Editor.Effect
                     if (GUILayout.Button("＋", GUILayout.Width(28))) AddItem();
                 }
                 listScroll = EditorGUILayout.BeginScrollView(listScroll);
-                var names = tab == 0 ? model.PatternNames() : tab == 1 ? model.ActionNames() : tab == 2 ? model.WinSetNames() : model.LotTableNames();
-                int selected = tab == 0 ? patternIndex : tab == 1 ? actionIndex : tab == 2 ? winSetIndex : lotIndex;
+                var names = tab == 0 ? model.PatternNames() : tab == 1 ? model.ActionNames() : tab == 2 ? model.WinSetNames() : tab == 3 ? model.LotTableNames() : model.BgmNames();
+                int selected = tab == 0 ? patternIndex : tab == 1 ? actionIndex : tab == 2 ? winSetIndex : tab == 3 ? lotIndex : bgmIndex;
                 for (int i = 0; i < names.Count; i++)
                 {
                     if (search.Length > 0 && names[i].IndexOf(search, StringComparison.OrdinalIgnoreCase) < 0) continue;
@@ -295,7 +298,8 @@ namespace AX.UdonSlot.REV1_0.Editor.Effect
                             if (tab == 0) { patternIndex = index; selectedLayer = selectedStep = -1; }
                             else if (tab == 1) actionIndex = index;
                             else if (tab == 2) winSetIndex = index;
-                            else { lotIndex = index; lotSelection.Clear(); }
+                            else if (tab == 3) { lotIndex = index; lotSelection.Clear(); }
+                            else bgmIndex = index;
                             if (menu) ShowItemMenu(index);
                         });
                         e.Use();
@@ -325,6 +329,7 @@ namespace AX.UdonSlot.REV1_0.Editor.Effect
                     actionIndex = model.Actions.Count - 1;
                 });
             else if (tab == 3) AddLotTable();
+            else if (tab == 4) AddBgm();
             else
                 Edit("セットの追加", delegate
                 {
@@ -336,9 +341,10 @@ namespace AX.UdonSlot.REV1_0.Editor.Effect
         private void ShowItemMenu(int index)
         {
             var menu = new GenericMenu();
-            if (tab == 3)
+            if (tab == 3 || tab == 4)
             {
-                AddLotTableMenu(menu, index);
+                if (tab == 3) AddLotTableMenu(menu, index);
+                else AddBgmMenu(menu, index);
                 menu.ShowAsContext();
                 return;
             }
@@ -708,6 +714,8 @@ namespace AX.UdonSlot.REV1_0.Editor.Effect
                     GUILayout.Space(8);
                     DrawWinSetSection(action);
                     GUILayout.Space(8);
+                    DrawBgmSection(action);
+                    GUILayout.Space(8);
                     DrawCodeSection(action);
                 }
                 EditorGUILayout.EndScrollView();
@@ -931,10 +939,17 @@ namespace AX.UdonSlot.REV1_0.Editor.Effect
                     var clips = SoundClips();
                     if (clips.Length > 0)
                     {
-                        var labels = new string[clips.Length];
-                        for (int i = 0; i < clips.Length; i++) labels[i] = i + "  " + (clips[i] != null ? clips[i].name : "");
-                        int clip = EditorGUILayout.Popup(Mathf.Clamp(action.SoundClip, 0, clips.Length - 1), labels);
-                        if (clip != action.SoundClip) Edit("サウンドの変更", () => action.SoundClip = clip);
+                        // 検索できる選択（数が多くても探せるように）
+                        int index = Mathf.Clamp(action.SoundClip, 0, clips.Length - 1);
+                        var pickRect = GUILayoutUtility.GetRect(new GUIContent(EffectSoundPicker.Label(clips, index)), EditorStyles.popup, GUILayout.ExpandWidth(true));
+                        if (EditorGUI.DropdownButton(pickRect, new GUIContent(EffectSoundPicker.Label(clips, index)), FocusType.Keyboard, EditorStyles.popup))
+                            EffectSoundPicker.Show(pickRect, clips, index, picked => Edit("サウンドの変更", () => action.SoundClip = picked));
+                        bool playing = EffectBgmPreview.IsPlaying(EffectSoundPicker.PreviewOwner, index);
+                        using (new EditorGUI.DisabledScope(clips[index] == null))
+                        {
+                            if (GUILayout.Button(playing ? "■" : "▶", GUILayout.Width(24))) EffectSoundPicker.TogglePreview(clips[index], index);
+                        }
+                        if (playing) Repaint();
                     }
                     else
                     {

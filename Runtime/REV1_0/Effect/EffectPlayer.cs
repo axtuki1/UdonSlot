@@ -15,6 +15,7 @@ namespace AX.UdonSlot.REV1_0
     /// 呼ぶと全員へ届き、次のステップから新しいパターンに差し替わる。チャンネルごとに別のパターンを重ねて流せる。
     /// チャンネル0（CallEffectPattern）はそのゲームだけ。常駐チャンネル（1〜residentChannelCount）は差し替えられない限り毎ゲーム繰り返し、それより後はそのゲームで止まる。
     /// 入賞演出は役ごとに決めたアクションで、パターンとは別にゲーム終了で毎回流れる（セットを切り替えられる）。
+    /// BGM はアクションの「BGM」欄か PlayBgm で流す。ファンファーレ → イントロ → ループと途切れずにつなぎ、EndBgm でアウトロへ進む。
     /// データは演出エディタ（UdonSlot/演出エディタ）が書き込む。手で編集しない。
     /// </summary>
     [UdonBehaviourSyncMode(BehaviourSyncMode.Manual)]
@@ -128,6 +129,39 @@ namespace AX.UdonSlot.REV1_0
         public int[] actionStopMask = new int[0];
         /// <summary>流したときに切り替える入賞演出のセット。-1 は切り替えない。</summary>
         public int[] actionWinSet = new int[0];
+        /// <summary>流したときの BGM の操作（BgmNone など）。</summary>
+        public int[] actionBgmCommand = new int[0];
+        /// <summary>BgmPlay で流す曲の番号。</summary>
+        public int[] actionBgm = new int[0];
+
+        public const int BgmNone = 0;
+        public const int BgmPlay = 1;
+        public const int BgmOutro = 2;
+        public const int BgmStop = 3;
+
+        // ---------------------------------------------------------------- BGM の曲（演出エディタの「BGM」）
+
+        public string[] bgmNames = new string[0];
+        /// <summary>本体のクリップ。ループ開始点からループ終了点までを繰り返す。</summary>
+        public AudioClip[] bgmMain = new AudioClip[0];
+        /// <summary>ループ開始点（サンプル数）。</summary>
+        public int[] bgmLoopStart = new int[0];
+        /// <summary>ループ終了点（サンプル数）。0 はクリップの最後。</summary>
+        public int[] bgmLoopEnd = new int[0];
+        // ファンファーレ・イントロ・アウトロ：クリップ（null はなし。本体と同じクリップでもよい）と、使う区間（サンプル数、終わりの 0 はクリップの最後）。
+        public AudioClip[] bgmFanfare = new AudioClip[0];
+        public int[] bgmFanfareStart = new int[0];
+        public int[] bgmFanfareEnd = new int[0];
+        public AudioClip[] bgmIntro = new AudioClip[0];
+        public int[] bgmIntroStart = new int[0];
+        public int[] bgmIntroEnd = new int[0];
+        public AudioClip[] bgmOutro = new AudioClip[0];
+        public int[] bgmOutroStart = new int[0];
+        public int[] bgmOutroEnd = new int[0];
+        /// <summary>イントロを次のレバーオンから始める（ファンファーレが鳴っていれば、その後）。</summary>
+        public bool[] bgmWaitLever = new bool[0];
+        /// <summary>BGM を鳴らす AudioSource。2つを交互に使い、区間を途切れずにつなぐ。</summary>
+        public AudioSource[] bgmSources = new AudioSource[0];
 
         /// <summary>LightTrack～ の値。</summary>
         public int[] lightKeyTrack = new int[0];
@@ -280,6 +314,9 @@ namespace AX.UdonSlot.REV1_0
         [UdonSynced] private int syncedMode = 0;
         private int currentMode = -1;
 
+        /// <summary>今の BGM の曲＋1（0 はなし）。途中参加者はこの曲のループから鳴らす。</summary>
+        [UdonSynced] private int syncedBgm = 0;
+
         private const int DrawKeep = -2;
         private const int DrawStop = -1;
         /// <summary>レバーオンで決めた、このゲームに流すもの（チャンネルごと）。パターン番号、DrawStop、DrawKeep。Owner だけが使う。</summary>
@@ -412,6 +449,7 @@ namespace AX.UdonSlot.REV1_0
             lastWinMask = 0;
             stopSoundMuted = false;
             lastStep = StepGameEnd;
+            StopBgmLocal();
             CaptureInitial();
             for (int i = 0; i < activeTargets.Length && i < activeInitial.Length; i++)
             {
@@ -432,6 +470,7 @@ namespace AX.UdonSlot.REV1_0
             }
             syncedWinSet = 0;
             syncedMode = 0;
+            syncedBgm = 0;
             RequestSerialization();
         }
 
@@ -455,6 +494,7 @@ namespace AX.UdonSlot.REV1_0
                 currentPattern[c] = syncedPatterns[c] - 1;
                 currentParameter[c] = syncedParameters[c];
             }
+            if (syncedBgm > 0 && bgmSong < 0) StartBgmLoop(syncedBgm - 1);
         }
 
         /// <summary>チャンネル0のパターンを内部名で呼ぶ（そのゲームだけ）。パラメータは 0。null や空なら止める。</summary>
@@ -581,6 +621,7 @@ namespace AX.UdonSlot.REV1_0
             if (step < 0 || step >= StepCount) return;
             if (step == StepLeverOn) StopLights(StopOnLeverOn);
             if (step == StepLeverOn && !IsMainBoardOwner()) lastSituation = "";
+            if (step == StepLeverOn) bgmLeverSeen = true;
             stopSoundMuted = false;
             lastStep = step;
             lastWon = won;
@@ -1002,6 +1043,7 @@ namespace AX.UdonSlot.REV1_0
         public void Update()
         {
             UpdateLights();
+            UpdateBgm();
             if (queueAction.Length == 0) return;
             float now = Time.time;
             int kept = 0;
@@ -1072,6 +1114,8 @@ namespace AX.UdonSlot.REV1_0
             if (actionReelCount[action] > 0) RunReel(action, step);
             if (action < actionLightCount.Length && actionLightCount[action] > 0) StartLight(action, lastWinMask);
             if (action < actionWinSet.Length && actionWinSet[action] >= 0) ApplyWinSet(actionWinSet[action]);
+            if (action < actionBgmCommand.Length && actionBgmCommand[action] != BgmNone)
+                ApplyBgm(actionBgmCommand[action], action < actionBgm.Length ? actionBgm[action] : -1);
 
             start = actionCodeStart[action];
             end = start + actionCodeCount[action];
@@ -1342,6 +1386,259 @@ namespace AX.UdonSlot.REV1_0
             if (!Networking.IsOwner(gameObject)) Networking.SetOwner(Networking.LocalPlayer, gameObject);
             syncedWinSet = set;
             RequestSerialization();
+        }
+
+        // ---------------------------------------------------------------- BGM（ローカル）
+
+        private const int BgmPartNone = 0;
+        private const int BgmPartFanfare = 1;
+        private const int BgmPartIntro = 2;
+        /// <summary>本体のループ開始点からループ終了点まで。</summary>
+        private const int BgmPartLoop = 3;
+        private const int BgmPartOutro = 4;
+        /// <summary>今すぐ鳴らすときの予約の余裕（秒）。</summary>
+        private const double BgmLead = 0.05;
+        /// <summary>次の区間を、今の区間が終わるこの秒数前に予約する。</summary>
+        private const double BgmLookahead = 1.0;
+
+        private int bgmSong = -1;
+        private bool bgmLeverSeen;
+        /// <summary>最後に予約した区間と、その AudioSource・開始・終了の dspTime。</summary>
+        private int bgmTailPart = BgmPartNone;
+        private int bgmTailSource = 1;
+        private double bgmTailStart;
+        private double bgmTailEnd;
+
+        /// <summary>
+        /// BGM の曲を名前で流す。メイン基板の Owner だけが呼べる（ほかの人が呼んでも何もしない）。全員へ届く。
+        /// 同じ曲が鳴っていれば何もしない。
+        /// </summary>
+        public void PlayBgm(string songName)
+        {
+            if (!IsMainBoardOwner()) return;
+            int song = FindBgm(songName);
+            if (song < 0)
+            {
+                Debug.LogWarning("[EffectPlayer] BGM がありません: " + songName);
+                return;
+            }
+            SendCustomNetworkEvent(NetworkEventTarget.All, nameof(ReceiveBgm), BgmPlay, song);
+        }
+
+        /// <summary>今の BGM をアウトロへ進める（アウトロがなければ止める）。メイン基板の Owner だけ。</summary>
+        public void EndBgm()
+        {
+            if (!IsMainBoardOwner()) return;
+            SendCustomNetworkEvent(NetworkEventTarget.All, nameof(ReceiveBgm), BgmOutro, -1);
+        }
+
+        /// <summary>今の BGM をすぐ止める。メイン基板の Owner だけ。</summary>
+        public void StopBgm()
+        {
+            if (!IsMainBoardOwner()) return;
+            SendCustomNetworkEvent(NetworkEventTarget.All, nameof(ReceiveBgm), BgmStop, -1);
+        }
+
+        [NetworkCallable]
+        public void ReceiveBgm(int command, int song)
+        {
+            ApplyBgm(command, song);
+        }
+
+        /// <summary>今鳴っている BGM の曲の名前。ないときは空。</summary>
+        public string GetBgmName()
+        {
+            return bgmSong >= 0 && bgmSong < bgmNames.Length ? bgmNames[bgmSong] : "";
+        }
+
+        public int FindBgm(string songName)
+        {
+            for (int i = 0; i < bgmNames.Length; i++) if (bgmNames[i] == songName) return i;
+            return -1;
+        }
+
+        /// <summary>ローカルで BGM を操作する。メイン基板の Owner なら途中参加者向けに同期もする。</summary>
+        private void ApplyBgm(int command, int song)
+        {
+            if (command == BgmPlay) PlayBgmLocal(song);
+            else if (command == BgmOutro) OutroBgmLocal();
+            else if (command == BgmStop) StopBgmLocal();
+            else return;
+            if (!IsMainBoardOwner()) return;
+            int value = command == BgmPlay && song >= 0 && song < bgmNames.Length ? song + 1 : 0;
+            if (syncedBgm == value) return;
+            if (!Networking.IsOwner(gameObject)) Networking.SetOwner(Networking.LocalPlayer, gameObject);
+            syncedBgm = value;
+            RequestSerialization();
+        }
+
+        private bool HasBgmSources()
+        {
+            return bgmSources != null && bgmSources.Length >= 2 && Utilities.IsValid(bgmSources[0]) && Utilities.IsValid(bgmSources[1]);
+        }
+
+        private void PlayBgmLocal(int song)
+        {
+            if (song < 0 || song >= bgmNames.Length || !HasBgmSources()) return;
+            if (song == bgmSong && bgmTailPart != BgmPartOutro) return;
+            StopBgmSources();
+            bgmSong = song;
+            bgmLeverSeen = false;
+            double now = AudioSettings.dspTime;
+            bgmTailPart = BgmPartNone;
+            bgmTailSource = 1;
+            bgmTailStart = now;
+            bgmTailEnd = now + BgmLead;
+            UpdateBgm();
+        }
+
+        /// <summary>途中参加者：ファンファーレとイントロを飛ばして、ループ開始点から鳴らす。</summary>
+        private void StartBgmLoop(int song)
+        {
+            if (song < 0 || song >= bgmNames.Length || !HasBgmSources()) return;
+            StopBgmSources();
+            bgmSong = song;
+            if (!HasBgmPart(BgmPartLoop))
+            {
+                bgmSong = -1;
+                return;
+            }
+            bgmLeverSeen = true;
+            bgmTailSource = 1;
+            ScheduleBgm(BgmPartLoop, AudioSettings.dspTime + BgmLead);
+        }
+
+        private void OutroBgmLocal()
+        {
+            if (bgmSong < 0) return;
+            if (!HasBgmPart(BgmPartOutro))
+            {
+                StopBgmLocal();
+                return;
+            }
+            StopBgmSources();
+            bgmTailSource = 1;
+            ScheduleBgm(BgmPartOutro, AudioSettings.dspTime + BgmLead);
+        }
+
+        private void StopBgmLocal()
+        {
+            StopBgmSources();
+            bgmSong = -1;
+            bgmTailPart = BgmPartNone;
+        }
+
+        private void StopBgmSources()
+        {
+            if (bgmSources == null) return;
+            for (int i = 0; i < bgmSources.Length; i++) if (Utilities.IsValid(bgmSources[i])) bgmSources[i].Stop();
+        }
+
+        /// <summary>今の区間が終わる前に、次の区間をもう一方の AudioSource に予約する。</summary>
+        private void UpdateBgm()
+        {
+            if (bgmSong < 0) return;
+            double now = AudioSettings.dspTime;
+            int next = NextBgmPart(bgmTailPart);
+            if (next == BgmPartNone)
+            {
+                if (now >= bgmTailEnd)
+                {
+                    bgmSong = -1;
+                    bgmTailPart = BgmPartNone;
+                }
+                return;
+            }
+            // レバーオン待ち：イントロ（イントロがなければループ）の前で止めておく。
+            bool beforeIntro = bgmTailPart == BgmPartNone || bgmTailPart == BgmPartFanfare;
+            if (beforeIntro && next != BgmPartFanfare && BgmWaitsLever() && !bgmLeverSeen) return;
+            // もう一方の AudioSource は前の区間を鳴らしている。今の区間が始まるまで触らない。
+            if (now < bgmTailStart || now < bgmTailEnd - BgmLookahead) return;
+            double at = bgmTailEnd;
+            if (at < now + BgmLead) at = now + BgmLead;
+            ScheduleBgm(next, at);
+        }
+
+        private bool BgmWaitsLever()
+        {
+            return bgmSong < bgmWaitLever.Length && bgmWaitLever[bgmSong];
+        }
+
+        private int NextBgmPart(int part)
+        {
+            if (part == BgmPartNone && HasBgmPart(BgmPartFanfare)) return BgmPartFanfare;
+            if ((part == BgmPartNone || part == BgmPartFanfare) && HasBgmPart(BgmPartIntro)) return BgmPartIntro;
+            if (part == BgmPartNone || part == BgmPartFanfare || part == BgmPartIntro || part == BgmPartLoop)
+                return HasBgmPart(BgmPartLoop) ? BgmPartLoop : BgmPartNone;
+            return BgmPartNone;
+        }
+
+        private AudioClip BgmPartClip(int part)
+        {
+            AudioClip[] clips = part == BgmPartFanfare ? bgmFanfare : part == BgmPartIntro ? bgmIntro : part == BgmPartOutro ? bgmOutro : bgmMain;
+            int song = bgmSong;
+            if (song < 0 || clips == null || song >= clips.Length) return null;
+            AudioClip clip = clips[song];
+            return Utilities.IsValid(clip) && clip.frequency > 0 ? clip : null;
+        }
+
+        private int BgmIntAt(int[] values, int song)
+        {
+            return values != null && song >= 0 && song < values.Length ? values[song] : 0;
+        }
+
+        /// <summary>区間の始まり（サンプル数）。</summary>
+        private int BgmPartFrom(int part, int total)
+        {
+            int[] starts = part == BgmPartFanfare ? bgmFanfareStart : part == BgmPartIntro ? bgmIntroStart : part == BgmPartOutro ? bgmOutroStart : bgmLoopStart;
+            return Mathf.Clamp(BgmIntAt(starts, bgmSong), 0, total);
+        }
+
+        /// <summary>区間の終わり（サンプル数）。0 や範囲外はクリップの最後。</summary>
+        private int BgmPartTo(int part, int total)
+        {
+            int[] ends = part == BgmPartFanfare ? bgmFanfareEnd : part == BgmPartIntro ? bgmIntroEnd : part == BgmPartOutro ? bgmOutroEnd : bgmLoopEnd;
+            int end = BgmIntAt(ends, bgmSong);
+            return end > 0 && end < total ? end : total;
+        }
+
+        private bool HasBgmPart(int part)
+        {
+            AudioClip clip = BgmPartClip(part);
+            if (clip == null) return false;
+            int total = clip.samples;
+            return BgmPartFrom(part, total) < BgmPartTo(part, total);
+        }
+
+        private void ScheduleBgm(int part, double at)
+        {
+            AudioClip clip = BgmPartClip(part);
+            if (clip == null)
+            {
+                StopBgmLocal();
+                return;
+            }
+            int total = clip.samples;
+            int from = BgmPartFrom(part, total);
+            int to = BgmPartTo(part, total);
+            if (from >= to)
+            {
+                StopBgmLocal();
+                return;
+            }
+            int index = 1 - bgmTailSource;
+            AudioSource source = bgmSources[index];
+            source.Stop();
+            source.loop = false;
+            source.clip = clip;
+            source.timeSamples = from;
+            source.PlayScheduled(at);
+            double length = (to - from) / (double)clip.frequency;
+            if (to < total) source.SetScheduledEndTime(at + length);
+            bgmTailSource = index;
+            bgmTailPart = part;
+            bgmTailStart = at;
+            bgmTailEnd = at + length;
         }
 
         // ---------------------------------------------------------------- リール照明の再生（ローカル）

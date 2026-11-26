@@ -87,6 +87,10 @@ namespace AX.UdonSlot.REV1_0.Editor.Effect
         public int StopMask = EffectPlayer.StopOnBet | EffectPlayer.StopOnLeverOn;
         /// <summary>流したときに切り替える入賞演出のセット。null は切り替えない。</summary>
         public EffectWinSet WinSet;
+        /// <summary>BGM の操作（EffectPlayer.BgmNone など）。</summary>
+        public int BgmCommand;
+        /// <summary>BgmPlay で流す曲。</summary>
+        public EffectBgm Bgm;
 
         /// <summary>リール照明の1回の長さ（未設定なら最後のキーの時間）。</summary>
         public int LightEnd
@@ -115,7 +119,8 @@ namespace AX.UdonSlot.REV1_0.Editor.Effect
             var a = new EffectAction
             {
                 Name = name, DelayMs = DelayMs, LockMs = LockMs, MuteStopSound = MuteStopSound, SoundType = SoundType, SoundClip = SoundClip,
-                LightLength = LightLength, LightLoop = LightLoop, LightRestore = LightRestore, LightDelay = (int[])LightDelay.Clone(), StopMask = StopMask, WinSet = WinSet
+                LightLength = LightLength, LightLoop = LightLoop, LightRestore = LightRestore, LightDelay = (int[])LightDelay.Clone(), StopMask = StopMask, WinSet = WinSet,
+                BgmCommand = BgmCommand, Bgm = Bgm
             };
             foreach (var x in LightKeys) a.LightKeys.Add(x.Copy());
             foreach (var x in Anims) a.Anims.Add(new EffectAnim { Target = x.Target, Name = x.Name, Kind = x.Kind, Value = x.Value });
@@ -271,6 +276,49 @@ namespace AX.UdonSlot.REV1_0.Editor.Effect
         }
     }
 
+    /// <summary>BGM のファンファーレ・イントロ・アウトロ。なし／別クリップ／本体の一部。</summary>
+    public sealed class EffectBgmPart
+    {
+        public const int ModeNone = 0;
+        public const int ModeClip = 1;
+        public const int ModeMain = 2;
+
+        public int Mode;
+        /// <summary>ModeClip のクリップ。</summary>
+        public AudioClip Clip;
+        /// <summary>使う区間（サンプル数、End の 0 は最後）。本体からなら本体の中、別クリップならそのクリップの中。</summary>
+        public int Start;
+        public int End;
+
+        public EffectBgmPart Copy() { return (EffectBgmPart)MemberwiseClone(); }
+    }
+
+    /// <summary>BGM の曲。ファンファーレ → イントロ → 本体のループ（繰り返し）、終わりにアウトロ。本体だけが必須。</summary>
+    public sealed class EffectBgm
+    {
+        public string Name = "";
+        public AudioClip Main;
+        /// <summary>ループ開始点（サンプル数）。</summary>
+        public int LoopStart;
+        /// <summary>ループ終了点（サンプル数）。0 はクリップの最後。</summary>
+        public int LoopEnd;
+        public EffectBgmPart Fanfare = new EffectBgmPart();
+        public EffectBgmPart Intro = new EffectBgmPart();
+        public EffectBgmPart Outro = new EffectBgmPart();
+        /// <summary>イントロを次のレバーオンから始める。</summary>
+        public bool WaitLever;
+
+        public EffectBgm Copy(string name)
+        {
+            var b = (EffectBgm)MemberwiseClone();
+            b.Name = name;
+            b.Fanfare = Fanfare.Copy();
+            b.Intro = Intro.Copy();
+            b.Outro = Outro.Copy();
+            return b;
+        }
+    }
+
     public sealed class EffectModel
     {
         public static readonly string[] StepNames = { "レバーオン", "リール回転開始", "第一停止", "第二停止", "第三停止", "ゲーム終了" };
@@ -280,6 +328,7 @@ namespace AX.UdonSlot.REV1_0.Editor.Effect
         public List<EffectAction> Actions = new List<EffectAction>();
         public List<EffectPattern> Patterns = new List<EffectPattern>();
         public List<EffectWinSet> WinSets = new List<EffectWinSet>();
+        public List<EffectBgm> Bgms = new List<EffectBgm>();
         public List<EffectLotTable> LotTables = new List<EffectLotTable>();
         /// <summary>演出モードの名前。</summary>
         public List<string> Modes = new List<string>();
@@ -365,6 +414,9 @@ namespace AX.UdonSlot.REV1_0.Editor.Effect
 
             var setNames = so.FindProperty("winSetNames");
             for (int i = 0; i < setNames.arraySize; i++) m.WinSets.Add(new EffectWinSet { Name = Str(setNames, i) });
+            LoadBgm(m, so);
+            var bgmCommand = so.FindProperty("actionBgmCommand");
+            var bgmOf = so.FindProperty("actionBgm");
 
             for (int a = 0; a < names.arraySize; a++)
             {
@@ -401,6 +453,9 @@ namespace AX.UdonSlot.REV1_0.Editor.Effect
                 if (a < stopMask.arraySize) action.StopMask = Int(stopMask, a);
                 int winSet = a < winSetOf.arraySize ? Int(winSetOf, a) : -1;
                 if (winSet >= 0 && winSet < m.WinSets.Count) action.WinSet = m.WinSets[winSet];
+                action.BgmCommand = Int(bgmCommand, a);
+                int bgm = a < bgmOf.arraySize ? Int(bgmOf, a) : -1;
+                if (bgm >= 0 && bgm < m.Bgms.Count) action.Bgm = m.Bgms[bgm];
                 m.Actions.Add(action);
             }
 
@@ -463,6 +518,83 @@ namespace AX.UdonSlot.REV1_0.Editor.Effect
             }
             LoadLottery(m, so);
             return m;
+        }
+
+        private static readonly string[] BgmPartKeys = { "bgmFanfare", "bgmIntro", "bgmOutro" };
+
+        private static EffectBgmPart[] PartsOf(EffectBgm b)
+        {
+            return new[] { b.Fanfare, b.Intro, b.Outro };
+        }
+
+        private static void LoadBgm(EffectModel m, SerializedObject so)
+        {
+            var names = so.FindProperty("bgmNames");
+            var main = so.FindProperty("bgmMain");
+            var loopStart = so.FindProperty("bgmLoopStart");
+            var loopEnd = so.FindProperty("bgmLoopEnd");
+            var waitLever = so.FindProperty("bgmWaitLever");
+            for (int i = 0; i < names.arraySize; i++)
+            {
+                var b = new EffectBgm
+                {
+                    Name = Str(names, i),
+                    Main = Obj(main, i) as AudioClip,
+                    LoopStart = Int(loopStart, i),
+                    LoopEnd = Int(loopEnd, i),
+                    WaitLever = Bool(waitLever, i)
+                };
+                var parts = PartsOf(b);
+                for (int p = 0; p < parts.Length; p++)
+                {
+                    var clip = Obj(so.FindProperty(BgmPartKeys[p]), i) as AudioClip;
+                    var part = parts[p];
+                    // 本体と同じクリップなら「本体から」
+                    part.Mode = clip == null ? EffectBgmPart.ModeNone : clip == b.Main ? EffectBgmPart.ModeMain : EffectBgmPart.ModeClip;
+                    part.Clip = part.Mode == EffectBgmPart.ModeClip ? clip : null;
+                    part.Start = Int(so.FindProperty(BgmPartKeys[p] + "Start"), i);
+                    part.End = Int(so.FindProperty(BgmPartKeys[p] + "End"), i);
+                }
+                m.Bgms.Add(b);
+            }
+        }
+
+        private void SaveBgm(SerializedObject so)
+        {
+            int n = Bgms.Count;
+            var names = Resize(so, "bgmNames", n);
+            var main = Resize(so, "bgmMain", n);
+            var loopStart = Resize(so, "bgmLoopStart", n);
+            var loopEnd = Resize(so, "bgmLoopEnd", n);
+            var waitLever = Resize(so, "bgmWaitLever", n);
+            var clips = new SerializedProperty[3];
+            var starts = new SerializedProperty[3];
+            var ends = new SerializedProperty[3];
+            for (int p = 0; p < 3; p++)
+            {
+                clips[p] = Resize(so, BgmPartKeys[p], n);
+                starts[p] = Resize(so, BgmPartKeys[p] + "Start", n);
+                ends[p] = Resize(so, BgmPartKeys[p] + "End", n);
+            }
+            for (int i = 0; i < n; i++)
+            {
+                var b = Bgms[i];
+                names.GetArrayElementAtIndex(i).stringValue = b.Name;
+                main.GetArrayElementAtIndex(i).objectReferenceValue = b.Main;
+                loopStart.GetArrayElementAtIndex(i).intValue = Mathf.Max(0, b.LoopStart);
+                loopEnd.GetArrayElementAtIndex(i).intValue = Mathf.Max(0, b.LoopEnd);
+                waitLever.GetArrayElementAtIndex(i).boolValue = b.WaitLever;
+                var parts = PartsOf(b);
+                for (int p = 0; p < 3; p++)
+                {
+                    var part = parts[p];
+                    bool fromMain = part.Mode == EffectBgmPart.ModeMain;
+                    clips[p].GetArrayElementAtIndex(i).objectReferenceValue = fromMain ? b.Main : part.Mode == EffectBgmPart.ModeClip ? part.Clip : null;
+                    bool none = part.Mode == EffectBgmPart.ModeNone;
+                    starts[p].GetArrayElementAtIndex(i).intValue = none ? 0 : Mathf.Max(0, part.Start);
+                    ends[p].GetArrayElementAtIndex(i).intValue = none ? 0 : Mathf.Max(0, part.End);
+                }
+            }
         }
 
         private static int MachineSettingCount(EffectPlayer player)
@@ -650,6 +782,8 @@ namespace AX.UdonSlot.REV1_0.Editor.Effect
             var lightDelay = Resize(so, "actionLightDelay", n * 3);
             var stopMask = Resize(so, "actionStopMask", n);
             var winSetOf = Resize(so, "actionWinSet", n);
+            var bgmCommand = Resize(so, "actionBgmCommand", n);
+            var bgmOf = Resize(so, "actionBgm", n);
             int lightKeys = 0;
             foreach (var a in Actions) lightKeys += a.LightKeys.Count;
             var lightTrack = Resize(so, "lightKeyTrack", lightKeys);
@@ -769,7 +903,12 @@ namespace AX.UdonSlot.REV1_0.Editor.Effect
                 for (int r = 0; r < 3; r++) lightDelay.GetArrayElementAtIndex(i * 3 + r).intValue = Mathf.Max(0, a.LightDelay[r]);
                 stopMask.GetArrayElementAtIndex(i).intValue = a.StopMask;
                 winSetOf.GetArrayElementAtIndex(i).intValue = a.WinSet != null ? WinSets.IndexOf(a.WinSet) : -1;
+                int bgm = a.Bgm != null ? Bgms.IndexOf(a.Bgm) : -1;
+                // 曲を選んでいない「流す」は何もしない
+                bgmCommand.GetArrayElementAtIndex(i).intValue = a.BgmCommand == EffectPlayer.BgmPlay && bgm < 0 ? EffectPlayer.BgmNone : a.BgmCommand;
+                bgmOf.GetArrayElementAtIndex(i).intValue = bgm;
             }
+            SaveBgm(so);
 
             var setNames = Resize(so, "winSetNames", WinSets.Count);
             int winEntries = 0;
@@ -932,6 +1071,19 @@ namespace AX.UdonSlot.REV1_0.Editor.Effect
         {
             WinSets.Remove(set);
             foreach (var a in Actions) if (a.WinSet == set) a.WinSet = null;
+        }
+
+        public List<string> BgmNames()
+        {
+            var list = new List<string>();
+            foreach (var b in Bgms) list.Add(b.Name);
+            return list;
+        }
+
+        public void RemoveBgm(EffectBgm bgm)
+        {
+            Bgms.Remove(bgm);
+            foreach (var a in Actions) if (a.Bgm == bgm) a.Bgm = null;
         }
 
         public void RemovePattern(EffectPattern pattern)

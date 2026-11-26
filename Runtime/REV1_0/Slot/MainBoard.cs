@@ -600,6 +600,30 @@ namespace AX.UdonSlot.REV1_0
             if (Utilities.IsValid(subBoard) && Utilities.IsValid(subBoard.effectPlayer)) subBoard.effectPlayer.SetWinEffectSet(setName);
         }
 
+        /// <summary>演出エディタの BGM の曲を名前で流す（メイン基板の Owner だけ）。同じ曲が鳴っていれば何もしない。</summary>
+        public void PlayBgm(string songName)
+        {
+            if (Utilities.IsValid(subBoard) && Utilities.IsValid(subBoard.effectPlayer)) subBoard.effectPlayer.PlayBgm(songName);
+        }
+
+        /// <summary>今の BGM をアウトロへ進める（アウトロがなければ止める）。メイン基板の Owner だけ。</summary>
+        public void EndBgm()
+        {
+            if (Utilities.IsValid(subBoard) && Utilities.IsValid(subBoard.effectPlayer)) subBoard.effectPlayer.EndBgm();
+        }
+
+        /// <summary>今の BGM をすぐ止める。メイン基板の Owner だけ。</summary>
+        public void StopBgm()
+        {
+            if (Utilities.IsValid(subBoard) && Utilities.IsValid(subBoard.effectPlayer)) subBoard.effectPlayer.StopBgm();
+        }
+
+        /// <summary>今鳴っている BGM の曲の名前。ないときは空。</summary>
+        public string GetBgmName()
+        {
+            return Utilities.IsValid(subBoard) && Utilities.IsValid(subBoard.effectPlayer) ? subBoard.effectPlayer.GetBgmName() : "";
+        }
+
         /// <summary>
         /// 指定秒数、操作を受け付けない状態にする
         /// </summary>
