@@ -20,7 +20,7 @@ using AX.UdonSlot.REV1_0;
 
 `ReelData.symbols` には、リールの図柄名を物理配列順に登録します。図柄名は `PayoutTable` の図柄組み合わせと完全一致で比較されます。
 
-リール配列とリールテクスチャは `UdonSlot > ReelMaker` で作れます。`ReelArray` を使う場合は、Projectビューで `Create > UdonSlot > ReelArray` と `Create > UdonSlot > ReelPicture` からアセットを作成できます。`ReelData` のInspectorに `ReelArray` を指定し、`ReelArrayからデータを生成` を押すと、`ReelPicture.pictureName` から `symbols` を生成できます。
+リール配列とリールテクスチャは リール作成ツール（`UdonSlot > リール作成ツール`）で作れます。`ReelArray` を使う場合は、Projectビューで `Create > UdonSlot > ReelArray` と `Create > UdonSlot > ReelPicture` からアセットを作成できます。`ReelData` のInspectorに `ReelArray` を指定し、`ReelArrayからデータを生成` を押すと、`ReelPicture.pictureName` から `symbols` を生成できます。
 
 ## 3. 抽選表と配当表を作る
 

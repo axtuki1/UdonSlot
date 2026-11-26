@@ -491,7 +491,7 @@ namespace AX.UdonSlot.REV1_0
         private bool reelEffectStartsGame = false;
 
         /// <summary>
-        /// 今、中段にあるコマの番号（下が1、リール配列の並びはReelMakerと同じ）。回転中は一番近いコマ。
+        /// 今、中段にあるコマの番号（下が1、リール配列の並びはリール作成ツールと同じ）。回転中は一番近いコマ。
         /// </summary>
         public int GetReelCenterFrame(int reelIndex)
         {

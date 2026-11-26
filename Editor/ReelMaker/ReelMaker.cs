@@ -49,7 +49,7 @@ namespace AX.UdonSlot.REV1_0.Editor.ReelMaker
         private bool previewDirty = true;
         private bool ready;
 
-        [MenuItem("UdonSlot/ReelMaker")]
+        [MenuItem("UdonSlot/リール作成ツール")]
         public static void Open()
         {
             ShowWindow();
@@ -58,7 +58,7 @@ namespace AX.UdonSlot.REV1_0.Editor.ReelMaker
         private static void ShowWindow()
         {
             var window = GetWindow<ReelMaker>();
-            window.titleContent = new GUIContent("ReelMaker");
+            window.titleContent = new GUIContent("リール作成ツール");
             window.minSize = new Vector2(820, 550);
         }
 

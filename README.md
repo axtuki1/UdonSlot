@@ -22,7 +22,7 @@ Current version: `1.0.0`
 - `Runtime/<REV>/Sand`: カード、カード挿入口、サンド本体などの貸出機用部品
 - `Runtime/<REV>/DataLamp`: データランプ用部品
 - `Editor/Slot`: リールデータ、滑りテーブル、抽選表、配当表、ボーナス表などのインスペクタ拡張
-- `Editor/ReelMaker`: リール配列と図柄画像からリールテクスチャを作る ReelMaker（`UdonSlot > ReelMaker`）
+- `Editor/ReelMaker`: リール配列と図柄画像からリールテクスチャを作るリール作成ツール（`UdonSlot > リール作成ツール`）
 - `Editor/ReelRule`: 機種エディタ（`UdonSlot > 機種エディタ`）。抽選表・配当表・ボーナス/RT・リール制御をまとめて編集し、滑りテーブルを生成する
 - `Samples~/BasicSlot`: 基本的な機種実装サンプル
 

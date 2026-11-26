@@ -75,7 +75,7 @@ UdonSlot package 内の各クラスの役割メモです。
 
 ## Editor/ReelMaker
 
-- `ReelMaker`: リール配列と図柄画像からリールテクスチャを作る（`UdonSlot > ReelMaker`）。
+- `ReelMaker`: リール作成ツール。リール配列と図柄画像からリールテクスチャを作る（`UdonSlot > リール作成ツール`）。
 
 ## Editor/Slot
 

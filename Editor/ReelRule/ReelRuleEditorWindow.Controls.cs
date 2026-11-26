@@ -696,7 +696,7 @@ namespace AX.UdonSlot.REV1_0.Editor.ReelRule
             GUI.Label(new Rect(head.x + 28, head.y, 50, 16), "押し位置", EditorStyles.miniLabel);
             GUI.Label(new Rect(head.x + 87, head.y, 30, 16), "滑り", EditorStyles.miniLabel);
             GUI.Label(new Rect(head.x + 117, head.y, 60, 16), "決め手", EditorStyles.miniLabel);
-            // 図柄はReelMakerと同じ並び、コマ番号は下が1
+            // 図柄はリール作成ツールと同じ並び、コマ番号は下が1
             for (int i = 0; i < table.Slips.Length; i++)
             {
                 int press = i;
